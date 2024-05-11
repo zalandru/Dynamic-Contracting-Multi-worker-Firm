@@ -35,8 +35,11 @@ def array_exp_dist(A,B,h):
     weight = np.exp( - 0.5*np.power(B/h,2))
     return  (np.power( A-B,2) * weight ).mean() / ( np.power(B,2) * weight ).mean() 
 def array_dist(A,B):
-
-class BasicContract:
+    """ 
+        computes sqrt( (A-B)^2 ) / sqrt(B^2) weighted by exp(- (B/h)^2 ) 
+    """
+    return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
+class BasicContract_r:
     """
         This solves a version of the model with no aggregate risk, no endogenous job destruction, and just one worker (CRS production!).
     """
@@ -49,6 +52,7 @@ class BasicContract:
         self.log.setLevel(logging.INFO)
 
         self.p = input_param
+        self.deriv_eps = 1e-3 # step size for derivative
         self.num_K = num_K
         self.js = js
         # Model preferences initialized by the same parameter object.
@@ -65,16 +69,14 @@ class BasicContract:
         #self.w_grid=np.zeros((self.p.num_z,self.p.num_v0,self.num_K)) #first productivity, then starting value, then tenure level
         self.w_grid = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v )
         self.rho_grid=1/self.pref.utility_1d(self.w_grid)
-        self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v_simple ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
+        self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
 
         # Transition matrices
         self.X_trans_mat = createBlockPoissonTransitionMatrix(self.p.num_x/self.p.num_np,self.p.num_np, self.p.x_corr)
         self.Z_trans_mat = createPoissonTransitionMatrix(self.p.num_z, self.p.z_corr)
 
         # Value Function Setup
-        self.J_grid   = -10 * np.ones((self.p.num_z, self.p.num_v0, self.num_K)) #grid of job values, first productivity, then starting value, then tenure level
-        self.v_grid_0 = np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v0 ) #grid of possible starting job values, based on a grid of possibe wages, assuming those are constant over time
-        self.v_grid_0 = np.linspace(50.0, 90.0, self.p.num_v0 ) #grid of possible starting job values, based on a grid of possibe wages, assuming those are constant over time
+        self.J_grid   = -10 * np.ones((self.p.num_z, self.p.num_v, self.num_K)) #grid of job values, first productivity, then starting value, then tenure level
         self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
         #Gotta fix the tightness+re functions somehow. Ultra simple J maybe?
         #self.simple_v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v_simple ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
@@ -96,11 +98,8 @@ class BasicContract:
                 # create representation for J1p
         w_grid=self.w_grid
         rho_grid=self.rho_grid
-        Ji=np.zeros((self.p.num_z,self.p.num_v0,self.num_K))
-        W1i=np.zeros((self.p.num_z,self.p.num_v0,self.num_K))
-        Ji= self.simple_J[:,:,ax]
-        W1i=self.v_grid[ax,:,ax]
-
+        Ji=np.zeros((self.p.num_z,self.p.num_v,self.num_K))+self.simple_J[:,:,ax]
+        W1i=np.zeros((self.p.num_z,self.p.num_v,self.num_K))+self.v_grid[ax,:,ax]
         J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
 
         EW1_star = np.copy(Ji)
@@ -138,7 +137,6 @@ class BasicContract:
             #Andrei: do we need the k-dimension for FOC? do we need it for rho_grid?
             assert (np.isnan(foc) & (pc > 0)).sum() == 0, "foc has NaN values where p>0"
 
-
             for iz in range(self.p.num_z):
              for ik in range(self.num_K):
                 assert np.all(EW1i[iz, 1:,ik] >= EW1i[iz, :-1,ik]) #Andrei: check that worker value is increasing in v
@@ -167,15 +165,15 @@ class BasicContract:
                 else:
                  if Isearch.sum() > 0:
                       rho_star[iz, Isearch,ik] = np.interp(rho_star[iz,Isearch,ik-1],
-                                                              impose_increasing(foc[iz, Isearch]),
+                                                              impose_increasing(foc[iz, Isearch,ik]),
                                                               rho_grid[Isearch], right=rho_bar[iz,ik])
 
                     # look for FOC above rho_0
                  Ieffort = (rho_grid > rho_bar[iz,ik]) & (pc[iz, :,ik] > 0)
                  if Ieffort.sum() > 0:
                         #assert np.all(foc[iz, Ieffort, ix][1:] > foc[iz, Ieffort, ix][:-1])
-                         rho_star[iz, Ieffort,ik] = np.interp(rho_star[iz,Isearch,ik-1],
-                                                              foc[iz, Ieffort], rho_grid[Ieffort])
+                         rho_star[iz, Ieffort,ik] = np.interp(rho_star[iz,Ieffort,ik-1],
+                                                              foc[iz, Ieffort,ik], rho_grid[Ieffort])
                     #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
                     #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
                     # set rho for quits to the lowest value
@@ -185,38 +183,15 @@ class BasicContract:
                     # get EW1_Star and EJ1_star
                 w_star=np.zeros((self.p.num_z,self.p.num_v,self.num_K))
                 w_star[iz, :,ik] = np.interp(rho_star[iz, :,ik], rho_grid, w_grid)
-            Ji[:,:,-1]=np.divide(self.fun_prod[:,ax] - w_star[:,:,-1],1-self.p.beta  *(1-self.js.pe(EW1i[:,:,-1])))
-            W1i[:,:,-1]=np.divide(self.pref.utility(w_star)[:,:,-1],1- self.p.beta * (1-self.js.pe(EW1i[:,:,-1])))
-            for k in range(J.shape[2]-2, -1, -1):
-                Ji[:,:,k]=self.fun_prod[:,ax] - w_star[:,:,k] + self.p.beta  *(1-self.js.pe(v_grid_0[ax,:]*r[ax,ax,k+1]))*J[:,:,k+1]
-                W1i[:,:,k]=self.pref.utility(w_star[:,:,k]) + self.p.beta * (1-self.js.pe(v_grid_0[ax,:]*r[ax,ax,k+1]))*W1i[:,:,k+1]
-
-
-
-
-
-                
-                EW1_star[iz, :,ik] = np.interp(rho_star[iz, :,ik], rho_grid, EW1i[iz, :,ik])
-                EJ1_star[iz, :,ik] = np.interp(rho_star[iz, :,ik], rho_grid, EJpi[iz, :,ik]) #Andrei: how does interpolating the shadow cost give us the future Value?
-                
-            assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
-
-            # get pstar, qstar
-            pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
-
-            # Update firm value function 
-            EJ1_star = self.shift(EJ1_star) #I am shifting the future value to the next step of k!
-            EW1_star = self.shift(EW1_star)
-            Ji[:,:,0] = self.fun_prod[:, ax] - w_grid[ax, :] + self.p.beta * (1 - pe_star) * EJ1_star #we v_grid state is for the starting wage so we keep that.
-            #However, all the future wages are determined optimally, and we can determine that through the shadow cost. Only weird part here is that we still... interpolate the expected values???
-            Ji[:,:,1:] = self.fun_prod[:, ax] - np.power(rho_star[:, :,:],self.p.u_rho) + self.p.beta * (1 - pe_star) * EJ1_star #so rho=1/u'(w), so w=u'^(-1)(1/rho)
-            # Update worker value function
-            W1i[:,:,0] = self.pref.utility(w_grid)[ax, :] + \
-                self.p.beta * (re_star + EW1_star)
-            W1i[:,:,1:] = self.pref.utility(np.power(rho_star,self.p.u_rho))[:, :,:] + \
-                self.p.beta * (re_star + EW1_star)            
+            #Updating the firm and worker values. Update worker value first, so that the firm value can be updated using the new worker value.
+            W1i[:,:,-1]=self.pref.utility(w_star)[:,:,-1] + self.p.beta * (self.js.re(EW1i[:,:,-1])+EW1i[:,:,-1])
+            for k in range(Ji.shape[2]-2, -1, -1):
+                W1i[:,:,k]=self.pref.utility(w_star)[:,:,k] + self.p.beta * (self.js.re(W1i[:,:,k+1])+W1i[:,:,k+1])
             W1i = .2*W1i + .8*W1i2
 
+            Ji[:,:,-1]=np.divide(self.fun_prod[:,ax] - w_star[:,:,-1],1-self.p.beta  *(1-self.js.pe(W1i[:,:,-1]))) #Annoying thing here is that the EW1i is not changed by the FOC, it will only get changed ex-post
+            for k in range(Ji.shape[2]-2, -1, -1):
+                Ji[:,:,k]=self.fun_prod[:,ax] - w_star[:,:,k] + self.p.beta  *(1-self.js.pe(W1i[:,:,k+1]))*Ji[:,:,k+1]
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
 
@@ -234,9 +209,9 @@ class BasicContract:
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[0, :])
+                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[0, :,0])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            error_js = self.js.update(W1i[0, :], P_xv, type=1, relax=relax)
+                            error_js = self.js.update(W1i[0, :,0], P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
                     if (np.array([error_w1, error_j1g]).max() < self.p.tol_full_model
@@ -296,7 +271,7 @@ class BasicContract:
         # construct the continuation probability. #Andrei: probability the worker doesn't get fired and also doesn't leave
         pc = (1 - pe)
 
-        return re, pc
+        return pe,re, pc
     def construct_z_grid(self):
 
 

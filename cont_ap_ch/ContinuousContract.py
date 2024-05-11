@@ -8,7 +8,7 @@ import opt_einsum as oe
 from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
 from search import JobSearchArray
-from valuefunction import PowerFunctionGrid
+from valuefunction2d import PowerFunctionGrid
 from scipy.optimize import minimize
 ax = np.newaxis
 
@@ -74,7 +74,7 @@ class ContinuousContract:
         self.w_grid = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v )
         self.rho_grid=1/self.pref.utility_1d(self.w_grid)
         #Gotta fix the tightness+re functions somehow. Ultra simple J maybe?
-        self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v_simple ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
+        self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
         self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
         #Apply the matching function: take the simple function and consider its different values across v.
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
