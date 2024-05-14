@@ -183,6 +183,7 @@ class BasicContract_r:
                     # get EW1_Star and EJ1_star
                 w_star=np.zeros((self.p.num_z,self.p.num_v,self.num_K))
                 w_star[iz, :,ik] = np.interp(rho_star[iz, :,ik], rho_grid, w_grid)
+            print("w_star:", w_star)
             #Updating the firm and worker values. Update worker value first, so that the firm value can be updated using the new worker value.
             W1i[:,:,-1]=self.pref.utility(w_star)[:,:,-1] + self.p.beta * (self.js.re(EW1i[:,:,-1])+EW1i[:,:,-1])
             for k in range(Ji.shape[2]-2, -1, -1):
