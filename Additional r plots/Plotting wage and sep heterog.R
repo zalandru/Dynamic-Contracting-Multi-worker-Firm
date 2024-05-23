@@ -18,7 +18,7 @@ plot <- ggplot(data) +
   geom_line(aes(x, y2, color="Workers with 10y tenure")) +
   geom_point(aes(x, y2, color="Workers with 10y tenure"),size=2) +
   scale_x_continuous(breaks=1:10)+
-  labs( x = "Job brackets",y="Separation cyclicality",color="Tenure at the establishment") +
+  labs( x = "Firm size brackets",y="Separation cyclicality",color="Tenure at the establishment") +
   theme_bw() +
   theme(axis.line = element_line(colour = "black"),
         #panel.grid.major = element_blank(),
@@ -45,7 +45,7 @@ plot <- ggplot(data) +
   geom_line(aes(x, y2, color="Workers with 10y tenure")) +
   geom_point(aes(x, y2, color="Workers with 10y tenure"),size=2) +
   scale_x_continuous(breaks=1:10)+
-  labs( x = "Job brackets",y="Separation cyclicality",color="Tenure at the establishment") +
+  labs( x = "Firm size brackets",y="Wage cyclicality",color="Tenure at the establishment") +
   theme_bw() +
   theme(axis.line = element_line(colour = "black"),
         #panel.grid.major = element_blank(),

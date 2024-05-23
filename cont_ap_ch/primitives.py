@@ -33,7 +33,7 @@ class Parameters:
         self.num_s  = 50      # Number of points of support for piece rate contract
 
         # Time periods in the Model
-        self.dt     = 0.25    # Time as a Fraction of Year
+        self.dt     = 2.0 #0.25    # Time as a Fraction of Year
 
         # Utility Function Parameters
         self.u_rho = 1.5      # Risk aversion coefficient, was 1.5

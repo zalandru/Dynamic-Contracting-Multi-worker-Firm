@@ -104,6 +104,7 @@ class BasicContract_r:
 
         EW1_star = np.copy(Ji)
         EJ1_star = np.copy(Ji)
+        w_star=np.zeros((self.p.num_z,self.p.num_v,self.num_K))
 
         rho_bar = np.zeros((self.p.num_z,self.num_K))
         rho_star = np.zeros((self.p.num_z, self.p.num_v,self.num_K))
@@ -134,6 +135,7 @@ class BasicContract_r:
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
             foc = rho_grid[ax, :,ax] - EJpi * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
+            foclast=rho_grid[ax, :,ax] - EJpi * log_diff / (self.deriv_eps*(1-self.p.beta*(1-pc[:,:,:]))) #Andrei: this is the FOC for the last period, where the worker doesn't search anymore
             #Andrei: do we need the k-dimension for FOC? do we need it for rho_grid?
             assert (np.isnan(foc) & (pc > 0)).sum() == 0, "foc has NaN values where p>0"
 
@@ -163,27 +165,48 @@ class BasicContract_r:
                  if Iquit.sum() > 0:
                            rho_star[iz, Iquit,ik] = rho_min
                 else:
-                 if Isearch.sum() > 0:
+                 if ik<self.num_K-1:
+                  if Isearch.sum() > 0:
                       rho_star[iz, Isearch,ik] = np.interp(rho_star[iz,Isearch,ik-1],
                                                               impose_increasing(foc[iz, Isearch,ik]),
                                                               rho_grid[Isearch], right=rho_bar[iz,ik])
 
                     # look for FOC above rho_0
-                 Ieffort = (rho_grid > rho_bar[iz,ik]) & (pc[iz, :,ik] > 0)
-                 if Ieffort.sum() > 0:
+                  Ieffort = (rho_grid > rho_bar[iz,ik]) & (pc[iz, :,ik] > 0)
+                  if Ieffort.sum() > 0:
                         #assert np.all(foc[iz, Ieffort, ix][1:] > foc[iz, Ieffort, ix][:-1])
                          rho_star[iz, Ieffort,ik] = np.interp(rho_star[iz,Ieffort,ik-1],
                                                               foc[iz, Ieffort,ik], rho_grid[Ieffort])
                     #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
                     #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
                     # set rho for quits to the lowest value
-                 Iquit = ~(pc[iz, :] > 0) 
-                 if Iquit.sum() > 0:
+                  Iquit = ~(pc[iz, :] > 0) 
+                  if Iquit.sum() > 0:
                            rho_star[iz, Iquit,ik] = rho_min                
                     # get EW1_Star and EJ1_star
-                w_star=np.zeros((self.p.num_z,self.p.num_v,self.num_K))
-                w_star[iz, :,ik] = np.interp(rho_star[iz, :,ik], rho_grid, w_grid)
-            print("w_star:", w_star)
+                 else:
+                    if Isearch.sum() > 0:
+                      rho_star[iz, Isearch,ik] = np.interp(rho_star[iz,Isearch,ik-1],
+                                                              impose_increasing(foclast[iz, Isearch,ik]),
+                                                              rho_grid[Isearch], right=rho_bar[iz,ik])
+
+                    # look for FOC above rho_0
+                    Ieffort = (rho_grid > rho_bar[iz,ik]) & (pc[iz, :,ik] > 0)
+                    if Ieffort.sum() > 0:
+                        #assert np.all(foc[iz, Ieffort, ix][1:] > foc[iz, Ieffort, ix][:-1])
+                         rho_star[iz, Ieffort,ik] = np.interp(rho_star[iz,Ieffort,ik-1],
+                                                              foclast[iz, Ieffort,ik], rho_grid[Ieffort])
+                    #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
+                    #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
+                    # set rho for quits to the lowest value
+                    Iquit = ~(pc[iz, :] > 0) 
+                    if Iquit.sum() > 0:
+                           rho_star[iz, Iquit,ik] = rho_min                
+                    # get EW1_Star and EJ1_star
+            
+            w_star[:, :,:] = np.interp(rho_star[:, :,:], rho_grid, w_grid)
+#            print("rho_star:", rho_star)
+#            print("w_star:", w_star)
             #Updating the firm and worker values. Update worker value first, so that the firm value can be updated using the new worker value.
             W1i[:,:,-1]=self.pref.utility(w_star)[:,:,-1] + self.p.beta * (self.js.re(EW1i[:,:,-1])+EW1i[:,:,-1])
             for k in range(Ji.shape[2]-2, -1, -1):
