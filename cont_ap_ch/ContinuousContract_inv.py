@@ -40,7 +40,7 @@ def array_dist(A,B):
     """
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 
-class ContinuousContract:
+class ContinuousContract_inv:
     """
         This solves a classic contract model.
     """
@@ -146,8 +146,6 @@ class ContinuousContract:
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
             EJpi = Exz(Jpi, self.Z_trans_mat)
-            #EW1i = W1i
-            #EJpi = Jpi
             #print("Shape of EW1i:", EW1i.shape)
             # get worker decisions
             _, _, pc = self.getWorkerDecisions(EW1i)
@@ -161,7 +159,7 @@ class ContinuousContract:
             #print("Shape of log_diff:", log_diff.shape if 'log_diff' in locals() else "log_diff not defined")
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
-            foc = rho_grid[ax, :] - EJpi * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
+            foc = rho_grid[ax, :] - ((Jpi-self.fun_prod[:,ax]+w_grid[ax,:])/(self.p.beta*pc))* (log_diff / self.deriv_eps) #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
             assert (np.isnan(foc) & (pc > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
