@@ -160,12 +160,13 @@ class ContinuousContract_inv:
             #print("Shape of log_diff:", log_diff.shape if 'log_diff' in locals() else "log_diff not defined")
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
-            #EJinv=(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/self.p.beta #creating expected job value as a function of today's value
+            EJinv=(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/self.p.beta #creating expected job value as a function of today's value
 
-            #foc = rho_grid[ax, :,ax] - (EJinv[:,ax,:]/pc[:,:,ax])* (log_diff[:,:,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-            pp=np.zeros((self.p.num_z,self.p.num_v,self.p.num_v))
-            foc = rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)+pp #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
-
+            foc = rho_grid[ax, :,ax] - (EJinv[:,ax,:]/pc[:,:,ax])* (log_diff[:,:,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+            foc = np.power(rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)-rho_grid[ax,ax,:],2) #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
+            def FOC(rho,z,v0):
+             focc=np.interp(rho, rho_grid, foc[z,:,v0])
+             return focc	
             assert (np.isnan(foc) & (pc[:,:,ax] > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
@@ -179,20 +180,17 @@ class ContinuousContract_inv:
                     # look for FOC below  rho_0
                 Isearch = (rho_grid <= rho_bar[iz]) & (pc[iz, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
                 if Isearch.sum() > 0:
-                      search_foc=foc[iz,Isearch,:]
-                      rho_star[iz, Isearch] = np.interp(rho_grid[Isearch],
-                                                              impose_increasing(search_foc[iz, Isearch,v=Isearch]),
-                                                              rho_grid[Isearch], right=rho_bar[iz])
+                      guess=rho_grid[np.where(Isearch)[0].max()-1]
+                      bounds=[rho_grid[np.where(Isearch)[0].min()],rho_grid[np.where(Isearch)[0].max()]]
+                      print("Guess:", guess, "Bounds:", bounds)
+                      rho_star[iz, Isearch] = minimize(lambda rho,z=iz,v0=Isearch: FOC(rho,z,v0).item(),guess,bounds=bounds).x
 
                     # look for FOC above rho_0
                 Ieffort = (rho_grid > rho_bar[iz]) & (pc[iz, :] > 0)
                 if Ieffort.sum() > 0:
-                        #assert np.all(foc[iz, Ieffort, ix][1:] > foc[iz, Ieffort, ix][:-1])
-                         rho_star[iz, Ieffort] = np.interp(rho_grid[Ieffort],
-                                                              foc[iz,:, Ieffort], rho_grid[Ieffort])
-                    #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
-                    #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
-                    # set rho for quits to the lowest value
+                    guess=rho_grid[Ieffort.max()+Ieffort.min()]
+                    bounds=[Ieffort.min(),Ieffort.max()]
+                    rho_star[iz, Ieffort] = minimize(lambda x,z=iz,v0=Ieffort: foc[z,x,v0],guess,bounds=bounds).x
                 Iquit = ~(pc[iz, :] > 0) 
                 if Iquit.sum() > 0:
                            rho_star[iz, Iquit] = rho_min

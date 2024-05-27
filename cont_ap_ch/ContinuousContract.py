@@ -198,17 +198,16 @@ class ContinuousContract:
                     #Andrei: rather, we're interpolating the Job value at the point of the optimal shadow cost. still confused as to why its a shadow cost rather than lambda
                     #Or, more like, we're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
                     #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
-
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
             # get pstar, qstar
             pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
-
+            print("Expectation diff:", np.max(np.abs(EJ1_star-(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/(self.p.beta*(1-pe_star)))))
             # Update firm value function 
             #Andrei: why is the w_grid still preset? Doesn't it depend on what you promised to the worker?
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
             Ji = self.fun_prod[:, ax] - w_grid[ax, :] + self.p.beta * (1 - pe_star) * EJ1_star
-
+            print("Value diff:", np.max(np.abs(Ji-Ji2)))
             # Update worker value function
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
@@ -221,7 +220,7 @@ class ContinuousContract:
             error_j1i = array_exp_dist(Ji,Ji2,100) #np.power(Ji - Ji2, 2).mean() / np.power(Ji2, 2).mean()  
             error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i), 100)
             error_w1 = array_dist(W1i, W1i2)
-        
+            print("Error:", error_j1i)
             # update worker search decisions
             if (ite_num % 10) == 0:
                 if update_eq:

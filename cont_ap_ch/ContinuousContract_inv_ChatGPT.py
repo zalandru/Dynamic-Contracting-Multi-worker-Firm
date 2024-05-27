@@ -2,6 +2,8 @@ import numpy as np
 import logging
 from scipy.stats import lognorm as lnorm
 import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
+from multiprocessing import Pool
 
 import opt_einsum as oe
 
@@ -39,7 +41,14 @@ def array_dist(A,B):
         computes sqrt( (A-B)^2 ) / sqrt(B^2) weighted by exp(- (B/h)^2 ) 
     """
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
-
+def interpolate_rho_star(rho_grid, foc, rho_bar, pc, iz):
+     Ieffort = (rho_grid > rho_bar[iz]) & (pc[iz, :] > 0)
+     if Ieffort.sum() > 0:
+        interp_func = interp1d(foc[iz, Ieffort], rho_grid[Ieffort], fill_value="extrapolate")
+        return interp_func(rho_grid[Ieffort])
+     return np.full_like(rho_grid, np.nan)  # Return NaNs if no effort region
+def interpolate_all(iz, rho_grid, foc, rho_bar, pc):
+      return interpolate_rho_star(rho_grid, foc, rho_bar, pc, iz)
 class ContinuousContract_inv:
     """
         This solves a classic contract model.
@@ -108,7 +117,6 @@ class ContinuousContract_inv:
         return self.p.alpha * np.power(1 - np.power(
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
-
     def J(self,update_eq=1):    
         """
         Computes the value of a job for each promised value v
@@ -177,19 +185,18 @@ class ContinuousContract_inv:
                 rho_min = rho_grid[pc[iz, :] > 0].min()  # lowest promised rho with continuation > 0
                     #Andrei: so we look for the shadow cost that will satisfy the foc? Yes, look for u'(w'), with u'(w) given, so that the foc is satisfied
                     # look for FOC below  rho_0
-                Isearch = (rho_grid <= rho_bar[iz]) & (pc[iz, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
-                if Isearch.sum() > 0:
-                      search_foc=foc[iz,Isearch,:]
-                      rho_star[iz, Isearch] = np.interp(rho_grid[Isearch],
-                                                              impose_increasing(search_foc[iz, Isearch,v=Isearch]),
-                                                              rho_grid[Isearch], right=rho_bar[iz])
+                with Pool() as pool:
+                 rho_star = interpolate_all(iz, rho_grid, foc, rho_bar, pc) #for iz in range(pc.shape[0])])
 
+                rho_star = np.array(rho_star)
                     # look for FOC above rho_0
                 Ieffort = (rho_grid > rho_bar[iz]) & (pc[iz, :] > 0)
                 if Ieffort.sum() > 0:
+                    Ieffort_indices = np.where(Ieffort)[0]
+                    for iv in Ieffort_indices:
                         #assert np.all(foc[iz, Ieffort, ix][1:] > foc[iz, Ieffort, ix][:-1])
-                         rho_star[iz, Ieffort] = np.interp(rho_grid[Ieffort],
-                                                              foc[iz,:, Ieffort], rho_grid[Ieffort])
+                         rho_star[iz, iv] = np.interp(rho_grid[iv],
+                                                              foc[iz, Ieffort,iv], rho_grid[Ieffort])
                     #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
                     #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
                     # set rho for quits to the lowest value
