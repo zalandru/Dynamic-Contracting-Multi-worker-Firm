@@ -14,8 +14,12 @@ ax = np.newaxis
 
 def impose_decreasing(M):
     nv = M.shape[1]
-    for v in reversed(range(nv-1)):
-        M[:,v,:] = np.maximum(M[:,v,:],M[:,v+1,:])
+    if len(M.shape)==2:
+        for v in reversed(range(nv-1)):
+            M[:,v] = np.maximum(M[:,v],M[:,v+1])
+    else:
+        for v in reversed(range(nv-1)):
+            M[:,v,:] = np.maximum(M[:,v,:],M[:,v+1,:])
     return M
 def impose_increasing(A0):
     A = np.copy(A0)
@@ -162,18 +166,19 @@ class ContinuousContract_inv:
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
             
             #Andrei: this is the FOC that I would actually like to run
-            #EJinv=(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/self.p.beta #creating expected job value as a function of today's value
-            #foc = rho_grid[ax, :,ax] - (EJinv[:,ax,:]/pc[:,:,ax])* (log_diff[:,:,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-            
+            EJinv=(impose_decreasing(Ji+w_grid[ax,:])-self.fun_prod[:,ax])/self.p.beta #creating expected job value as a function of today's value
+            foc = rho_grid[ax, :,ax] - (EJinv[:,ax,:]/pc[:,:,ax])* (log_diff[:,:,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+            if ite_num==0:
+               pp=np.zeros((self.p.num_z,self.p.num_v,self.p.num_v))
+               foc = rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)+pp
             #Andrei: this is the same foc as in the previous code (just a 3d version) that I am using for benchmarking
-            pp=np.zeros((self.p.num_z,self.p.num_v,self.p.num_v))
-            foc = rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)+pp #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
+            #pp=np.zeros((self.p.num_z,self.p.num_v,self.p.num_v))
+            #foc = rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)+pp #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
 
             assert (np.isnan(foc) & (pc[:,:,ax] > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
             for iz in range(self.p.num_z):
-
                 assert np.all(EW1i[iz, 1:] >= EW1i[iz, :-1]) #Andrei: check that worker value is increasing in v
                     # find highest V with J2J search
                 rho_bar[iz] = np.interp(self.js.jsa.e0, EW1i[iz, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
@@ -197,6 +202,7 @@ class ContinuousContract_inv:
                 if Ieffort.sum() > 0:
                     Ieffort_indices = np.where(Ieffort)[0]
                     for iv in Ieffort_indices:
+                         #print("iv:",iv)
                         #assert np.all(foc[iz, Ieffort, ix][1:] > foc[iz, Ieffort, ix][:-1])
                          rho_star[iz, iv] = np.interp(rho_grid[iv],
                                                               foc[iz, Ieffort,iv], rho_grid[Ieffort])
@@ -213,12 +219,12 @@ class ContinuousContract_inv:
                     #Andrei: rather, we're interpolating the Job value at the point of the optimal shadow cost. still confused as to why its a shadow cost rather than lambda
                     #Or, more like, we're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
                     #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
-            
+            print("Rho_star:",rho_star)
+            assert np.all(rho_star[:, 1:] >= rho_star[:, :-1])
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
-            # get pstar, qstar
             pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
-            print("Expectation diff:", np.max(np.abs(EJ1_star-(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/(self.p.beta*(1-pe_star)))))
+            #print("Expectation diff:", np.max(np.abs(EJ1_star-(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/(self.p.beta*(1-pe_star)))))
             # Update firm value function 
             #Andrei: why is the w_grid still preset? Doesn't it depend on what you promised to the worker?
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
@@ -227,6 +233,7 @@ class ContinuousContract_inv:
             # Update worker value function
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
+            #print("Worker value:", W1i)
             W1i = .2*W1i + .8*W1i2
 
             # Updating J1 representation
