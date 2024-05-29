@@ -54,7 +54,7 @@ class ContinuousContract:
         self.log.setLevel(logging.INFO)
 
         self.p = input_param
-        self.deriv_eps = 1e-3 # step size for derivative
+        self.deriv_eps = 1e-4 # step size for derivative
         # Model preferences initialized by the same parameter object.
         self.pref = Preferences(input_param=self.p)
 
@@ -142,13 +142,12 @@ class ContinuousContract:
 
             # evaluate J1 tomorrow using our approximation
             Jpi = J1p.eval_at_W1(W1i)
-
+            #print("Jpi-Ji max:", np.max(np.abs(Jpi-Ji)))
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
             EJpi = Exz(Jpi, self.Z_trans_mat)
             #EW1i = W1i
             #EJpi = Jpi
-            #print("Shape of EW1i:", EW1i.shape)
             # get worker decisions
             _, _, pc = self.getWorkerDecisions(EW1i)
             # get worker decisions at EW1i + epsilon
@@ -212,7 +211,7 @@ class ContinuousContract:
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
             W1i = .2*W1i + .8*W1i2
-
+            #Ji=.4*Ji+.6*Ji2
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
 
@@ -245,7 +244,7 @@ class ContinuousContract:
 
         self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
                                      ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        return Ji,W1i,EW1_star
+        return Ji,W1i,EW1_star,Jpi
 
 
     def construct_z_grid(self):

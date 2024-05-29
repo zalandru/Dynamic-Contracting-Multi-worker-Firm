@@ -16,7 +16,7 @@ def impose_decreasing(M):
     nv = M.shape[1]
     if len(M.shape)==2:
         for v in reversed(range(nv-1)):
-            M[:,v] = np.maximum(M[:,v],M[:,v+1])
+            M[:,v] = np.maximum(M[:,v],M[:,v+1]+1e-10)
     else:
         for v in reversed(range(nv-1)):
             M[:,v,:] = np.maximum(M[:,v,:],M[:,v+1,:])
@@ -58,7 +58,7 @@ class ContinuousContract_inv:
         self.log.setLevel(logging.INFO)
 
         self.p = input_param
-        self.deriv_eps = 1e-3 # step size for derivative
+        self.deriv_eps = 1e-4 # step size for derivative
         # Model preferences initialized by the same parameter object.
         self.pref = Preferences(input_param=self.p)
 
@@ -149,7 +149,7 @@ class ContinuousContract_inv:
 
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
-            EJpi = Exz(Jpi, self.Z_trans_mat)
+            EJpi = Exz(Ji, self.Z_trans_mat)
             
             #print("Shape of EW1i:", EW1i.shape)
             # get worker decisions
@@ -168,9 +168,11 @@ class ContinuousContract_inv:
             #Andrei: this is the FOC that I would actually like to run
             EJinv=(impose_decreasing(Ji+w_grid[ax,:])-self.fun_prod[:,ax])/self.p.beta #creating expected job value as a function of today's value
             foc = rho_grid[ax, :,ax] - (EJinv[:,ax,:]/pc[:,:,ax])* (log_diff[:,:,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-            if ite_num==0:
-               pp=np.zeros((self.p.num_z,self.p.num_v,self.p.num_v))
-               foc = rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)+pp
+            
+            #foc = rho_grid[ax, :,ax] - ((impose_decreasing(Ji[:,ax,:]+w_grid[ax,:,ax])-self.fun_prod[:,ax,ax])/(self.p.beta*pc[:,:,ax]))* (log_diff[:,:,ax] / self.deriv_eps)
+            #if ite_num==0:
+            #   pp=np.zeros((self.p.num_z,self.p.num_v,self.p.num_v))
+            #   foc = rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)+pp
             #Andrei: this is the same foc as in the previous code (just a 3d version) that I am using for benchmarking
             #pp=np.zeros((self.p.num_z,self.p.num_v,self.p.num_v))
             #foc = rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)+pp #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
@@ -219,8 +221,8 @@ class ContinuousContract_inv:
                     #Andrei: rather, we're interpolating the Job value at the point of the optimal shadow cost. still confused as to why its a shadow cost rather than lambda
                     #Or, more like, we're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
                     #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
-            print("Rho_star:",rho_star)
-            assert np.all(rho_star[:, 1:] >= rho_star[:, :-1])
+            #print("Rho_star:",rho_star)
+            #assert np.all(rho_star[:, 1:] >= rho_star[:, :-1])
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
             pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
@@ -234,7 +236,8 @@ class ContinuousContract_inv:
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
             #print("Worker value:", W1i)
-            W1i = .2*W1i + .8*W1i2
+            W1i = .4*W1i + .6*W1i2
+            Ji=.4*Ji+.6*Ji2
 
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)

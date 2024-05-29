@@ -120,8 +120,8 @@ class BasicContract_r:
 
             # we compute the expected value next period by applying the transition rules
             EW1i = W1i
-            EJpi = Jpi
-            #print("Shape of EW1i:", EW1i.shape)
+            EJpi = Ji #NOT JPI!!!
+
             # get worker decisions
             _, _, pc = self.getWorkerDecisions(EW1i)
             # get worker decisions at EW1i + epsilon
