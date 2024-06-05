@@ -82,7 +82,7 @@ class ContinuousContract_inv:
         self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
         #Apply the matching function: take the simple function and consider its different values across v.
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
-            np.divide(self.p.kappa, np.maximum(self.simple_J[0, :], 1.0)), self.p.sigma), 1/self.p.sigma)
+            np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
         self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
         self.js.update(self.v_grid[ax,:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
@@ -149,7 +149,7 @@ class ContinuousContract_inv:
 
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
-            EJpi = Exz(Ji, self.Z_trans_mat)
+            EJpi = Exz(Jpi, self.Z_trans_mat)
             
             #print("Shape of EW1i:", EW1i.shape)
             # get worker decisions
@@ -166,7 +166,7 @@ class ContinuousContract_inv:
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
             
             #Andrei: this is the FOC that I would actually like to run
-            EJinv=(impose_decreasing(Ji+w_grid[ax,:])-self.fun_prod[:,ax])/self.p.beta #creating expected job value as a function of today's value
+            EJinv=(impose_decreasing(Jpi+w_grid[ax,:])-self.fun_prod[:,ax])/self.p.beta #creating expected job value as a function of today's value
             foc = rho_grid[ax, :,ax] - (EJinv[:,ax,:]/pc[:,:,ax])* (log_diff[:,:,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
             
             #foc = rho_grid[ax, :,ax] - ((impose_decreasing(Ji[:,ax,:]+w_grid[ax,:,ax])-self.fun_prod[:,ax,ax])/(self.p.beta*pc[:,:,ax]))* (log_diff[:,:,ax] / self.deriv_eps)

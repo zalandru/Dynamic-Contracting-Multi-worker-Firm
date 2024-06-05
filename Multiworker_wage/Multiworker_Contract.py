@@ -71,7 +71,7 @@ class MultiworkerContract:
         self.Z_grid = self.construct_z_grid()   # Create match productivity grid
 
         #Size grid:
-        self.N_grid=np.linspace(1,10,self.p.num_n)
+        self.N_grid=np.linspace(0,10,self.p.num_n)
 
         # Unemployment Benefits across Worker Productivities
         self.unemp_bf = np.ones(self.p.num_x) * self.p.u_bf_m
@@ -84,37 +84,42 @@ class MultiworkerContract:
         dimensions.extend([self.p.num_n] * K)
         dimensions.extend([self.p.num_v] * (K - 1))        
         self.J_grid   = np.zeros(dimensions) #grid of job values, first productivity, then size for each step, then value level for each step BESIDES FIRST
-        print("Shape of J_grid:", self.J_grid.shape)
         # Production Function in the Model
         self.fun_prod_onedim = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
         self.fun_prod = self.fun_prod_onedim.reshape((self.p.num_z,) + (1,) * (self.J_grid.ndim - 1))
-        print("Shape of fun_prod:", self.fun_prod.shape)
-        print("fun_prod:", self.fun_prod)
-       
-        # Worker Grids
+
+        # Wage and Shadow Cost Grids
         self.w_grid = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v )
         self.rho_grid=1/self.pref.utility_1d(self.w_grid)
+
+        #Total firm size for each possible state
+        grid = np.ogrid[[slice(dim) for dim in self.J_grid.shape]]
+        # Calculate the sum size for each element in the matrix
+        self.sum_size = np.zeros(self.J_grid.shape)
+        self.sum_wage=np.zeros(self.J_grid.shape)
+        for i in range(1, K + 1):
+            self.sum_size += self.N_grid[grid[i]]
+        for i in range(K+1,self.J_grid.ndim):
+            self.sum_wage+=self.w_grid[grid[i]]*self.N_grid[grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
+
+
 
         #Job value and GE first
         self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod_onedim.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
         self.simple_J=np.divide(self.fun_prod_onedim[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
         #Apply the matching function: take the simple function and consider its different values across v.
+        #This is equivalent to marginal value of a firm of size 1 at the lowest step
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
-            np.divide(self.p.kappa, np.maximum(self.simple_J[0, :], 1.0)), self.p.sigma), 1/self.p.sigma)
+            np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
         self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
         self.js.update(self.v_grid[ax,:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+        
+
 
         #Create a guess for the MWF value function
-        idx=(self.J_grid>=0)
-        self.J_grid[idx] = self.J_grid+self.fun_prod*fun_prod(self.sum_size([idx])) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
-    #So, I could define the actual production for every productivity and size state from the start, and then just call the function to get the value of the job. Good thing about it is it easy to reshape, just add K-1 dimensions to the end of it.
-    
-    def sum_size(self,indices):
-     # Sum the values from N_grid using the indices corresponding to the num_n dimensions
-        sum_size = sum(self.N_grid[idx] for idx in indices[1:self.K+1])  # Indices 1 to K correspond to the num_n dimensions
-    
-        return sum_size
+        self.J_grid = self.J_grid+np.divide(self.fun_prod*fun_prod(self.sum_size)-self.w_grid[0]*self.N_grid[grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
+
 
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
         """

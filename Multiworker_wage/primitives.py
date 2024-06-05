@@ -22,7 +22,7 @@ class Parameters:
 
         # Points in the Model
         self.num_l  = 101     # Number of points of evaluation
-        self.num_v  = 200     # Number of points in the grid for V
+        self.num_v  = 100     # Number of points in the grid for V
         self.num_v0 = 5     # Number of points in the grid for V0
         self.num_v_simple = 200 #Number of points in the grid for V for the simple start
         #self.num_x  = 15      # Number of points of support for worker productivity
@@ -31,7 +31,7 @@ class Parameters:
         self.num_np = 1       # Number of non-permanent levels
         self.num_z  = 7      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 10      # Number of points of support for the number of workers
+        self.num_n  = 11      # Number of points of support for the number of workers
 
         # Time periods in the Model
         self.dt     = 1.0 #0.25    # Time as a Fraction of Year

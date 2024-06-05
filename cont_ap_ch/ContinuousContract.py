@@ -78,7 +78,7 @@ class ContinuousContract:
         self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
         #Apply the matching function: take the simple function and consider its different values across v.
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
-            np.divide(self.p.kappa, np.maximum(self.simple_J[0, :], 1.0)), self.p.sigma), 1/self.p.sigma)
+            np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
         self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
         self.js.update(self.v_grid[ax,:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
