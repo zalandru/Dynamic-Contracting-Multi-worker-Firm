@@ -166,7 +166,7 @@ class ContinuousContract_inv:
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
             
             #Andrei: this is the FOC that I would actually like to run
-            EJinv=(impose_decreasing(Jpi+w_grid[ax,:])-self.fun_prod[:,ax])/self.p.beta #creating expected job value as a function of today's value
+            EJinv=(impose_decreasing(Ji+w_grid[ax,:])-self.fun_prod[:,ax])/self.p.beta #creating expected job value as a function of today's value
             foc = rho_grid[ax, :,ax] - (EJinv[:,ax,:]/pc[:,:,ax])* (log_diff[:,:,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
             
             #foc = rho_grid[ax, :,ax] - ((impose_decreasing(Ji[:,ax,:]+w_grid[ax,:,ax])-self.fun_prod[:,ax,ax])/(self.p.beta*pc[:,:,ax]))* (log_diff[:,:,ax] / self.deriv_eps)
@@ -236,8 +236,8 @@ class ContinuousContract_inv:
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
             #print("Worker value:", W1i)
-            W1i = .4*W1i + .6*W1i2
-            Ji=.4*Ji+.6*Ji2
+            W1i = .2*W1i + .8*W1i2
+            Ji = .4*Ji+.6*Ji2
 
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
@@ -258,7 +258,7 @@ class ContinuousContract_inv:
                     else:
                             P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            error_js = self.js.update(W1i[0, :], P_xv, type=1, relax=relax)
+                            error_js = self.js.update(W1i[self.p.z_0-1, :], P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
                     if (np.array([error_w1, error_j1g]).max() < self.p.tol_full_model

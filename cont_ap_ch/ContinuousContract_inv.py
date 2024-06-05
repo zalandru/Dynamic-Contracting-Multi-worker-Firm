@@ -234,7 +234,7 @@ class ContinuousContract_inv:
                     else:
                             P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            error_js = self.js.update(W1i[0, :], P_xv, type=1, relax=relax)
+                            error_js = self.js.update(W1i[self.p.z_0-1, :], P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
                     if (np.array([error_w1, error_j1g]).max() < self.p.tol_full_model

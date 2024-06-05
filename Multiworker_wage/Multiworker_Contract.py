@@ -152,11 +152,23 @@ class MultiworkerContract:
         :return: value of the job
         """
         # create representation for J1p
-        w_grid=self.w_grid
-        rho_grid=self.rho_grid
-        Ji= self.J_grid+self.simple_J[:,]
-        W1i=np.zeros((self.p.num_z, self.p.num_v))
-        W1i=W1i+self.v_grid[ax,:]
+        w_grid = self.w_grid
+        rho_grid = self.rho_grid
+        Ji = self.J_grid
+        W1i = np.zeros_like(Ji)
+        W1i = np.expand_dims(W1i, axis=-1) #adding an extra dimension to W1i
+        W1i = np.repeat(W1i, self.K, axis=-1)
+        print("Shape of W1i:", W1i.shape)
+        v_grid = self.v_grid.reshape((1,)*(self.K+1)+(self.p.num_v,) + (1,) * (self.J_grid.ndim - 1))
+
+
+        grid_w = np.ogrid[[slice(dim) for dim in W1i.shape]]
+        print("Shape of grid_w:", grid_w)
+        w_matrix = np.zeros(W1i.shape) #So the line below is somehow not recognized as a real index. So w_grid[grid_w[0]] is allowed, but not the actual line somehow?
+        index_to_access = grid_w[self.K + 1 + grid_w[0]]
+        print("Index to access:", index_to_access.shape)
+        w_matrix = w_grid[index_to_access] #Matrix of wages for every actual worker at each state and step       
+        W1i = W1i+w_matrix #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
 
         J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
 
@@ -270,7 +282,7 @@ class MultiworkerContract:
                 self.p.beta * (re_star + EW1_star)
             #print("Worker value:", W1i)
             W1i = .4*W1i + .6*W1i2
-            Ji=.4*Ji+.6*Ji2
+            Ji = .2*Ji + .8*Ji2
 
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
@@ -289,9 +301,9 @@ class MultiworkerContract:
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[0, :])
+                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            error_js = self.js.update(W1i[0, :], P_xv, type=1, relax=relax)
+                            error_js = self.js.update(W1i[self.p.z_0-1, :], P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
                     if (np.array([error_w1, error_j1g]).max() < self.p.tol_full_model
