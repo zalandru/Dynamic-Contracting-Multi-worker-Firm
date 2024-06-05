@@ -229,7 +229,7 @@ class ContinuousContract:
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[0, :])
+                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
                             error_js = self.js.update(W1i[0, :], P_xv, type=1, relax=relax)
                 else:
