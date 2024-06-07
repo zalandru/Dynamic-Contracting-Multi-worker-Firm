@@ -1,5 +1,5 @@
-install.packages("ggplot2")
 library(ggplot2)
+library(tidyr)
 #Making wage and separations cyclicality graphs! Manually!!!
 #Separations cyclicality across tenure and size
 x<-1:3
@@ -57,3 +57,48 @@ plot <- ggplot(data) +
 print(plot)
 
 ggsave("Wage Cyclicality.jpg", plot, width = 10, height = 4, units = "in", dpi = 300, type = "cairo")
+
+
+#Trying the bar plot
+# Separations
+x <- 1:3
+y1 <- c(0.18, 0.39, 0.24) # cyclicality of young workers
+y2 <- c(0.07, -0.04, -0.06) # cyclicality of workers with 10 years of tenure
+
+# Combine into a data frame
+datas <- data.frame(
+  Category = factor(rep(x, 2)),
+  Cyclicality = c(y1, y2),
+  Tenure = factor(rep(c("Young workers", "10y Tenure"), each = 3))
+)
+
+# Create the bar graph
+plots <- ggplot(datas, aes(x = Category, y = Cyclicality, fill = Tenure)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+       x = "Firm Size",
+       y = "Sep Cyclicality") +
+  theme_minimal()
+ggsave("Separations Cyclicality.jpg", plots, width = 10, height = 4, units = "in", dpi = 300)
+
+#Wage cyclicality across tenure and size
+x<-1:3
+y1<-c(-1.22,-1.20,-0.95) #cyclicality of young workers
+y2<-c(-1.42,-1.40,-1.14) #cyclicality of worker with 10 years of tenure
+
+# Combine into a data frame
+dataw <- data.frame(
+  Category = factor(rep(x, 2)),
+  Cyclicality = c(y1, y2),
+  Tenure = factor(rep(c("Young workers", "10y Tenure"), each = 3))
+)
+
+# Create the bar graph
+plotw <- ggplot(dataw, aes(x = Category, y = Cyclicality, fill = Tenure)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+       x = "Firm Size",
+       y = "Wage Cyclicality") +
+  theme_minimal()
+
+ggsave("Wage Cyclicality.jpg", plotw, width = 10, height = 4, units = "in", dpi = 300)
