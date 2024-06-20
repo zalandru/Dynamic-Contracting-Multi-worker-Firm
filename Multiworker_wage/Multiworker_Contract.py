@@ -120,6 +120,24 @@ class MultiworkerContract:
         #Create a guess for the MWF value function
         self.J_grid = self.J_grid+np.divide(self.fun_prod*fun_prod(self.sum_size)-self.w_grid[0]*self.N_grid[grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
 
+        #Guess for the Worker value function
+        self.W1i = np.zeros_like(self.J_grid)
+        self.W1i = np.expand_dims(self.W1i, axis=-1) #adding an extra dimension to W1i
+        self.W1i = np.repeat(self.W1i, self.K, axis=-1)
+        print("Shape of W1i:", self.W1i.shape)
+        #v_grid = self.v_grid.reshape((1,)*(self.K+1)+(self.p.num_v,) + (1,) * (self.J_grid.ndim - 1))
+
+
+        self.grid_w = np.ogrid[[slice(dim) for dim in self.W1i.shape]]
+        print("Shape of grid_w:", self.grid_w)
+        print("grid_w[0]:",self.grid_w[0])
+
+        self.w_matrix = np.zeros(self.W1i.shape) #So the line below is somehow not recognized as a real index. So w_grid[grid_w[0]] is allowed, but not the actual line somehow?
+        index_to_access=np.zeros(self.W1i.shape)
+        index_to_access = self.grid_w[self.K + 1 + self.grid_w[0]]
+        print("Index to access:", index_to_access.shape)
+        self.w_matrix = self.w_grid[index_to_access] #Matrix of wages for every actual worker at each state and step       
+        self.W1i = self.W1i+self.w_matrix #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
 
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
         """
@@ -155,21 +173,6 @@ class MultiworkerContract:
         w_grid = self.w_grid
         rho_grid = self.rho_grid
         Ji = self.J_grid
-        W1i = np.zeros_like(Ji)
-        W1i = np.expand_dims(W1i, axis=-1) #adding an extra dimension to W1i
-        W1i = np.repeat(W1i, self.K, axis=-1)
-        print("Shape of W1i:", W1i.shape)
-        v_grid = self.v_grid.reshape((1,)*(self.K+1)+(self.p.num_v,) + (1,) * (self.J_grid.ndim - 1))
-
-
-        grid_w = np.ogrid[[slice(dim) for dim in W1i.shape]]
-        print("Shape of grid_w:", grid_w)
-        w_matrix = np.zeros(W1i.shape) #So the line below is somehow not recognized as a real index. So w_grid[grid_w[0]] is allowed, but not the actual line somehow?
-        index_to_access = grid_w[self.K + 1 + grid_w[0]]
-        print("Index to access:", index_to_access.shape)
-        w_matrix = w_grid[index_to_access] #Matrix of wages for every actual worker at each state and step       
-        W1i = W1i+w_matrix #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
-
         J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
 
         EW1_star = np.copy(Ji)
