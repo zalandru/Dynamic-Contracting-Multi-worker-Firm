@@ -127,14 +127,14 @@ class MultiworkerContract:
         print("Shape of W1i:", self.W1i.shape)
         #v_grid = self.v_grid.reshape((1,)*(self.K+1)+(self.p.num_v,) + (1,) * (self.J_grid.ndim - 1))
 
-
-        self.grid_w = np.ogrid[[slice(dim) for dim in self.W1i.shape]]
-        print("Shape of grid_w:", self.grid_w)
-        print("grid_w[0]:",self.grid_w[0])
-
         self.w_matrix = np.zeros(self.W1i.shape) #So the line below is somehow not recognized as a real index. So w_grid[grid_w[0]] is allowed, but not the actual line somehow?
         index_to_access=np.zeros(self.W1i.shape)
-        index_to_access = self.grid_w[self.K + 1 + self.grid_w[0]]
+        self.grid_w = np.ogrid[[slice(dim) for dim in index_to_access.shape]]
+        print("Shape of grid_w:", self.grid_w)
+        step=np.zeros(self.W1i.shape)
+        for idx in np.ndindex(self.W1i.shape):
+         step[idx] = idx[-1]
+        index_to_access = self.grid_w[self.K + 1 + step]           
         print("Index to access:", index_to_access.shape)
         self.w_matrix = self.w_grid[index_to_access] #Matrix of wages for every actual worker at each state and step       
         self.W1i = self.W1i+self.w_matrix #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
