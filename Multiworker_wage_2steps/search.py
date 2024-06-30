@@ -225,10 +225,11 @@ class JobSearchArray:
     def update(self,V,P,type=0,relax=0):
         # store the old parameters
         pp0 = self.get_params()
+        print(V.shape)
         if len(V.shape)==1:
                 self.jsa.update(V,P[:],type=type,relax=relax) #Andrei: this calls the update function in JobSearch class
         else:
-                self.jsa.update(V[self.p.z_0-1,:],P[:],type=type,relax=relax)
+                self.jsa.update(V[self.p.z_0-1,:],P[:],type=type,relax=relax) #This one shouldn't be used, keeping this buggy as a check for future
         pp = self.get_params() #Andrei: pp is the new parameters, pp0 is the old parameters
         error = (np.power(pp0 - pp, 2).mean(axis=0) / (1e-6 + np.power(pp0, 2).mean(axis=0)) ).mean() #Andrei: error is the mean squared error between the old and new parameters
         return error
@@ -252,19 +253,10 @@ class JobSearchArray:
     def solve_search_choice(self,e):
         pe = np.zeros(e.shape)
         re = np.zeros(e.shape)
-        if len(e.shape)==2: #Andrei: why is e either 1 or 3 dimensional? Because e is either from unemployment (1d) or from employment (3d)
 
-            pe[:, :] = self.jsa.pe(e[:, :])
-            re[:, :] = self.jsa.re(e[:, :])
-        if len(e.shape)==1:
-
-            pe = self.jsa.pe(e)
-            re = self.jsa.re(e)
-
-        if len(e.shape)==3:
-
-            pe = self.jsa.pe(e[:, :, :])
-            re = self.jsa.re(e[:, :, :])        
+        pe = self.jsa.pe(e)
+        re = self.jsa.re(e)
+  
         return pe,re
 
     def solve_U(self, uf, beta, Ex, TX):

@@ -228,7 +228,7 @@ class JobSearchArray:
         if len(V.shape)==1:
                 self.jsa.update(V,P[:],type=type,relax=relax) #Andrei: this calls the update function in JobSearch class
         else:
-                self.jsa.update(V[0,:],P[:],type=type,relax=relax)
+                self.jsa.update(V[self.p.z_0-1,,:],P[:],type=type,relax=relax)
         pp = self.get_params() #Andrei: pp is the new parameters, pp0 is the old parameters
         error = (np.power(pp0 - pp, 2).mean(axis=0) / (1e-6 + np.power(pp0, 2).mean(axis=0)) ).mean() #Andrei: error is the mean squared error between the old and new parameters
         return error
