@@ -10,6 +10,8 @@ from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransi
 from search import JobSearchArray
 from valuefunction_multi import PowerFunctionGrid
 from scipy.optimize import minimize
+from scipy.interpolate import RegularGridInterpolator
+
 ax = np.newaxis
 
 def impose_decreasing(M):
@@ -107,7 +109,6 @@ class MultiworkerContract:
             self.sum_size += self.N_grid[self.grid[i]]
         for i in range(K+1,self.J_grid.ndim):
             self.sum_wage+=self.w_grid[self.grid[i]]*self.N_grid[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
-        #print(self.sum_wage)
 
 
         #Job value and GE first
@@ -196,9 +197,10 @@ class MultiworkerContract:
         EW1_star = np.copy(Ji)
         EJ1_star = np.copy(Ji)
 
-        rho_bar = np.zeros((self.p.num_z))
-        rho_star = np.zeros((self.p.num_z, self.p.num_v))
-
+        rho_bar = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n))
+        rho_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))
+        n0_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))        
+        n1_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))   
         # prepare expectation call
         Ez = oe.contract_expression('anmv,az->znmv', Ji.shape, self.Z_trans_mat.shape)
         #Ex = oe.contract_expression('b,bx->x', Ui.shape, self.X_trans_mat.shape)
@@ -208,16 +210,23 @@ class MultiworkerContract:
         error_js = 1
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
-            W1i2 = W1i
+            W1i2 = np.copy(W1i)
 
             # evaluate J1 tomorrow using our approximation
-            Jpi = J1p.eval_at_W1(W1i)
+            Jpi = J1p.eval_at_W1(W1i[:,:,:,:,1])
 
             # we compute the expected value next period by applying the transition rules
             EW1i = Ez(W1i[:,:,:,:,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
             EJpi = Ez(Ji, self.Z_trans_mat)
             
+            # Define the interpolators for EW1i and EJpi
+            #EW1i_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EW1i, bounds_error=False, fill_value=None)
+            #EJpi_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EJpi, bounds_error=False, fill_value=None)
+
+            EW1i_interpolator = RegularGridInterpolator((self.N_grid, rho_grid), EW1i.transpose(2, 3, 0, 1), bounds_error=False, fill_value=None)
+            EJpi_interpolator = RegularGridInterpolator((self.N_grid, rho_grid), EJpi.transpose(2, 3, 0, 1), bounds_error=False, fill_value=None)
+
             #print("Shape of EW1i:", EW1i.shape)
             # get worker decisions
             _, re, pc = self.getWorkerDecisions(EW1i)
@@ -254,78 +263,85 @@ class MultiworkerContract:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
             foc = rho_grid[ax, ax, ax, :,ax] - (EJinv[:, :, :, ax, :]/pc[:, :, :, :,ax])* (log_diff[:,:, :, :,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
             foc = foc*self.sum_size[:,:,:,:,ax] - self.N_grid[self.grid[2][:,:,:,:,ax]]*rho_grid[ax, ax, ax, ax, :] - self.N_grid[self.grid[1][:,:,:,:,ax]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i[:,:,:,:,ax]+re[:,:,:,:,ax]))
-
-            assert (np.isnan(foc) & (pc[:,:,ax] > 0)).sum() == 0, "foc has NaN values where p>0"
+            
+            assert (np.isnan(foc) & (pc[:,:,:,:,ax] > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
             for iz in range(self.p.num_z):
-             for in1 in range(self.p.num_n):
-              for in2 in range(self.p.num_n):
-                assert np.all(EW1i[iz, in1, in2, 1:, 1] >= EW1i[iz, in1, in2, :-1, 1]) #Andrei: check that worker value is increasing in v
+             for in0 in range(self.p.num_n):
+              for in1 in range(self.p.num_n):
+                assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
                     # find highest V with J2J search
-                rho_bar[iz] = np.interp(self.js.jsa.e0, EW1i[iz, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
-                rho_min = rho_grid[pc[iz, :] > 0].min()  # lowest promised rho with continuation > 0
+                rho_bar[iz, in0, in1] = np.interp(self.js.jsa.e0, EW1i[iz, in0, in1, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
+                rho_min = rho_grid[pc[iz, in0, in1, :] > 0].min()  # lowest promised rho with continuation > 0
                     #Andrei: so we look for the shadow cost that will satisfy the foc? Yes, look for u'(w'), with u'(w) given, so that the foc is satisfied
                     # look for FOC below  rho_0
-                Isearch = (rho_grid <= rho_bar[iz]) & (pc[iz, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
+                Isearch = (rho_grid <= rho_bar[iz, in0, in1]) & (pc[iz, in0, in1, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
                 if Isearch.sum() > 0:
                     Isearch_indices = np.where(Isearch)[0]
                     for iv in Isearch_indices:
-                      #print(iv)
-                      #print(rho_grid[iv].shape)
-                      #print(impose_increasing(foc[iz, Isearch, iv]).shape)
-                      #print(rho_grid[Isearch].shape)
-                      rho_star[iz, iv] = np.interp(0,
-                                                    impose_increasing(foc[iz, Isearch,iv]),
-                                                    rho_grid[Isearch], right=rho_bar[iz])
 
-                    # look for FOC above rho_0
-                Ieffort = (rho_grid > rho_bar[iz]) & (pc[iz, :] > 0)
+                      rho_star[iz,in0, in1, iv] = np.interp(0,
+                                                    impose_increasing(foc[iz, in0, in1, Isearch, iv]),
+                                                    rho_grid[Isearch], right=rho_bar[iz, in0, in1])
+
+                    # look for FOC above rho_0 #ANDREI: do we need this??? why would we go above rho_bar???
+                Ieffort = (rho_grid > rho_bar[iz, in0, in1]) & (pc[iz, in0, in1, :] > 0)
                 if Ieffort.sum() > 0:
                     Ieffort_indices = np.where(Ieffort)[0]
                     for iv in Ieffort_indices:
-                         #print("iv:",iv)
-                        #assert np.all(foc[iz, Ieffort, ix][1:] > foc[iz, Ieffort, ix][:-1])
-                         rho_star[iz, iv] = np.interp(0,
-                                                        foc[iz, Ieffort,iv], rho_grid[Ieffort])
+                         rho_star[iz, in0, in1, iv] = np.interp(0,
+                                                        foc[iz, in0, in1, Ieffort,iv], rho_grid[Ieffort])
                     #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
                     #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
                     # set rho for quits to the lowest value
-                Iquit = ~(pc[iz, :] > 0) 
+                Iquit = ~(pc[iz, in0, in1, :] > 0) 
                 if Iquit.sum() > 0:
-                           rho_star[iz, Iquit] = rho_min
+                           rho_star[iz, in0, in1, Iquit] = rho_min
 
+                #Update the future size for each given size.
+                #Issue is: ideally I would use pe_star, but that is only available after I get EW1i. Is there a way around this?
+                n0_star[iz, in0, in1, :] = in0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
+                n1_star[iz, in0, in1, :] = (in0+in1)*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
                 # get EW1_Star and EJ1_star
-                EW1_star[iz, :] = np.interp(rho_star[iz, :], rho_grid, EW1i[iz, :])
-                EJ1_star[iz, :] = np.interp(rho_star[iz, :], rho_grid, EJpi[iz, :]) #Andrei: how does interpolating the shadow cost give us the future Value?
-                    #Andrei: rather, we're interpolating the Job value at the point of the optimal shadow cost. still confused as to why its a shadow cost rather than lambda
-                    #Or, more like, we're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
-                    #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
-            #print("Rho_star:",rho_star)
-            #assert np.all(rho_star[:, 1:] >= rho_star[:, :-1])
+                #BIGGGG. n0 and n1_star are not utilized! Because I gotta interpolate with them, too! This has to be some kinda 3d (or, effectively, 2d) object that takes rho_grid as a function and maps it into (rho_star,n1_star)
+                #Or maybe do 2 separate interpolations?? First size then value??? Dunno if that makes any sense
+                
+                for iv in range(self.p.num_v):
+                 #rho_n_star_points = np.array([iz, in0,  n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
+                 rho_n_star_points = np.array([n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
+                 EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points)[0]
+                 EJ1_star[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points)[0]
+                
+                #EW1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EW1i[iz, in0, in1, :])
+                #EJ1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EJpi[iz, in0, in1, :]) #Andrei: how does interpolating the shadow cost give us the future Value?
+                #We're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
+                #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
+
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
             pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
-            #print("Expectation diff:", np.max(np.abs(EJ1_star-(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/(self.p.beta*(1-pe_star)))))
             # Update firm value function 
             #Andrei: why is the w_grid still preset? Doesn't it depend on what you promised to the worker?
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
-            Ji = self.fun_prod[:, ax] - w_grid[ax, :] + self.p.beta * (1 - pe_star) * EJ1_star
-            print("Value diff:", np.max(np.abs(Ji-Ji2)))
-            # Update worker value function
-            W1i = self.pref.utility(w_grid)[ax, :] + \
-                self.p.beta * (re_star + EW1_star)
-            #print("Worker value:", W1i)
-            W1i = .4*W1i + .6*W1i2
+            Ji = self.fun_prod*fun_prod(self.sum_size) - w_grid[ax, ax, ax, :] + self.p.beta * EJ1_star
             Ji = .2*Ji + .8*Ji2
+            print("Value diff:", np.max(np.abs(Ji-Ji2)))
+
+            # Update worker value function
+            W1i[:,:,:,:,1] = self.pref.utility(self.w_matrix[:,:,:,:,1]) + \
+                self.p.beta * (re_star[:,:,:,:] + EW1_star[:,:,:,:]) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
+        
+            W1i[:,:,:,:,1:] = .4*W1i[:,:,:,:,1:] + .6*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
+            print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
 
             # Updating J1 representation
-            error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
+            error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
 
             # Compute convergence criteria
             error_j1i = array_exp_dist(Ji,Ji2,100) #np.power(Ji - Ji2, 2).mean() / np.power(Ji2, 2).mean()  
-            error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i), 100)
-            error_w1 = array_dist(W1i, W1i2)
+            error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[:,:,:,:,1]), 100)
+            error_w1 = array_dist(W1i[:,:,:,:,1:], W1i2[:,:,:,:,1:])
 
             # update worker search decisions
             if (ite_num % 10) == 0:
@@ -336,9 +352,9 @@ class MultiworkerContract:
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
+                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, 0, 0, :, 1])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            error_js = self.js.update(W1i[self.p.z_0-1, :], P_xv, type=1, relax=relax)
+                            error_js = self.js.update(W1i[self.p.z_0-1, 0, 0, :, 1], P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
                     if (np.array([error_w1, error_j1g]).max() < self.p.tol_full_model
