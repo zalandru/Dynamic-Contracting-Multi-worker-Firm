@@ -224,10 +224,6 @@ class MultiworkerContract:
             #EW1i_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EW1i, bounds_error=False, fill_value=None)
             #EJpi_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EJpi, bounds_error=False, fill_value=None)
 
-            EW1i_interpolator = RegularGridInterpolator((self.N_grid, rho_grid), EW1i.transpose(2, 3, 0, 1), bounds_error=False, fill_value=None)
-            EJpi_interpolator = RegularGridInterpolator((self.N_grid, rho_grid), EJpi.transpose(2, 3, 0, 1), bounds_error=False, fill_value=None)
-
-            #print("Shape of EW1i:", EW1i.shape)
             # get worker decisions
             _, re, pc = self.getWorkerDecisions(EW1i)
             # get worker decisions at EW1i + epsilon
@@ -306,12 +302,17 @@ class MultiworkerContract:
                 # get EW1_Star and EJ1_star
                 #BIGGGG. n0 and n1_star are not utilized! Because I gotta interpolate with them, too! This has to be some kinda 3d (or, effectively, 2d) object that takes rho_grid as a function and maps it into (rho_star,n1_star)
                 #Or maybe do 2 separate interpolations?? First size then value??? Dunno if that makes any sense
-                
+                EW1i_interpolator = RegularGridInterpolator(
+                    (self.N_grid, rho_grid), EW1i[iz, in0,:,:], bounds_error=False, fill_value=None)
+                EJpi_interpolator = RegularGridInterpolator(
+                    (self.N_grid, rho_grid), EJpi[iz, in0,:,:], bounds_error=False, fill_value=None)
+
+
                 for iv in range(self.p.num_v):
                  #rho_n_star_points = np.array([iz, in0,  n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
                  rho_n_star_points = np.array([n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
-                 EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points)[0]
-                 EJ1_star[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points)[0]
+                 EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points).item()
+                 EJ1_star[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points).item()
                 
                 #EW1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EW1i[iz, in0, in1, :])
                 #EJ1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EJpi[iz, in0, in1, :]) #Andrei: how does interpolating the shadow cost give us the future Value?
@@ -342,12 +343,13 @@ class MultiworkerContract:
             error_j1i = array_exp_dist(Ji,Ji2,100) #np.power(Ji - Ji2, 2).mean() / np.power(Ji2, 2).mean()  
             error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[:,:,:,:,1]), 100)
             error_w1 = array_dist(W1i[:,:,:,:,1:], W1i2[:,:,:,:,1:])
+            print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)
 
             # update worker search decisions
             if (ite_num % 10) == 0:
                 if update_eq:
                     # -----  check for termination ------
-                    if (np.array([error_w1, error_js, error_j1p_chg]).max() < self.p.tol_full_model
+                    if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
                     # ------ or update search function parameter using relaxation ------
