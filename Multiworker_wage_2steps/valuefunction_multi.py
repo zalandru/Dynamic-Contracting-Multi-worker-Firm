@@ -157,7 +157,8 @@ class PowerFunctionGrid:
         """
         tot_update_chg = 0
         pj_last = np.copy(self.gamma_all)
-        print("pj_last", pj_last)
+        print("pj_last", pj_last[:,0,0,:])
+        assert np.isnan(pj_last).sum() == 0
         for iz in range(self.num_z):
          for in0 in range(self.num_n):
             for in1 in range(self.num_n):
@@ -172,7 +173,7 @@ class PowerFunctionGrid:
                 self.gamma_all[iz, in0, in1, 4]   = W1[iz, in0, in1, :].max()
 
         rsq = 1 - self.mse(W1,J1)/ np.power(J1,2).sum()
-        chg = (np.power(pj_last - self.gamma_all,2).mean(axis=(0,1)) / np.power(pj_last,2).mean(axis=(0,1))).mean()
+        chg = (np.power(pj_last - self.gamma_all,2).mean(axis=(0,3)) / np.power(pj_last,2).mean(axis=(0,3))).mean()
         return(chg,rsq)
 
 class PowerFunctionGrid2:

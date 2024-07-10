@@ -110,7 +110,7 @@ class ContinuousContract:
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
 
-    def J(self,update_eq=1):    
+    def J(self,update_eq=0):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -199,7 +199,7 @@ class ContinuousContract:
                     #Or, more like, we're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
                     #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
-
+            print("rho_star", rho_star)
             # get pstar, qstar
             pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
             #print("Expectation diff:", np.max(np.abs(EJ1_star-(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/(self.p.beta*(1-pe_star)))))

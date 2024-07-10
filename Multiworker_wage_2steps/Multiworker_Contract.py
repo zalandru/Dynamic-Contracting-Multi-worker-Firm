@@ -78,8 +78,8 @@ class MultiworkerContract:
         self.Z_grid = self.construct_z_grid()   # Create match productivity grid
 
         #Size grid:
-        self.N_grid=np.linspace(0,10,self.p.num_n)
-
+        #self.N_grid=np.linspace(0,self.p.num_n-1,self.p.num_n)
+        self.N_grid=np.linspace(0,1,self.p.num_n)
         # Unemployment Benefits across Worker Productivities
         self.unemp_bf = np.ones(self.p.num_x) * self.p.u_bf_m
 
@@ -108,7 +108,7 @@ class MultiworkerContract:
         for i in range(1, K + 1):
             self.sum_size += self.N_grid[self.grid[i]]
         for i in range(K+1,self.J_grid.ndim):
-            self.sum_wage+=self.w_grid[self.grid[i]]*self.N_grid[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
+            self.sum_wage += self.w_grid[self.grid[i]]*self.N_grid[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
 
 
         #Job value and GE first
@@ -148,8 +148,8 @@ class MultiworkerContract:
         # And then all the actually meaningful steps are 1,2... etc, so when K=2 with just have 1 meaningful step            
         self.w_matrix[:,:,:,:,1] = self.w_grid[ax,ax,ax,:]
 
-        self.W1i = self.W1i + self.w_matrix/(1-self.p.beta) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
-        self.W1i[:,:,:,:,0] = self.W1i[:,:,:,:,0] + self.unemp_bf.min()/(1-self.p.beta)
+        self.W1i = self.W1i + self.pref.utility(self.w_matrix/(1-self.p.beta)) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
+        self.W1i[:,:,:,:,0] = self.W1i[:,:,:,:,0] + self.pref.utility(self.unemp_bf.min()/(1-self.p.beta))
     def fun_prod_diff(self,sum):
         diff = fun_prod(np.minimum(sum+1,self.K*(self.p.num_n-1))) - fun_prod(sum) + fun_prod(sum) - fun_prod(np.maximum(sum-1,0))
         return diff / 2
@@ -178,7 +178,7 @@ class MultiworkerContract:
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
 
-    def J(self,update_eq=1):    
+    def J(self,update_eq=0):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -196,7 +196,7 @@ class MultiworkerContract:
 
         EW1_star = np.copy(Ji)
         EJ1_star = np.copy(Ji)
-
+        Jderiv = np.zeros_like(Ji)
         rho_bar = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n))
         rho_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))
         n0_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))        
@@ -237,23 +237,22 @@ class MultiworkerContract:
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
             
-            #Jderiv0 = Ji[:, 1:, :, :] - Ji[:, :-1, :, :] #not divided by anything since the size grid is 1
-            Jderiv1 = np.zeros_like(Ji)
+
             # First boundary condition: forward difference
-            Jderiv1[:, :, 0, :] = Ji[:, :, 1, :] - Ji[:, :, 0, :]
+            Jderiv[:, :, 0, :] = Ji[:, :, 1, :] - Ji[:, :, 0, :]
             #print("1st part", Jderiv1)
 
             # Last boundary condition: backward difference
-            Jderiv1[:, :, -1, :] = Ji[:, :, -1, :] - Ji[:, :, -2, :]
+            Jderiv[:, :, -1, :] = Ji[:, :, -1, :] - Ji[:, :, -2, :]
             #print("2nd part", Jderiv1)
 
             # Central differences: average of forward and backward differences
-            Jderiv1[:, :, 1:-1, :] = (Ji[:, :, 2:, :] - Ji[:, :, 1:-1, :] + Ji[:, :, 1:-1, :] - Ji[:, :, :-2, :]) / 2
+            Jderiv[:, :, 1:-1, :] = (Ji[:, :, 2:, :] - Ji[:, :, 1:-1, :] + Ji[:, :, 1:-1, :] - Ji[:, :, :-2, :]) / 2
             #print("Central differences", Jderiv1)
 
             
             #Andrei: need not the J itself, but its derivative wrt n!!!
-            EJinv=(impose_decreasing(Jderiv1+self.w_grid[ax,ax,ax,:])-self.fun_prod*self.fun_prod_diff(self.sum_size))/self.p.beta #creating expected job value as a function of today's value
+            EJinv=(impose_decreasing(Jderiv+self.w_grid[ax,ax,ax,:])-self.fun_prod*self.fun_prod_diff(self.sum_size))/self.p.beta #creating expected job value as a function of today's value
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
             #Because of this, the values are modofied with size according to the following formula:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
@@ -297,24 +296,23 @@ class MultiworkerContract:
 
                 #Update the future size for each given size.
                 #Issue is: ideally I would use pe_star, but that is only available after I get EW1i. Is there a way around this?
-                n0_star[iz, in0, in1, :] = in0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
+                n0_star[iz, in0, in1, :] = 0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
                 n1_star[iz, in0, in1, :] = (in0+in1)*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
+                
                 # get EW1_Star and EJ1_star
-                #BIGGGG. n0 and n1_star are not utilized! Because I gotta interpolate with them, too! This has to be some kinda 3d (or, effectively, 2d) object that takes rho_grid as a function and maps it into (rho_star,n1_star)
-                #Or maybe do 2 separate interpolations?? First size then value??? Dunno if that makes any sense
                 EW1i_interpolator = RegularGridInterpolator(
-                    (self.N_grid, rho_grid), EW1i[iz, in0,:,:], bounds_error=False, fill_value=None)
+                    (self.N_grid, rho_grid), EW1i[iz, 0, :, :], bounds_error=False, fill_value=None) #2nd dim set to 0 because n0_star=0
                 EJpi_interpolator = RegularGridInterpolator(
-                    (self.N_grid, rho_grid), EJpi[iz, in0,:,:], bounds_error=False, fill_value=None)
+                    (self.N_grid, rho_grid), EJpi[iz, 0, :, :], bounds_error=False, fill_value=None)
 
 
                 for iv in range(self.p.num_v):
                  #rho_n_star_points = np.array([iz, in0,  n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
                  rho_n_star_points = np.array([n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
-                 EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points).item()
-                 EJ1_star[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points).item()
+                 EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points)
+                 EJ1_star[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points)
                 
-                #EW1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EW1i[iz, in0, in1, :])
+                #EW1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EW1i[iz, 0, in1, :])
                 #EJ1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EJpi[iz, in0, in1, :]) #Andrei: how does interpolating the shadow cost give us the future Value?
                 #We're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
                 #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
@@ -323,18 +321,17 @@ class MultiworkerContract:
 
             pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
             # Update firm value function 
-            #Andrei: why is the w_grid still preset? Doesn't it depend on what you promised to the worker?
-            #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
-            Ji = self.fun_prod*fun_prod(self.sum_size) - w_grid[ax, ax, ax, :] + self.p.beta * EJ1_star
+            Ji = self.fun_prod*fun_prod(self.sum_size) - self.sum_wage -\
+                self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
             Ji = .2*Ji + .8*Ji2
-            print("Value diff:", np.max(np.abs(Ji-Ji2)))
+            #print("Value diff:", np.max(np.abs(Ji-Ji2)))
 
             # Update worker value function
             W1i[:,:,:,:,1] = self.pref.utility(self.w_matrix[:,:,:,:,1]) + \
-                self.p.beta * (re_star[:,:,:,:] + EW1_star[:,:,:,:]) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
-        
+                self.p.beta * (re_star + EW1_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
+            #print("Max search value", re_star.max())
             W1i[:,:,:,:,1:] = .4*W1i[:,:,:,:,1:] + .6*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
-            print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
+            #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
 
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
@@ -359,7 +356,7 @@ class MultiworkerContract:
                             error_js = self.js.update(W1i[self.p.z_0-1, 0, 0, :, 1], P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
-                    if (np.array([error_w1, error_j1g]).max() < self.p.tol_full_model
+                    if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
 
