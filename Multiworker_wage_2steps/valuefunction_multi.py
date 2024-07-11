@@ -157,18 +157,20 @@ class PowerFunctionGrid:
         """
         tot_update_chg = 0
         pj_last = np.copy(self.gamma_all)
-        print("pj_last", pj_last[:,0,0,:])
-        assert np.isnan(pj_last).sum() == 0
+        #print("pj_last", pj_last[0,1,0])
+        #assert np.isnan(pj_last).sum() == 0
         for iz in range(self.num_z):
          for in0 in range(self.num_n):
             for in1 in range(self.num_n):
                 Xi,Yi = curve_fit_search_terms( self.gamma_all[iz, in0, in1, 0:4], W1[iz, in0, in1, :], J1[iz, in0, in1, :], W1[iz, in0, in1, :].max() )
                 # W = np.exp(- self.weight * np.power(Yi,2))
-                W = 1.0 * (Yi >= -50)
+                #print("Yi", Yi)
+                W = 1.0 * (Yi >= -50) #Andrei: why -50 here? what's the point? IS this why the thing is nan? Because W=1 for every value so gamma[0],gamma[1] end up divided by 0? THE OPPOSITE! It's because Yi was below -50 everywhere
                 W = W / W.sum()
                 xbar       = ( Xi * W ).sum()
                 ybar       = ( Yi * W ).sum()
                 self.gamma_all[iz, in0, in1, 1] = ( (Xi-xbar) * (Yi-ybar) * W ).sum() / (  (Xi-xbar) * (Xi-ybar) * W ).sum()
+                #print("W and gamma_all[1]", W, self.gamma_all[iz, in0, in1, 1])
                 self.gamma_all[iz, in0, in1, 0] = ( (Yi - self.gamma_all[iz, in0, in1, 1]* Xi) * W ).sum()
                 self.gamma_all[iz, in0, in1, 4]   = W1[iz, in0, in1, :].max()
 

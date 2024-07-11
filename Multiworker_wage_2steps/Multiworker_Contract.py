@@ -271,25 +271,34 @@ class MultiworkerContract:
                 rho_min = rho_grid[pc[iz, in0, in1, :] > 0].min()  # lowest promised rho with continuation > 0
                     #Andrei: so we look for the shadow cost that will satisfy the foc? Yes, look for u'(w'), with u'(w) given, so that the foc is satisfied
                     # look for FOC below  rho_0
-                Isearch = (rho_grid <= rho_bar[iz, in0, in1]) & (pc[iz, in0, in1, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
+                #Isearch = (rho_grid <= rho_bar[iz, in0, in1]) & (pc[iz, in0, in1, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
+                #if Isearch.sum() > 0:
+                #    Isearch_indices = np.where(Isearch)[0]
+                #    for iv in Isearch_indices:
+
+                 #     rho_star[iz,in0, in1, iv] = np.interp(0,
+                 #                                   impose_increasing(foc[iz, in0, in1, Isearch, iv]),
+                #                                    rho_grid[Isearch], right=rho_bar[iz, in0, in1])
+
+                    # look for FOC above rho_0 #ANDREI: do we need this??? why would we go above rho_bar???
+                #Ieffort = (rho_grid > rho_bar[iz, in0, in1]) & (pc[iz, in0, in1, :] > 0)
+                #if Ieffort.sum() > 0:
+                #    Ieffort_indices = np.where(Ieffort)[0]
+                #    for iv in Ieffort_indices:
+                #         rho_star[iz, in0, in1, iv] = np.interp(0,
+                #                                        foc[iz, in0, in1, Ieffort,iv], rho_grid[Ieffort])
+                    #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
+                    #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
+                    # set rho for quits to the lowest value
+                
+                Isearch = (pc[iz, in0, in1, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
                 if Isearch.sum() > 0:
                     Isearch_indices = np.where(Isearch)[0]
                     for iv in Isearch_indices:
 
                       rho_star[iz,in0, in1, iv] = np.interp(0,
                                                     impose_increasing(foc[iz, in0, in1, Isearch, iv]),
-                                                    rho_grid[Isearch], right=rho_bar[iz, in0, in1])
-
-                    # look for FOC above rho_0 #ANDREI: do we need this??? why would we go above rho_bar???
-                Ieffort = (rho_grid > rho_bar[iz, in0, in1]) & (pc[iz, in0, in1, :] > 0)
-                if Ieffort.sum() > 0:
-                    Ieffort_indices = np.where(Ieffort)[0]
-                    for iv in Ieffort_indices:
-                         rho_star[iz, in0, in1, iv] = np.interp(0,
-                                                        foc[iz, in0, in1, Ieffort,iv], rho_grid[Ieffort])
-                    #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
-                    #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
-                    # set rho for quits to the lowest value
+                                                    rho_grid[Isearch])                
                 Iquit = ~(pc[iz, in0, in1, :] > 0) 
                 if Iquit.sum() > 0:
                            rho_star[iz, in0, in1, Iquit] = rho_min
@@ -333,19 +342,22 @@ class MultiworkerContract:
             W1i[:,:,:,:,1:] = .4*W1i[:,:,:,:,1:] + .6*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
             #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
 
-            # Updating J1 representation
-            error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
+
 
             # Compute convergence criteria
             error_j1i = array_exp_dist(Ji,Ji2,100) #np.power(Ji - Ji2, 2).mean() / np.power(Ji2, 2).mean()  
-            error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[:,:,:,:,1]), 100)
+
             error_w1 = array_dist(W1i[:,:,:,:,1:], W1i2[:,:,:,:,1:])
-            print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)
+
 
             # update worker search decisions
             if (ite_num % 10) == 0:
                 if update_eq:
                     # -----  check for termination ------
+                     # Updating J1 representation
+                    error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
+                    error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[:,:,:,:,1]), 100)
+                    print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)                   
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
@@ -356,11 +368,19 @@ class MultiworkerContract:
                             error_js = self.js.update(W1i[self.p.z_0-1, 0, 0, :, 1], P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
+                    # Updating J1 representation
+                    error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
+                    error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[:,:,:,:,1]), 100)
+                    print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)    
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
 
             if (ite_num % 25) == 0:
+                # Updating J1 representation
+                error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
+                error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[:,:,:,:,1]), 100)
+                print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)    
                 self.log.debug('[{}] W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}   rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
                                      ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
 
