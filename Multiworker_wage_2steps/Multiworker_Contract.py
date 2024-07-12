@@ -46,7 +46,7 @@ def array_dist(A,B):
     """
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 
-def fun_prod(sum_n):
+def production(sum_n):
     return np.power(sum_n, 0.5)
 def fun_prod_1d(sum_n):
     return 0.5*np.power(sum_n+1e-10,-0.5) #1e-10 added to avoid division by zero in the lowest size state.
@@ -110,6 +110,9 @@ class MultiworkerContract:
         for i in range(K+1,self.J_grid.ndim):
             self.sum_wage += self.w_grid[self.grid[i]]*self.N_grid[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
 
+        #Setting up production grids
+        self.prod = production(self.sum_size)
+        self.prod_diff = self.production_diff(self.sum_size)
 
         #Job value and GE first
         self.v_grid = np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod_onedim.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
@@ -128,9 +131,9 @@ class MultiworkerContract:
 
 
         #Create a guess for the MWF value function
-        #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*fun_prod(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
+        #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #self.J_grid1 = np.zeros_like(self.J_grid)
-        self.J_grid = self.J_grid+np.divide(self.fun_prod*fun_prod(self.sum_size)-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
+        self.J_grid = self.J_grid+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #print("J_grid_diff:", np.max(abs(self.J_grid-self.J_grid1)))
         #The two methods are equivalent!! grid[1] really does capture the right value!!!
 
@@ -150,9 +153,12 @@ class MultiworkerContract:
 
         self.W1i = self.W1i + self.pref.utility(self.w_matrix/(1-self.p.beta)) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
         self.W1i[:,:,:,:,0] = self.W1i[:,:,:,:,0] + self.pref.utility(self.unemp_bf.min()/(1-self.p.beta))
-    def fun_prod_diff(self,sum):
-        diff = fun_prod(np.minimum(sum+1,self.K*(self.p.num_n-1))) - fun_prod(sum) + fun_prod(sum) - fun_prod(np.maximum(sum-1,0))
-        return diff / 2
+    def production_diff(self,sum):
+
+        #diff = fun_prod(np.minimum(sum+1,self.K*(self.p.num_n-1))) - production(sum) + production(sum) - fun_prod(np.maximum(sum-1,0)) / 2*((np.logical_and(sum - 1>= 0, sum + 1 <= self.K * (self.p.num_n - 1))))
+        diff = production(np.minimum(sum+1,self.K*(self.p.num_n-1))) - production(sum) + production(sum) - production(np.maximum(sum-1,0)) / (np.minimum(sum+1,self.K*(self.p.num_n-1)) - np.maximum(sum-1,0))
+        
+        return diff
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
         """
         :param EW1: Expected value of employment
@@ -183,8 +189,7 @@ class MultiworkerContract:
         Computes the value of a job for each promised value v
         :return: value of the job
         """
-
-        w_grid = self.w_grid
+        sum_wage = self.sum_wage
         rho_grid = self.rho_grid
         Ji = self.J_grid
         W1i = self.W1i
@@ -211,7 +216,7 @@ class MultiworkerContract:
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = np.copy(W1i)
-
+            #print("J with 1 junior", Ji[0,1,0,0])
             # evaluate J1 tomorrow using our approximation
             Jpi = J1p.eval_at_W1(W1i[:,:,:,:,1])
 
@@ -219,7 +224,7 @@ class MultiworkerContract:
             EW1i = Ez(W1i[:,:,:,:,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
             EJpi = Ez(Ji, self.Z_trans_mat)
-            
+            print("Expected value with 1 junior", EJpi[0,1,0,0])
             # Define the interpolators for EW1i and EJpi
             #EW1i_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EW1i, bounds_error=False, fill_value=None)
             #EJpi_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EJpi, bounds_error=False, fill_value=None)
@@ -240,26 +245,23 @@ class MultiworkerContract:
 
             # First boundary condition: forward difference
             Jderiv[:, :, 0, :] = Ji[:, :, 1, :] - Ji[:, :, 0, :]
-            #print("1st part", Jderiv1)
 
             # Last boundary condition: backward difference
             Jderiv[:, :, -1, :] = Ji[:, :, -1, :] - Ji[:, :, -2, :]
-            #print("2nd part", Jderiv1)
 
             # Central differences: average of forward and backward differences
             Jderiv[:, :, 1:-1, :] = (Ji[:, :, 2:, :] - Ji[:, :, 1:-1, :] + Ji[:, :, 1:-1, :] - Ji[:, :, :-2, :]) / 2
-            #print("Central differences", Jderiv1)
 
             
             #Andrei: need not the J itself, but its derivative wrt n!!!
-            EJinv=(impose_decreasing(Jderiv+self.w_grid[ax,ax,ax,:])-self.fun_prod*self.fun_prod_diff(self.sum_size))/self.p.beta #creating expected job value as a function of today's value
+            EJinv=(impose_decreasing(Jderiv+self.w_grid[ax,ax,ax,:])-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
             #Because of this, the values are modofied with size according to the following formula:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
-            foc = rho_grid[ax, ax, ax, :,ax] - (EJinv[:, :, :, ax, :]/pc[:, :, :, :,ax])* (log_diff[:,:, :, :,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-            foc = foc*self.sum_size[:,:,:,:,ax] - self.N_grid[self.grid[2][:,:,:,:,ax]]*rho_grid[ax, ax, ax, ax, :] - self.N_grid[self.grid[1][:,:,:,:,ax]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i[:,:,:,:,ax]+re[:,:,:,:,ax]))
+            foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[:, :, :, ax, :] / pc[:, :, :, :, ax])* (log_diff[:, :, :, :, ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+            foc = foc*self.sum_size[:, :, :, :, ax] - self.N_grid[self.grid[2][:, :, :, ax, :]]*rho_grid[ax, ax, ax, ax, :] - self.N_grid[self.grid[1][:, :, :, ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i[:, :, :, :, ax]+re[:, :, :, :, ax]))
             
-            assert (np.isnan(foc) & (pc[:,:,:,:,ax] > 0)).sum() == 0, "foc has NaN values where p>0"
+            assert (np.isnan(foc) & (pc[:, :, :, :, ax] > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
             for iz in range(self.p.num_z):
@@ -328,9 +330,9 @@ class MultiworkerContract:
 
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
-            pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
+            _, re_star, _ = self.getWorkerDecisions(EW1_star)
             # Update firm value function 
-            Ji = self.fun_prod*fun_prod(self.sum_size) - self.sum_wage -\
+            Ji = self.fun_prod*self.prod - sum_wage -\
                 self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
             Ji = .2*Ji + .8*Ji2
             #print("Value diff:", np.max(np.abs(Ji-Ji2)))

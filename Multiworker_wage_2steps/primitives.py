@@ -208,8 +208,9 @@ class Preferences:
             :return: Output of the function.
         """
         aa = self.p.u_a * np.power(self.p.tax_tau, 1 - self.p.u_rho) 
-        pow_arg = ( (1 - self.p.u_rho) * value + self.p.u_b   ) / self.p.u_a
-        return np.power( pow_arg, 1.0/( 1 - self.p.u_rho ) - 1.0) / ( self.p.tax_lambda * self.p.u_a )
+        pow_arg = ( (1 - self.p.u_rho) * value + self.p.u_b   ) / aa
+        #return np.power( pow_arg, 1.0/( self.p.tax_lambda * (1 - self.p.u_rho) ) - 1.0) / ( self.p.tax_lambda * aa )
+        return np.power( pow_arg, -self.p.u_rho / ( 1 - self.p.u_rho )) / ( self.p.tax_lambda * aa )
         #return np.exp(value)
 
 
