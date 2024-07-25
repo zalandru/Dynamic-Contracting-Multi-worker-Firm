@@ -47,7 +47,7 @@ def array_dist(A,B):
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 
 def production(sum_n):
-    return np.power(sum_n, 0.5)
+    return np.power(sum_n, 1.0)
 def fun_prod_1d(sum_n):
     return 0.5*np.power(sum_n+1e-10,-0.5) #1e-10 added to avoid division by zero in the lowest size state.
     #Still kinda insane though, makes it look like the future derivate at zero size is minus infty
@@ -213,12 +213,13 @@ class MultiworkerContract:
 
         ite_num = 0
         error_js = 1
+        Jpi = J1p.eval_at_W1(W1i[:,:,:,:,1])
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = np.copy(W1i)
             #print("J with 1 junior", Ji[0,1,0,0])
             # evaluate J1 tomorrow using our approximation
-            Jpi = J1p.eval_at_W1(W1i[:,:,:,:,1])
+
 
             # we compute the expected value next period by applying the transition rules
             EW1i = Ez(W1i[:,:,:,:,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
