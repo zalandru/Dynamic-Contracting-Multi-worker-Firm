@@ -47,7 +47,7 @@ def array_dist(A,B):
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 
 def production(sum_n):
-    return np.power(sum_n, 1.0)
+    return np.power(sum_n, 0.5)
 def fun_prod_1d(sum_n):
     return 0.5*np.power(sum_n+1e-10,-0.5) #1e-10 added to avoid division by zero in the lowest size state.
     #Still kinda insane though, makes it look like the future derivate at zero size is minus infty
@@ -78,8 +78,8 @@ class MultiworkerContract:
         self.Z_grid = self.construct_z_grid()   # Create match productivity grid
 
         #Size grid:
-        #self.N_grid=np.linspace(0,self.p.num_n-1,self.p.num_n)
-        self.N_grid=np.linspace(0,1,self.p.num_n)
+        self.N_grid=np.linspace(0,self.p.num_n-1,self.p.num_n)
+        #self.N_grid=np.linspace(0,1,self.p.num_n)
         # Unemployment Benefits across Worker Productivities
         self.unemp_bf = np.ones(self.p.num_x) * self.p.u_bf_m
 
@@ -156,7 +156,7 @@ class MultiworkerContract:
     def production_diff(self,sum):
 
         #diff = fun_prod(np.minimum(sum+1,self.K*(self.p.num_n-1))) - production(sum) + production(sum) - fun_prod(np.maximum(sum-1,0)) / 2*((np.logical_and(sum - 1>= 0, sum + 1 <= self.K * (self.p.num_n - 1))))
-        diff = production(np.minimum(sum+1,self.K*(self.p.num_n-1))) - production(sum) + production(sum) - production(np.maximum(sum-1,0)) / (np.minimum(sum+1,self.K*(self.p.num_n-1)) - np.maximum(sum-1,0))
+        diff = (production(np.minimum(sum+1,self.K*(self.p.num_n-1))) - production(sum) + production(sum) - production(np.maximum(sum-1,0))) / (np.minimum(sum+1,self.K*(self.p.num_n-1)) - np.maximum(sum-1,0))
         
         return diff
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
@@ -225,7 +225,6 @@ class MultiworkerContract:
             EW1i = Ez(W1i[:,:,:,:,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
             EJpi = Ez(Ji, self.Z_trans_mat)
-            print("Expected value with 1 junior", EJpi[0,1,0,0])
             # Define the interpolators for EW1i and EJpi
             #EW1i_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EW1i, bounds_error=False, fill_value=None)
             #EJpi_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EJpi, bounds_error=False, fill_value=None)
@@ -237,9 +236,6 @@ class MultiworkerContract:
            
             # compute derivative where continuation probability is >0
             #Andrei: continuation probability is pc, that the worker isn't fired and doesn't leave
-            #print("Shape of pc:", pc.shape)
-            #print("Shape of pc_d:", pc_d.shape if 'pc_d' in locals() else "pc_d not defined")
-            #print("Shape of log_diff:", log_diff.shape if 'log_diff' in locals() else "log_diff not defined")
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
             
@@ -255,7 +251,16 @@ class MultiworkerContract:
 
             
             #Andrei: need not the J itself, but its derivative wrt n!!!
-            EJinv=(impose_decreasing(Jderiv+self.w_grid[ax,ax,ax,:])-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
+            #if ite_num>1:
+             #print("EJinv diff before:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJpi[:,1,1,:]-EJpi[:,1,0,:]))/(EJpi[:,1,1,:]-EJpi[:,1,0,:]),2)))
+            
+            
+            EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
+            if ite_num>1:
+             print("EJinv diff:", np.mean(np.power((EJinv[0,1,1,:]/pc_star[0,1,1,:] - (EJ1_star[0,1,1,:]-EJ1_star[0,1,0,:])) / (EJ1_star[0,1,1,:]-EJ1_star[0,1,0,:]),2)))
+             #print("EJinv diff after:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJpi[:,1,2,:]-EJpi[:,1,0,:])/2)/(EJpi[:,1,2,:]/2-EJpi[:,1,0,:]/2),2)))
+
+            
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
             #Because of this, the values are modofied with size according to the following formula:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
@@ -331,7 +336,7 @@ class MultiworkerContract:
 
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
-            _, re_star, _ = self.getWorkerDecisions(EW1_star)
+            _, re_star, pc_star = self.getWorkerDecisions(EW1_star)
             # Update firm value function 
             Ji = self.fun_prod*self.prod - sum_wage -\
                 self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
