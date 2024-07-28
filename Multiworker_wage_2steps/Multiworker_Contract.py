@@ -184,15 +184,17 @@ class MultiworkerContract:
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
 
-    def J(self,update_eq=0):    
+    def J(self,update_eq=0,Ji=None,W1i=None):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
         """
         sum_wage = self.sum_wage
         rho_grid = self.rho_grid
-        Ji = self.J_grid
-        W1i = self.W1i
+        if Ji is None:
+            Ji = self.J_grid
+        if W1i is None:
+            W1i = self.W1i
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
         # create representation for J1p
@@ -277,27 +279,6 @@ class MultiworkerContract:
                     # find highest V with J2J search
                 #rho_bar[iz, in0, in1] = np.interp(self.js.jsa.e0, EW1i[iz, in0, in1, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
                 rho_min = rho_grid[pc[iz, in0, in1, :] > 0].min()  # lowest promised rho with continuation > 0
-                    #Andrei: so we look for the shadow cost that will satisfy the foc? Yes, look for u'(w'), with u'(w) given, so that the foc is satisfied
-                    # look for FOC below  rho_0
-                #Isearch = (rho_grid <= rho_bar[iz, in0, in1]) & (pc[iz, in0, in1, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
-                #if Isearch.sum() > 0:
-                #    Isearch_indices = np.where(Isearch)[0]
-                #    for iv in Isearch_indices:
-
-                 #     rho_star[iz,in0, in1, iv] = np.interp(0,
-                 #                                   impose_increasing(foc[iz, in0, in1, Isearch, iv]),
-                #                                    rho_grid[Isearch], right=rho_bar[iz, in0, in1])
-
-                    # look for FOC above rho_0 #ANDREI: do we need this??? why would we go above rho_bar???
-                #Ieffort = (rho_grid > rho_bar[iz, in0, in1]) & (pc[iz, in0, in1, :] > 0)
-                #if Ieffort.sum() > 0:
-                #    Ieffort_indices = np.where(Ieffort)[0]
-                #    for iv in Ieffort_indices:
-                #         rho_star[iz, in0, in1, iv] = np.interp(0,
-                #                                        foc[iz, in0, in1, Ieffort,iv], rho_grid[Ieffort])
-                    #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
-                    #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
-                    # set rho for quits to the lowest value
                 
                 Isearch = (pc[iz, in0, in1, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
                 if Isearch.sum() > 0:
