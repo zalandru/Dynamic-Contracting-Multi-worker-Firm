@@ -286,8 +286,8 @@ class MultiworkerContract:
                     for iv in Isearch_indices:
 
                       rho_star[iz,in0, in1, iv] = np.interp(0,
-                                                    impose_increasing(foc[iz, in0, in1, Isearch, iv]),
-                                                    rho_grid[Isearch])                
+                                                    impose_increasing(foc[iz, in0, in1, :, iv]),
+                                                    rho_grid[:])                
                 Iquit = ~(pc[iz, in0, in1, :] > 0) 
                 if Iquit.sum() > 0:
                            rho_star[iz, in0, in1, Iquit] = rho_min

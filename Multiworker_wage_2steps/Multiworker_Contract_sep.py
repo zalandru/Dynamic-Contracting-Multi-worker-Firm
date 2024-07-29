@@ -254,10 +254,10 @@ class MultiworkerContract:
             Jderiv[:, 1:-1, :, :, 0] = (Ji[:, 2:, :, :] - Ji[:, 1:-1, :, :] + Ji[:, 1:-1, :, :] - Ji[:, :-2, :, :]) / 2
 
             
-            EJinv=(Jderiv[:,:,:,:,1]+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
+            EJinv=(impose_decreasing(Jderiv[:,:,:,:,1]+self.w_grid[ax,ax,ax,:])-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             #So this EJinv, if I want it for the step zero, I should take the correct wage!
             if ite_num>1: #I'm using previous guesses for sep_star and EW1_star. This way, it is still as if EJinv0 is a function of today's states only, even though that's not exactly correct
-             EJinv0 = (Jderiv[:,:,:,:,0]+self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EUi+(1-sep_star)*(EW1_star+re_star)))-self.fun_prod*self.prod_diff)/self.p.beta
+             EJinv0 = (impose_decreasing(Jderiv[:,:,:,:,0]+self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EUi+(1-sep_star)*(EW1_star+re_star))))-self.fun_prod*self.prod_diff)/self.p.beta
             
             #Checking whether the inverted expectation is indeed correct
             if ite_num>1:
@@ -312,7 +312,7 @@ class MultiworkerContract:
                     for iv in Ifire_indices:
                         
                         rho_star[iz,in0, in1, iv] = np.interp(0,
-                                                    impose_increasing(foc_rho_s[iz, in0, in1, :, iv]), #Maybe this can simply be foc? Since for now we've assumed s_1=0, so EJinv already correctly represents what's happening
+                                                    impose_increasing(foc[iz, in0, in1, :, iv]), #Maybe this can simply be foc? Since for now we've assumed s_1=0, so EJinv already correctly represents what's happening
                                                     rho_grid[:])  
                         worker_future_value = np.interp(rho_star[iz, in0, in1, iv], rho_grid, re[iz,in0,in1,:]+EW1i[iz,in0,in1,:])
                       #print("Worker future value:", worker_future_value)
@@ -322,8 +322,8 @@ class MultiworkerContract:
                         sep_star[iz,in0, in1, iv] = 1-(EJinv0[iz,in0,in1,iv]/((EUi-worker_future_value) / self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[iz,in0, in1, iv]*EUi+(1-sep_star[iz,in0, in1, iv])*worker_future_value)))) #The thing is, this wouldn't work: t he corner case of ultra negative EJinv would suggest us negative separations, rather than 1       
                       
                       #print(iz, in0, in1, iv, sep_star[iz,in0, in1, iv])
-                sepneg = (sep_star[iz,in0, in1, :] < 0)
-                sep_star[iz,in0, in1, sepneg] = 1 # This is the corner solution: if EJinv is super-duper negative,then the FOC would always be positive, thus the separation rate would be 1
+                sepneg = (pc[iz, in0, in1, :] > 0) & (EJinv0[iz, in0, in1, :] < 0) & (sep_star[iz,in0, in1, :] < 0)
+                sep_star[iz, in0, in1, sepneg] = 1 # This is the corner solution: if EJinv is super-duper negative,then the FOC would always be positive, thus the separation rate would be 1
                 if sepneg.sum() > 0:
                     sepneg_indices = np.where(sepneg)[0]
                     for iv in sepneg_indices:
@@ -342,7 +342,7 @@ class MultiworkerContract:
                         sep_star[iz, in0, in1, Iquit] = 0
                 #Update the future size for each given size.
                 #Issue is: ideally I would use pe_star, but that is only available after I get EW1i. Is there a way around this?
-                n0_star[iz, in0, in1, :] = 0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
+                #n0_star[iz, in0, in1, :] = 0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
                 n1_star[iz, in0, in1, :] = (in0*(1-sep_star[iz,in0, in1, :])+in1)*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
                 
 
@@ -376,7 +376,9 @@ class MultiworkerContract:
             #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
             _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
             Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
-            Ui = 0.2*Ui + 0.8*Ui2
+            Ui = 0.4*Ui + 0.6*Ui2
+            if ite_num>1:
+                print("sep borders", sep_star.min(),sep_star.max())
 
 
             # Compute convergence criteria
