@@ -156,9 +156,6 @@ class ContinuousContract:
 
             # compute derivative where continuation probability is >0
             #Andrei: continuation probability is pc, that the worker isn't fired and doesn't leave
-            #print("Shape of pc:", pc.shape)
-            #print("Shape of pc_d:", pc_d.shape if 'pc_d' in locals() else "pc_d not defined")
-            #print("Shape of log_diff:", log_diff.shape if 'log_diff' in locals() else "log_diff not defined")
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
             foc = rho_grid[ax, :] - EJpi * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
@@ -199,10 +196,10 @@ class ContinuousContract:
                     #Or, more like, we're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
                     #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
-            print("rho_star", rho_star)
+
             # get pstar, qstar
-            pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
-            #print("Expectation diff:", np.max(np.abs(EJ1_star-(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/(self.p.beta*(1-pe_star)))))
+            pe_star, re_star, pc_star = self.getWorkerDecisions(EW1_star)
+
             # Update firm value function 
             #Andrei: why is the w_grid still preset? Doesn't it depend on what you promised to the worker?
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
@@ -245,7 +242,7 @@ class ContinuousContract:
 
         self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
                                      ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        return Ji,W1i,EW1_star,Jpi
+        return Ji,W1i,EW1_star,Jpi,pc_star
 
 
     def construct_z_grid(self):

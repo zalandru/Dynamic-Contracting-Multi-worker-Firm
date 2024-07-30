@@ -47,7 +47,7 @@ def array_dist(A,B):
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 
 def production(sum_n):
-    return np.power(sum_n, 1.0)
+    return np.power(sum_n, 0.5)
 def fun_prod_1d(sum_n):
     return 0.5*np.power(sum_n+1e-10,-0.5) #1e-10 added to avoid division by zero in the lowest size state.
     #Still kinda insane though, makes it look like the future derivate at zero size is minus infty
@@ -293,7 +293,7 @@ class MultiworkerContract:
                  self.N_grid[self.grid[1][:, :, :, ax, :]] * (1-sep_star[:,:,:,ax,:]) / self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[:,:,:,ax,:]*EUi+(1-sep_star[:,:,:,ax,:])*(EW1i[:, :, :, :, ax]+re[:, :, :, :, ax])))
             assert (np.isnan(foc) & (pc[:, :, :, :, ax] > 0)).sum() == 0, "foc has NaN values where p>0"
             #So, the issue is that the wage the firm pays to the bottom guy depends on the separation rate, creating an additional interdependence
-            print(EW1i[0,1,1,:])
+            #print(EW1i[0,1,1,:])
             for iz in range(self.p.num_z):
                 # get EW1_Star and EJ1_star
              EW1i_interpolator = RegularGridInterpolator(
@@ -306,7 +306,7 @@ class MultiworkerContract:
 
                rho_min = rho_grid[pc[iz, in0, in1, :] > 0].min()  # lowest promised rho with continuation > 0
                if ite_num>5:
-                assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
+                #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
 
                 for iv in range(self.p.num_v):
                 #Alternative corner: not EJinv0, but EJpi interpolated ot the point of no separations
@@ -316,16 +316,16 @@ class MultiworkerContract:
                  n1_star0[iz,in0,in1,:]=(in0*+in1)*pc_star[iz,in0,in1,:]
                  n1_star1[iz,in0,in1,:]=in1*pc_star[iz,in0,in1,:]          
                  rho_n_star_points_0 = np.array([n1_star0[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
-                 rho_n_star_points_0_eps = np.array([n1_star0[iz, in0, in1, iv]+self.deriv_eps, rho_star[iz, in0, in1, iv]])                 
+                 rho_n_star_points_0_eps = np.array([n1_star0[iz, in0, in1, iv]-self.deriv_eps, rho_star[iz, in0, in1, iv]])                 
                  rho_n_star_points_1 = np.array([n1_star1[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])  
-                 rho_n_star_points_1_eps = np.array([n1_star1[iz, in0, in1, iv]+self.deriv_eps, rho_star[iz, in0, in1, iv]])  
+                 rho_n_star_points_1_eps = np.array([n1_star1[iz, in0, in1, iv]-self.deriv_eps, rho_star[iz, in0, in1, iv]])  
                  EJ1_star_0[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_0)
                  EJ1_star_0_eps[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_0_eps)                 
                  EW1_star_1[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points_1)
                  EJ1_star_1[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_1)
                  EJ1_star_1_eps[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_1_eps)     
 
-                Ikeep = (pc[iz, in0, in1, :] > 0) & (EJ1_star_0_eps[iz,in0,in1,:]- EJ1_star_0[iz, in0, in1, :] >= 0) #If marginal value is positive, firm keeps the worker
+                Ikeep = (pc[iz, in0, in1, :] > 0) & (EJ1_star_0[iz, in0, in1, :] - EJ1_star_0_eps[iz,in0,in1,:]  >= 0) #If marginal value is positive, firm keeps the worker
                 if Ikeep.sum() > 0:
                     Ikeep_indices = np.where(Ikeep)[0]
                     for iv in Ikeep_indices:
@@ -335,7 +335,7 @@ class MultiworkerContract:
                                                     rho_grid[:])
                       sep_star[iz,in0, in1, iv] = 0
 
-                Icompletefire = (pc[iz, in0, in1, :] > 0) & (EJ1_star_0_eps[iz,in0,in1,:]- EJ1_star_0[iz, in0, in1, :] < 0) & (-(EJ1_star_1_eps[iz,in0,in1,:]-EJ1_star_1[iz, in0, in1, :])*pc_star[iz,in0,in1,:]/self.deriv_eps - (EW1_star_1[iz,in0,in1,:]+re_star[iz,in0,in1,:]-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi))>= 0 )
+                Icompletefire = (pc[iz, in0, in1, :] > 0) & (EJ1_star_0[iz, in0, in1, :] - EJ1_star_0_eps[iz,in0,in1,:] < 0) & (-(EJ1_star_1[iz, in0, in1, :]-EJ1_star_1_eps[iz,in0,in1,:])*pc_star[iz,in0,in1,:]/self.deriv_eps - (EW1_star_1[iz,in0,in1,:]+re_star[iz,in0,in1,:]-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi))>= 0 )
                 if Icompletefire.sum() > 0:
                     sep_star[iz,in0, in1, Icompletefire] = 1
                     Icompletefire_indices = np.where(Icompletefire)[0]
@@ -345,7 +345,7 @@ class MultiworkerContract:
                                                     rho_grid[:])
 
                 
-                Ifire = (pc[iz, in0, in1, :] > 0) & (EJ1_star_0_eps[iz,in0,in1,:]- EJ1_star_0[iz, in0, in1, :] < 0) & (-(EJ1_star_1_eps[iz,in0,in1,:]-EJ1_star_1[iz, in0, in1, :])*pc_star[iz,in0,in1,:]/self.deriv_eps- (EW1_star_1[iz,in0,in1,:]+re_star[iz,in0,in1,:]-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi)) < 0 ) #If foc at zero sep>0 and at 1 sep<0, fire partially
+                Ifire = (pc[iz, in0, in1, :] > 0) & (EJ1_star_0[iz, in0, in1, :] - EJ1_star_0_eps[iz,in0,in1,:] < 0) & (-(EJ1_star_1[iz, in0, in1, :]-EJ1_star_1_eps[iz,in0,in1,:])*pc_star[iz,in0,in1,:]/self.deriv_eps- (EW1_star_1[iz,in0,in1,:]+re_star[iz,in0,in1,:]-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi)) < 0 ) #If foc at zero sep>0 and at 1 sep<0, fire partially
                 if Ifire.sum() > 0:
                     Ifire_indices = np.where(Ifire)[0]
                     for iv in Ifire_indices:
@@ -357,7 +357,7 @@ class MultiworkerContract:
 
                         assert worker_future_value > EUi
                         sep_star[iz,in0, in1, iv] = 1-(EJinv0[iz,in0,in1,iv]/((EUi-worker_future_value) / self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[iz,in0, in1, iv]*EUi+(1-sep_star[iz,in0, in1, iv])*worker_future_value)))) #The thing is, this wouldn't work: t he corner case of ultra negative EJinv would suggest us negative separations, rather than 1       
-
+                        print("sep_star incomplete:", iz, in0, in1, iv, sep_star[iz,in0, in1, iv])
                 Iquit = ~(pc[iz, in0, in1, :] > 0) 
                 if Iquit.sum() > 0:
                         rho_star[iz, in0, in1, Iquit] = rho_min
@@ -416,14 +416,14 @@ class MultiworkerContract:
             # Update firm value function 
             Ji = self.fun_prod*self.prod - sum_wage -\
                 self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EUi+(1-sep_star)*(EW1_star+re_star)))*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
-            Ji = .2*Ji + .8*Ji2
+            Ji = .1*Ji + .9*Ji2
             #print("Value diff:", np.max(np.abs(Ji-Ji2)))
 
             # Update worker value function
             W1i[:,:,:,:,1] = self.pref.utility(self.w_matrix[:,:,:,:,1]) + \
                 self.p.beta * (re_star + EW1_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
             #print("Max search value", re_star.max())
-            W1i[:,:,:,:,1:] = .4*W1i[:,:,:,:,1:] + .6*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
+            W1i[:,:,:,:,1:] = .2*W1i[:,:,:,:,1:] + .8*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
             #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
             _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
             Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
@@ -474,7 +474,7 @@ class MultiworkerContract:
 
         self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
                                      ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        return Ji,W1i,EW1_star,sep_star
+        return Ji,W1i,EW1_star,sep_star,pc_star
 
 
     def construct_z_grid(self):

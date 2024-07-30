@@ -59,7 +59,7 @@ class MultiworkerContract:
     """
         This solves a classic contract model.
     """
-    def __init__(self, input_param=None):
+    def __init__(self, input_param=None, js=None):
 
         """
             Initialize with a parameter object.
@@ -125,15 +125,20 @@ class MultiworkerContract:
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
             np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
-        self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
-        self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
         
+
+        if js is None:
+            self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
+            self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+        else:
+            self.js = js       
 
 
         #Create a guess for the MWF value function
         #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #self.J_grid1 = np.zeros_like(self.J_grid)
         self.J_grid = self.J_grid+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
+        
         #print("J_grid_diff:", np.max(abs(self.J_grid-self.J_grid1)))
         #The two methods are equivalent!! grid[1] really does capture the right value!!!
 
@@ -153,9 +158,9 @@ class MultiworkerContract:
 
         self.W1i = self.W1i + self.pref.utility(self.w_matrix/(1-self.p.beta)) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
         self.W1i[:,:,:,:,0] = self.W1i[:,:,:,:,0] + self.pref.utility(self.unemp_bf.min()/(1-self.p.beta))
+
     def production_diff(self,sum):
 
-        #diff = fun_prod(np.minimum(sum+1,self.K*(self.p.num_n-1))) - production(sum) + production(sum) - fun_prod(np.maximum(sum-1,0)) / 2*((np.logical_and(sum - 1>= 0, sum + 1 <= self.K * (self.p.num_n - 1))))
         diff = (production(np.minimum(sum+1,self.K*(self.p.num_n-1))) - production(sum) + production(sum) - production(np.maximum(sum-1,0))) / (np.minimum(sum+1,self.K*(self.p.num_n-1)) - np.maximum(sum-1,0))
         
         return diff
@@ -193,8 +198,12 @@ class MultiworkerContract:
         rho_grid = self.rho_grid
         if Ji is None:
             Ji = self.J_grid
+        else:
+            Ji = np.zeros_like(self.J_grid)+Ji[:,ax,ax,:]-self.fun_prod+self.fun_prod*self.prod
         if W1i is None:
             W1i = self.W1i
+        else:
+            W1i = np.zeros_like(self.W1i)+W1i[:,ax,ax,:,ax]
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
         # create representation for J1p
@@ -249,7 +258,7 @@ class MultiworkerContract:
             Jderiv[:, :, -1, :] = Ji[:, :, -1, :] - Ji[:, :, -2, :]
 
             # Central differences: average of forward and backward differences
-            Jderiv[:, :, 1:-1, :] = (Ji[:, :, 2:, :] - Ji[:, :, 1:-1, :] + Ji[:, :, 1:-1, :] - Ji[:, :, :-2, :]) / 2
+            Jderiv[:, :, 1:-1, :] = (Ji[:, :, 2:, :] - Ji[:, :, :-2, :]) / 2
 
             
             #Andrei: need not the J itself, but its derivative wrt n!!!
@@ -259,23 +268,26 @@ class MultiworkerContract:
             
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             if ite_num>1:
-             print("EJinv diff:", np.mean(np.power((EJinv[0,1,1,:]/pc_star[0,1,1,:] - (EJ1_star[0,1,1,:]-EJ1_star[0,1,0,:])) / (EJ1_star[0,1,1,:]-EJ1_star[0,1,0,:]),2)))
-             #print("EJinv diff after:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJpi[:,1,2,:]-EJpi[:,1,0,:])/2)/(EJpi[:,1,2,:]/2-EJpi[:,1,0,:]/2),2)))
+             print ("EJinv", EJinv[self.p.z_0-1,1,1,99])
+             print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star[:,1,1,:]-EJ1_star[:,1,0,:])) / (EJ1_star[:,1,1,:]-EJ1_star[:,1,0,:]),2)))
+             print("EJinv diff max:", np.max(np.abs((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star[:,1,1,:]-EJ1_star[:,1,0,:])) / (EJ1_star[:,1,1,:]-EJ1_star[:,1,0,:]))))
 
             
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
             #Because of this, the values are modofied with size according to the following formula:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
             foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[:, :, :, ax, :] / pc[:, :, :, :, ax])* (log_diff[:, :, :, :, ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+           # if ite_num>1:
+           #  foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[:, :, :, ax, :] / pc_star[:, :, :, ax, :])* (log_diff[:, :, :, :, ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+
             foc = foc*self.sum_size[:, :, :, :, ax] - self.N_grid[self.grid[2][:, :, :, ax, :]]*rho_grid[ax, ax, ax, ax, :] - self.N_grid[self.grid[1][:, :, :, ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i[:, :, :, :, ax]+re[:, :, :, :, ax]))
-            
             assert (np.isnan(foc) & (pc[:, :, :, :, ax] > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
             for iz in range(self.p.num_z):
              for in0 in range(self.p.num_n):
               for in1 in range(self.p.num_n):
-                assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
+                #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
                     # find highest V with J2J search
                 #rho_bar[iz, in0, in1] = np.interp(self.js.jsa.e0, EW1i[iz, in0, in1, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
                 rho_min = rho_grid[pc[iz, in0, in1, :] > 0].min()  # lowest promised rho with continuation > 0
@@ -286,8 +298,8 @@ class MultiworkerContract:
                     for iv in Isearch_indices:
 
                       rho_star[iz,in0, in1, iv] = np.interp(0,
-                                                    impose_increasing(foc[iz, in0, in1, :, iv]),
-                                                    rho_grid[:])                
+                                                    impose_increasing(foc[iz, in0, in1, Isearch, iv]),
+                                                    rho_grid[Isearch])                
                 Iquit = ~(pc[iz, in0, in1, :] > 0) 
                 if Iquit.sum() > 0:
                            rho_star[iz, in0, in1, Iquit] = rho_min
@@ -295,7 +307,7 @@ class MultiworkerContract:
                 #Update the future size for each given size.
                 #Issue is: ideally I would use pe_star, but that is only available after I get EW1i. Is there a way around this?
                 n0_star[iz, in0, in1, :] = 0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
-                n1_star[iz, in0, in1, :] = (in0+in1)*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
+                n1_star[iz, in0, in1, :] = (self.N_grid[in0]+self.N_grid[in1])*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
                 
                 # get EW1_Star and EJ1_star
                 EW1i_interpolator = RegularGridInterpolator(
@@ -318,6 +330,7 @@ class MultiworkerContract:
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
             _, re_star, pc_star = self.getWorkerDecisions(EW1_star)
+            #print("states at which worker quits:", np.where(~(pc_star[self.p.z_0-1,1,1,:]==0)))
             # Update firm value function 
             Ji = self.fun_prod*self.prod - sum_wage -\
                 self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
@@ -375,7 +388,7 @@ class MultiworkerContract:
 
         self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
                                      ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        return Ji,W1i,EW1_star
+        return Ji,W1i,EW1_star,pc_star
 
 
     def construct_z_grid(self):

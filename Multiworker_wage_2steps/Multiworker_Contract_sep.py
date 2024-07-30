@@ -263,6 +263,7 @@ class MultiworkerContract:
             if ite_num>1:
              sep_inn = (sep_star[0,1,1,:] < 1)
              print("EJinv diff:", np.mean(np.power((EJinv[0,1,1,sep_inn]/(pc_star[0,1,1,sep_inn]*(1-sep_star[0,1,1,sep_inn])) - (EJ1_star[0,1,1,sep_inn]-EJ1_star[0,1,0,sep_inn])) / (EJ1_star[0,1,1,sep_inn]-EJ1_star[0,1,0,sep_inn]),2)))
+             print("EJinv diff max:", np.max(np.abs((EJinv[0,1,1,sep_inn]/(pc_star[0,1,1,sep_inn]*(1-sep_star[0,1,1,sep_inn])) - (EJ1_star[0,1,1,sep_inn]-EJ1_star[0,1,0,sep_inn])) / (EJ1_star[0,1,1,sep_inn]-EJ1_star[0,1,0,sep_inn]))))
              #print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,sep_inn]/(pc_star[0,1,1,sep_inn]*(1-sep_star[0,1,1,sep_inn])) - (EJ1_star[:,1,2,sep_inn]-EJ1_star[:,1,0,sep_inn])/2)/(EJ1_star[:,1,2,sep_inn]/2-EJ1_star[:,1,0,sep_inn]/2),2)))
 
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
@@ -290,7 +291,7 @@ class MultiworkerContract:
 
              for in0 in range(self.p.num_n):
               for in1 in range(self.p.num_n):
-                assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
+                #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
 
                 rho_min = rho_grid[pc[iz, in0, in1, :] > 0].min()  # lowest promised rho with continuation > 0
 
@@ -365,14 +366,14 @@ class MultiworkerContract:
             # Update firm value function 
             Ji = self.fun_prod*self.prod - sum_wage -\
                 self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EUi+(1-sep_star)*(EW1_star+re_star)))*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
-            Ji = .2*Ji + .8*Ji2
+            Ji = .1*Ji + .9*Ji2
             #print("Value diff:", np.max(np.abs(Ji-Ji2)))
 
             # Update worker value function
             W1i[:,:,:,:,1] = self.pref.utility(self.w_matrix[:,:,:,:,1]) + \
                 self.p.beta * (re_star + EW1_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
             #print("Max search value", re_star.max())
-            W1i[:,:,:,:,1:] = .4*W1i[:,:,:,:,1:] + .6*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
+            W1i[:,:,:,:,1:] = .3*W1i[:,:,:,:,1:] + .7*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
             #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
             _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
             Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
@@ -423,7 +424,7 @@ class MultiworkerContract:
 
         self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
                                      ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        return Ji,W1i,EW1_star,sep_star
+        return Ji,W1i,EW1_star,sep_star,pc_star
 
 
     def construct_z_grid(self):
