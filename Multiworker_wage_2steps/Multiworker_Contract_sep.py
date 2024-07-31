@@ -11,6 +11,7 @@ from search import JobSearchArray
 from valuefunction_multi import PowerFunctionGrid
 from scipy.optimize import minimize
 from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import interp2d
 
 ax = np.newaxis
 
@@ -46,20 +47,21 @@ def array_dist(A,B):
     """
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 
-def production(sum_n):
-    return np.power(sum_n, 0.5)
+
 def fun_prod_1d(sum_n):
     return 0.5*np.power(sum_n+1e-10,-0.5) #1e-10 added to avoid division by zero in the lowest size state.
     #Still kinda insane though, makes it look like the future derivate at zero size is minus infty
     #Should I do a manual derivative instead?? Like a diff between zero and 1???
-
+def create_interp2d_interpolator(grid_x, grid_y, values):
+    values = values.T  # Transpose the values to match (n, m) shape
+    return interp2d(grid_x, grid_y, values, kind='cubic', fill_value=None)
 
 
 class MultiworkerContract:
     """
         This solves a classic contract model.
     """
-    def __init__(self, input_param=None):
+    def __init__(self, input_param=None, js=None):
 
         """
             Initialize with a parameter object.
@@ -111,7 +113,7 @@ class MultiworkerContract:
             self.sum_wage += self.w_grid[self.grid[i]]*self.N_grid[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
 
         #Setting up production grids
-        self.prod = production(self.sum_size)
+        self.prod = self.production(self.sum_size)
         self.prod_diff = self.production_diff(self.sum_size)
 
         #Job value and GE first
@@ -125,15 +127,16 @@ class MultiworkerContract:
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
             np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
-        self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
-        self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
-        
-
+        if js is None:
+            self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
+            self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+        else:
+            self.js = js       
 
         #Create a guess for the MWF value function
         #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #self.J_grid1 = np.zeros_like(self.J_grid)
-        self.J_grid = self.J_grid+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
+        self.J_grid = self.J_grid+np.divide(self.fun_prod*self.production(self.sum_size)-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #print("J_grid_diff:", np.max(abs(self.J_grid-self.J_grid1)))
         #The two methods are equivalent!! grid[1] really does capture the right value!!!
 
@@ -153,10 +156,12 @@ class MultiworkerContract:
 
         self.W1i = self.W1i + self.pref.utility(self.w_matrix/(1-self.p.beta)) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
         self.W1i[:,:,:,:,0] = self.W1i[:,:,:,:,0] + self.pref.utility(self.unemp_bf.min()/(1-self.p.beta))
+    def production(self,sum_n):
+        return np.power(sum_n, self.p.prod_alpha)
     def production_diff(self,sum):
 
         #diff = fun_prod(np.minimum(sum+1,self.K*(self.p.num_n-1))) - production(sum) + production(sum) - fun_prod(np.maximum(sum-1,0)) / 2*((np.logical_and(sum - 1>= 0, sum + 1 <= self.K * (self.p.num_n - 1))))
-        diff = (production(np.minimum(sum+1,self.K*(self.p.num_n-1))) - production(sum) + production(sum) - production(np.maximum(sum-1,0))) / (np.minimum(sum+1,self.K*(self.p.num_n-1)) - np.maximum(sum-1,0))
+        diff = (self.production(np.minimum(sum+1,self.K*(self.p.num_n-1))) - self.production(sum) + self.production(sum) - self.production(np.maximum(sum-1,0))) / (np.minimum(sum+1,self.K*(self.p.num_n-1)) - np.maximum(sum-1,0))
         
         return diff
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
@@ -204,6 +209,7 @@ class MultiworkerContract:
 
         EW1_star = np.copy(Ji)
         EJ1_star = np.copy(Ji)
+        EJ1_star_eps = np.copy(Ji)
         Jderiv = np.zeros_like(W1i)
         rho_bar = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n))
         rho_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))
@@ -253,7 +259,6 @@ class MultiworkerContract:
             Jderiv[:, :, 1:-1, :, 1] = (Ji[:, :, 2:, :] - Ji[:, :, 1:-1, :] + Ji[:, :, 1:-1, :] - Ji[:, :, :-2, :]) / 2
             Jderiv[:, 1:-1, :, :, 0] = (Ji[:, 2:, :, :] - Ji[:, 1:-1, :, :] + Ji[:, 1:-1, :, :] - Ji[:, :-2, :, :]) / 2
 
-            
             EJinv=(impose_decreasing(Jderiv[:,:,:,:,1]+self.w_grid[ax,ax,ax,:])-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             #So this EJinv, if I want it for the step zero, I should take the correct wage!
             if ite_num>1: #I'm using previous guesses for sep_star and EW1_star. This way, it is still as if EJinv0 is a function of today's states only, even though that's not exactly correct
@@ -262,8 +267,8 @@ class MultiworkerContract:
             #Checking whether the inverted expectation is indeed correct
             if ite_num>1:
              sep_inn = (sep_star[0,1,1,:] < 1)
-             print("EJinv diff:", np.mean(np.power((EJinv[0,1,1,sep_inn]/(pc_star[0,1,1,sep_inn]*(1-sep_star[0,1,1,sep_inn])) - (EJ1_star[0,1,1,sep_inn]-EJ1_star[0,1,0,sep_inn])) / (EJ1_star[0,1,1,sep_inn]-EJ1_star[0,1,0,sep_inn]),2)))
-             print("EJinv diff max:", np.max(np.abs((EJinv[0,1,1,sep_inn]/(pc_star[0,1,1,sep_inn]*(1-sep_star[0,1,1,sep_inn])) - (EJ1_star[0,1,1,sep_inn]-EJ1_star[0,1,0,sep_inn])) / (EJ1_star[0,1,1,sep_inn]-EJ1_star[0,1,0,sep_inn]))))
+             print("EJinv diff:", np.mean(np.power((EJinv[0,1,1,sep_inn]/(pc_star[0,1,1,sep_inn]*(1-sep_star[0,1,1,sep_inn])) - (EJ1_star_eps[0,1,1,sep_inn]-EJ1_star[0,1,1,sep_inn])/self.deriv_eps) / ((EJ1_star_eps[0,1,1,sep_inn]-EJ1_star[0,1,1,sep_inn])/self.deriv_eps),2)))
+             print("EJinv diff max:", np.max(np.abs((EJinv[0,1,1,sep_inn]/(pc_star[0,1,1,sep_inn]*(1-sep_star[0,1,1,sep_inn])) - (EJ1_star_eps[0,1,1,sep_inn]-EJ1_star[0,1,0,sep_inn])/self.deriv_eps) / ((EJ1_star_eps[0,1,1,sep_inn]-EJ1_star[0,1,1,sep_inn])/self.deriv_eps))))
              #print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,sep_inn]/(pc_star[0,1,1,sep_inn]*(1-sep_star[0,1,1,sep_inn])) - (EJ1_star[:,1,2,sep_inn]-EJ1_star[:,1,0,sep_inn])/2)/(EJ1_star[:,1,2,sep_inn]/2-EJ1_star[:,1,0,sep_inn]/2),2)))
 
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
@@ -288,8 +293,10 @@ class MultiworkerContract:
              (self.N_grid, rho_grid), EW1i[iz, 0, :, :], bounds_error=False, fill_value=None) #2nd dim set to 0 because n0_star=0
              EJpi_interpolator = RegularGridInterpolator(
              (self.N_grid, rho_grid), EJpi[iz, 0, :, :], bounds_error=False, fill_value=None)
+             #EW1i_interpolator = create_interp2d_interpolator(self.N_grid, rho_grid, EW1i[iz, 0, :, :])
+             #EJpi_interpolator = create_interp2d_interpolator(self.N_grid, rho_grid, EJpi[iz, 0, :, :])
 
-             for in0 in range(self.p.num_n):
+             for in0 in range(self.p.num_n-2):
               for in1 in range(self.p.num_n):
                 #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
 
@@ -352,6 +359,8 @@ class MultiworkerContract:
                 for iv in range(self.p.num_v):
                  #rho_n_star_points = np.array([iz, in0,  n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
                  rho_n_star_points = np.array([n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
+                 rho_n_star_points_eps = np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps, rho_star[iz, in0, in1, iv]])  
+                 EJ1_star_eps[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_eps)
                  EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points)
                  EJ1_star[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points)
                 

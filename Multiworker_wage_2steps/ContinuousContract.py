@@ -60,10 +60,10 @@ class ContinuousContract:
 
         # Worker and Match Productivity Heterogeneity in the Model
         self.Z_grid = self.construct_z_grid()   # Create match productivity grid
-        print("Z_grid:", self.Z_grid)
+        #print("Z_grid:", self.Z_grid)
         # Production Function in the Model
         self.fun_prod = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
-        print("fun_prod:", self.fun_prod)
+        #print("fun_prod:", self.fun_prod)
         # Unemployment Benefits across Worker Productivities
         self.unemp_bf = np.ones(self.p.num_x) * self.p.u_bf_m
 
@@ -205,7 +205,7 @@ class ContinuousContract:
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
             Ji = self.fun_prod[:, ax] - w_grid[ax, :] + self.p.beta * (1 - pe_star) * EJ1_star
             Ji = .2*Ji+.8*Ji2
-            print("Value diff:", np.max(np.abs(Ji-Ji2)))
+            #print("Value diff:", np.max(np.abs(Ji-Ji2)))
             # Update worker value function
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)

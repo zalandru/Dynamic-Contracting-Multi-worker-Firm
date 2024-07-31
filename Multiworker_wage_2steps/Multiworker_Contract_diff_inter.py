@@ -11,6 +11,8 @@ from search import JobSearchArray
 from valuefunction_multi import PowerFunctionGrid
 from scipy.optimize import minimize
 from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import Rbf
+from scipy.interpolate import interp2d
 
 ax = np.newaxis
 
@@ -46,12 +48,16 @@ def array_dist(A,B):
     """
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 
+def production(sum_n):
+    return np.power(sum_n, 0.5)
 def fun_prod_1d(sum_n):
     return 0.5*np.power(sum_n+1e-10,-0.5) #1e-10 added to avoid division by zero in the lowest size state.
     #Still kinda insane though, makes it look like the future derivate at zero size is minus infty
     #Should I do a manual derivative instead?? Like a diff between zero and 1???
-
-
+# Create 2D interpolators for EW1i and EJpi
+def create_interp2d_interpolator(grid_x, grid_y, values):
+    values = values.T  # Transpose the values to match (n, m) shape
+    return interp2d(grid_x, grid_y, values, kind='cubic', fill_value=None)
 
 class MultiworkerContract:
     """
@@ -135,7 +141,7 @@ class MultiworkerContract:
         #Create a guess for the MWF value function
         #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #self.J_grid1 = np.zeros_like(self.J_grid)
-        self.J_grid = self.J_grid+np.divide(self.fun_prod*self.production(self.sum_size)-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
+        self.J_grid = self.J_grid+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         
         #print("J_grid_diff:", np.max(abs(self.J_grid-self.J_grid1)))
         #The two methods are equivalent!! grid[1] really does capture the right value!!!
@@ -188,6 +194,8 @@ class MultiworkerContract:
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
 
+
+
     def J(self,update_eq=0,Ji=None,W1i=None):    
         """
         Computes the value of a job for each promised value v
@@ -195,12 +203,10 @@ class MultiworkerContract:
         """
         sum_wage = self.sum_wage
         rho_grid = self.rho_grid
-
         if Ji is None:
             Ji = self.J_grid
         else:
             Ji = np.zeros_like(self.J_grid)+Ji[:,ax,ax,:]-self.fun_prod+self.fun_prod*self.prod
-            Ji[:,0,0,:] = 0
         if W1i is None:
             W1i = self.W1i
         else:
@@ -237,11 +243,7 @@ class MultiworkerContract:
             # we compute the expected value next period by applying the transition rules
             EW1i = Ez(W1i[:,:,:,:,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
-
-            print("Ji at zero size", Ji[:,0,0,0])
             EJpi = Ez(Ji, self.Z_trans_mat)
-
-            print("EJpi at zero size", EJpi[self.p.z_0-1,0,0,0])
             # Define the interpolators for EW1i and EJpi
             #EW1i_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EW1i, bounds_error=False, fill_value=None)
             #EJpi_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EJpi, bounds_error=False, fill_value=None)
@@ -271,17 +273,12 @@ class MultiworkerContract:
             #if ite_num>1:
              #print("EJinv diff before:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJpi[:,1,1,:]-EJpi[:,1,0,:]))/(EJpi[:,1,1,:]-EJpi[:,1,0,:]),2)))
             
-            Jderiv = np.zeros_like(Ji)
-            for iz in range(self.p.num_z):
-             for in0 in range(self.p.num_n-2):
-                for iv in range(self.p.num_v):
-                    Ji_interpolator = RegularGridInterpolator(
-                        (self.N_grid,), Ji[iz, in0, :, iv], bounds_error=False, fill_value=None)            
-                    Jderiv[iz,in0,:,iv] = (Ji_interpolator(self.N_grid+self.deriv_eps)-Ji_interpolator(self.N_grid))/self.deriv_eps
-
+            
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             if ite_num>1:
              print ("EJinv", EJinv[self.p.z_0-1,1,1,99])
+             EJ1_star[iz, in0, in1, iv] = EJpi_extrapolator(n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv])[0]
+
              print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps),2)))
              print("EJinv diff max:", np.max(np.abs((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps))))
 
@@ -298,10 +295,17 @@ class MultiworkerContract:
 
 
             for iz in range(self.p.num_z):
+             # Create the 2D interpolators for EW1i and EJpi
+             EW1i_extrapolator = create_interp2d_interpolator(self.N_grid, rho_grid, EW1i[iz, 0, :, :])
+             EJpi_extrapolator = create_interp2d_interpolator(self.N_grid, rho_grid, EJpi[iz, 0, :, :])
+
+             #EW1i_extrapolator = create_rbf_interpolator(np.meshgrid(self.N_grid, rho_grid)[0], np.meshgrid(self.N_grid, rho_grid)[1], EW1i[iz, 0, :, :])
+             #EJpi_extrapolator = create_rbf_interpolator(np.meshgrid(self.N_grid, rho_grid)[0], np.meshgrid(self.N_grid, rho_grid)[1], EJpi[iz, 0, :, :])
              EW1i_interpolator = RegularGridInterpolator(
                         (self.N_grid, rho_grid), EW1i[iz, 0, :, :], bounds_error=False, fill_value=None) #2nd dim set to 0 because n0_star=0
              EJpi_interpolator = RegularGridInterpolator(
                         (self.N_grid, rho_grid), EJpi[iz, 0, :, :], bounds_error=False, fill_value=None)
+
              for in0 in range(self.p.num_n-2):
               for in1 in range(self.p.num_n):
                 #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
@@ -330,17 +334,22 @@ class MultiworkerContract:
                 #is that how I can solve this maybe? build up the value function for each step and size bit-by-bit???
                 #like, size 0 everywhere is a given. then we have 1 senior which ONLY depends on the value at full size zero.
                 #then we can finish off with 1 senior and 1 junior. that's kinda cool ngl
-                #Unfortunately, once I introduce hiring this no longer works.
                 # get EW1_Star and EJ1_star
 
 
                 for iv in range(self.p.num_v):
                  #rho_n_star_points = np.array([iz, in0,  n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
-                 rho_n_star_points = np.array([n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
-                 rho_n_star_points_eps = np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps, rho_star[iz, in0, in1, iv]])  
-                 EJ1_star_eps[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_eps)
-                 EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points)
-                 EJ1_star[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points)
+                    rho_n_star_points = np.array([n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
+                    rho_n_star_points_eps = np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps, rho_star[iz, in0, in1, iv]])  
+                 #if (in0 == 1) & (in1 == 1):
+                  #EW1_star[iz, in0, in1, iv] = EW1i_extrapolator(n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv])
+                  #EJ1_star[iz, in0, in1, iv] = EJpi_extrapolator(n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv])
+                    EJ1_star_eps[iz, in0, in1, iv] = EJpi_extrapolator(rho_n_star_points_eps[0],rho_n_star_points_eps[1])                    
+                    EW1_star[iz, in0, in1, iv] = EW1i_extrapolator(n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv])[0]
+                    EJ1_star[iz, in0, in1, iv] = EJpi_extrapolator(n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv])[0]
+                 #else:
+                 # EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points)
+                 # EJ1_star[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points)
                 
                 #EW1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EW1i[iz, 0, in1, :])
                 #EJ1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EJpi[iz, in0, in1, :]) #Andrei: how does interpolating the shadow cost give us the future Value?
@@ -355,7 +364,6 @@ class MultiworkerContract:
             Ji = self.fun_prod*self.prod - sum_wage -\
                 self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
             Ji = .2*Ji + .8*Ji2
-
             #print("Value diff:", np.max(np.abs(Ji-Ji2)))
 
             # Update worker value function

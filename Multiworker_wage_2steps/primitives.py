@@ -22,14 +22,14 @@ class Parameters:
 
         # Points in the Model
         self.num_l  = 101     # Number of points of evaluation
-        self.num_v  = 200     # Number of points in the grid for V
+        self.num_v  = 100     # Number of points in the grid for V
         #self.num_x  = 15      # Number of points of support for worker productivity
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
         #self.num_np = 5       # Number of non-permanent levels
         self.num_np = 1       # Number of non-permanent levels
         self.num_z  = 7      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 2      # Number of points of support for the number of workers
+        self.num_n  = 4      # Number of points of support for the number of workers
 
 
         # Time periods in the Model
@@ -68,6 +68,9 @@ class Parameters:
         self.prod_err_w  = 0.0           # Measurement error on wages
         self.prod_err_y  = 0.0           # Measurement error on wages
 
+        #DRS production
+        self.prod_alpha = 0.2
+
         # Discounting Rates
         self.beta     = 1 - (1 - 0.95) * self.dt  # Impatience
         self.int_rate = 1 / self.beta - 1         # Period interest rate
@@ -89,7 +92,7 @@ class Parameters:
         self.verbose          = 5
         self.iter_display     = 25
         self.tol_simple_model = 1e-9
-        self.tol_full_model   = 1e-6
+        self.tol_full_model   = 1e-9
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
         self.eq_weighting_at0 = 0.01      # fitting J function with weight around 0
