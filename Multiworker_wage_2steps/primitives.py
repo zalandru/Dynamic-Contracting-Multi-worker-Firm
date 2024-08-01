@@ -69,7 +69,7 @@ class Parameters:
         self.prod_err_y  = 0.0           # Measurement error on wages
 
         #DRS production
-        self.prod_alpha = 0.2
+        self.prod_alpha = 0.5
 
         # Discounting Rates
         self.beta     = 1 - (1 - 0.95) * self.dt  # Impatience

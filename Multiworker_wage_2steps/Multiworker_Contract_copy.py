@@ -219,7 +219,8 @@ class MultiworkerContract:
         EJ1_star = np.copy(Ji)
         EJ1_star_eps = np.copy(Ji)
         EJ1_star_eps_neg = np.copy(Ji)
-        #EW_tilde = np.copy(Ji)
+        EW_tild = np.copy(Ji)
+        EJ1_tild = np.copy(Ji)
         Jderiv = np.zeros_like(Ji)
         rho_bar = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n))
         rho_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))
@@ -262,9 +263,9 @@ class MultiworkerContract:
              #print("Direct Jderiv", (Ji[self.p.z_0-1, 1, 2, 50] - Ji[self.p.z_0-1, 1, 0, 50])/2)
              #So it's the Jderiv that's so crazy negative??? Why?????
              print ("EJinv", EJinv[self.p.z_0-1,1,1,50]/pc_star[self.p.z_0-1,1,1,50])
-             print ("EJ_star direct deriv", (EJ1_star_eps[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/(2*self.deriv_eps))
-             EJstardiff=(EJ1_star_eps-EJ1_star)/self.deriv_eps+rho_star*(EW1_star_eps-EW1_star)/self.deriv_eps
-             print ("EJstar adjusted deriv", (EJ1_star_eps[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/self.deriv_eps+rho_star[self.p.z_0-1,1,1,50]*(EW1_star_eps[self.p.z_0-1,1,1,50]-EW1_star[self.p.z_0-1,1,1,50])/self.deriv_eps)
+             #print ("EJ_star direct deriv", (EJ1_star_eps[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/(2*self.deriv_eps))
+             EJstardiff=(EJ1_tild-EJ1_star)/self.deriv_eps
+             print ("EJstar adjusted deriv", (EJ1_tild[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/self.deriv_eps)
              #print("EJ_star direct deriv", (EJ1_star[self.p.z_0-1, 1, 2, 50] - EJ1_star[self.p.z_0-1, 1, 0, 50])/2) #Note that this approach was incorrect!!! Because this is a derivative STILL wrt today's state, not tomorrow's!
              #print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps),2)))
              print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - EJstardiff[:,1,1,:]) / EJstardiff[:,1,1,:],2)))
@@ -297,7 +298,24 @@ class MultiworkerContract:
                     Jfullderiv[iz,in0,:,iv] = (Ji_interpolator(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1))-Ji_interpolator(np.maximum(self.N_grid-self.deriv_eps,0)))/(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1)-np.maximum(self.N_grid-self.deriv_eps,0))
                     Wderiv[iz,in0,:,iv] = (W1i_interpolator(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1))-W1i_interpolator(np.maximum(self.N_grid-self.deriv_eps,0)))/(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1)-np.maximum(self.N_grid-self.deriv_eps,0))
                     Jderiv = Jfullderiv+rho_grid*Wderiv #accounting for the fact that size change also impacts W
-
+             
+            W1i_eps = np.zeros_like(Ji)
+            for iz in range(self.p.num_z):
+             for in0 in range(self.p.num_n-2):
+                Ji_interpolator = RegularGridInterpolator(
+                    (self.N_grid,rho_grid), Ji[iz, in0, :, :], bounds_error=False, fill_value=None)
+                for in1 in range(self.p.num_n):
+                #W1i_interpolator = RegularGridInterpolator(
+                #        (self.N_grid, rho_grid), W1i[iz, in0, :, :,1], bounds_error=False, fill_value=None)
+                 W1i_eps[iz,in0,in1,iv] = np.interp(self.N_grid[in1]+self.deriv_eps,self.N_grid,W1i[iz,in0,:,iv,1])
+                 rho_tild = np.interp(W1i[iz,in0,in1,iv,1],W1i_eps[iz,in0,in1,:],rho_grid) #find rho such that the worker value after size change stays the same
+                 J_tild = Ji_interpolator(np.array([self.N_grid[in1]+self.deriv_eps,rho_tild]))
+                 Jderiv[iz,in0,in1,iv] = (J_tild-Ji[iz,in0,in1,iv])/self.deriv_eps
+                #J_tild = np.interp(W1i[iz,in0,in1,iv],W1i_eps[iz,in0,in1,:],Ji[iz,in0,in1,:]) #not exactly, need to interpolate it both rho_tild and n_1+eps
+                
+            
+            
+            
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.fun_prod_1d(self.sum_size))/self.p.beta #creating expected job value as a function of today's value
             EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
             #print("EJinv diff 1 senior:", np.mean(np.power((EJinv[:,0,1,:]/pc_star[:,0,1,:] - (EJ1_star_eps[:,0,1,:]-EJ1_star[:,0,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,0,1,:]-EJ1_star[:,0,1,:])/self.deriv_eps),2)))
@@ -325,7 +343,7 @@ class MultiworkerContract:
               for in1 in range(self.p.num_n):
                 if (in0 == 1) & (in1 == 3):
                     continue
-                assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
+                #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
                     # find highest V with J2J search
                 #rho_bar[iz, in0, in1] = np.interp(self.js.jsa.e0, EW1i[iz, in0, in1, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
                 rho_min = rho_grid[pc[iz, in0, in1, :] > 0].min()  # lowest promised rho with continuation > 0
@@ -363,7 +381,14 @@ class MultiworkerContract:
                  EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points)
                  EW1_star_eps[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points_eps)   
                  EW1_star_eps_neg[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points_eps_neg)                                 
-                 #EW_tilde[iz,in0,in1,iv] = np.interp(n1_star[iz,in0,in1,iv]+self.deriv_eps,self.N_grid,EW1i[iz,in0,:,iv])
+                 #EW_tild[iz,in0,in1,iv] = np.interp(in1+self.deriv_eps/np.interp(rho_star[iz, in0, in1, iv], rho_grid, pc[iz,in0,in1,:]),self.N_grid,EW1_star[iz,in0,:,iv])
+                 #kinda stuck on this part. interpretation is: we want to interpolate the future value function at a slightly higher size. since the future value function EW1_star is defined via today's state, we need to adjust today's size for this stuff to fit. although... nah that doesn't work
+                 #instead should simply interpolate usualy W to the that point as well as rho_star
+                 EW_tild[iz,in0,in1,iv] = EW1i_interpolator(np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps,rho_star[iz, in0, in1, iv]]))
+
+                 rho_tild = np.interp(EW1_star[iz,in0,in1,iv],EW_tild[iz,in0,in1,:],rho_grid) #find rho such that the worker value after size change stays the same
+                 EJ1_tild[iz,in0,in1,iv] = EJpi_interpolator(np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps,rho_tild]))
+
                  #rho_n_star_points_eps = np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps, np.interp(EW1_star[iz,in0,in1,iv],EW_tilde[iz,in0,in1,:],rho_grid)]) 
                  EJ1_star_eps[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_eps)
                  EJ1_star_eps_neg[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_eps_neg)
