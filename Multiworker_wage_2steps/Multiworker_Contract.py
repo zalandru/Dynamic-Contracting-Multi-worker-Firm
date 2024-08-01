@@ -46,11 +46,6 @@ def array_dist(A,B):
     """
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 
-def fun_prod_1d(sum_n):
-    return 0.5*np.power(sum_n+1e-10,-0.5) #1e-10 added to avoid division by zero in the lowest size state.
-    #Still kinda insane though, makes it look like the future derivate at zero size is minus infty
-    #Should I do a manual derivative instead?? Like a diff between zero and 1???
-
 
 
 class MultiworkerContract:
@@ -135,7 +130,7 @@ class MultiworkerContract:
         #Create a guess for the MWF value function
         #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #self.J_grid1 = np.zeros_like(self.J_grid)
-        self.J_grid = self.J_grid+np.divide(self.fun_prod*self.production(self.sum_size)-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
+        self.J_grid = self.J_grid+np.divide(self.fun_prod*self.prod-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         
         #print("J_grid_diff:", np.max(abs(self.J_grid-self.J_grid1)))
         #The two methods are equivalent!! grid[1] really does capture the right value!!!
@@ -154,8 +149,8 @@ class MultiworkerContract:
         # And then all the actually meaningful steps are 1,2... etc, so when K=2 with just have 1 meaningful step            
         self.w_matrix[:,:,:,:,1] = self.w_grid[ax,ax,ax,:]
 
-        self.W1i = self.W1i + self.pref.utility(self.w_matrix/(1-self.p.beta)) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
-        self.W1i[:,:,:,:,0] = self.W1i[:,:,:,:,0] + self.pref.utility(self.unemp_bf.min()/(1-self.p.beta))
+        self.W1i[:,:,:,:,1] = self.W1i[:,:,:,:,1] + self.pref.utility(self.w_matrix[:,:,:,:,1])/(1-self.p.beta) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
+        self.W1i[:,:,:,:,0] = self.W1i[:,:,:,:,0] + self.pref.utility(self.unemp_bf.min())/(1-self.p.beta)
     def production(self,sum_n):
         return np.power(sum_n, self.p.prod_alpha)
     def production_diff(self,sum):
@@ -163,6 +158,10 @@ class MultiworkerContract:
         diff = (self.production(np.minimum(sum+1,self.K*(self.p.num_n-1))) - self.production(sum) + self.production(sum) - self.production(np.maximum(sum-1,0))) / (np.minimum(sum+1,self.K*(self.p.num_n-1)) - np.maximum(sum-1,0))
         
         return diff
+    def fun_prod_1d(self,sum_n):
+        return  self.p.prod_alpha*np.power(sum_n,self.p.prod_alpha-1)*(sum_n>0)
+    #Still kinda insane though, makes it look like the future derivate at zero size is minus infty
+    #Should I do a manual derivative instead?? Like a diff between zero and 1???
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
         """
         :param EW1: Expected value of employment
@@ -238,13 +237,9 @@ class MultiworkerContract:
             EW1i = Ez(W1i[:,:,:,:,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
 
-            print("Ji at zero size", Ji[:,0,0,0])
+            #print("Ji at zero size", Ji[:,0,0,0])
             EJpi = Ez(Ji, self.Z_trans_mat)
-
-            print("EJpi at zero size", EJpi[self.p.z_0-1,0,0,0])
-            # Define the interpolators for EW1i and EJpi
-            #EW1i_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EW1i, bounds_error=False, fill_value=None)
-            #EJpi_interpolator = RegularGridInterpolator((self.Z_grid, self.N_grid, self.N_grid,rho_grid), EJpi, bounds_error=False, fill_value=None)
+            #print("EJpi at zero size", EJpi[self.p.z_0-1,0,0,0])
 
             # get worker decisions
             _, re, pc = self.getWorkerDecisions(EW1i)
@@ -277,13 +272,22 @@ class MultiworkerContract:
                 for iv in range(self.p.num_v):
                     Ji_interpolator = RegularGridInterpolator(
                         (self.N_grid,), Ji[iz, in0, :, iv], bounds_error=False, fill_value=None)            
-                    Jderiv[iz,in0,:,iv] = (Ji_interpolator(self.N_grid+self.deriv_eps)-Ji_interpolator(self.N_grid))/self.deriv_eps
+                    Jderiv[iz,in0,:,iv] = (Ji_interpolator(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1))-Ji_interpolator(np.maximum(self.N_grid-self.deriv_eps,0)))/(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1)-np.maximum(self.N_grid-self.deriv_eps,0))
+            
 
-            EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
+            EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.fun_prod_1d(self.sum_size))/self.p.beta #creating expected job value as a function of today's value
+            EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
             if ite_num>1:
-             print ("EJinv", EJinv[self.p.z_0-1,1,1,99])
+             print("Components of the calculation: Jderiv,marg prod, wage,pc", Jderiv[self.p.z_0-1,1,1,50],self.fun_prod[self.p.z_0-1,0,0,0]*self.fun_prod_1d(self.sum_size[self.p.z_0-1,1,1,50]),self.w_grid[50],pc_star[self.p.z_0-1,1,1,50]) 
+             #print("Direct Jderiv", (Ji[self.p.z_0-1, 1, 2, 50] - Ji[self.p.z_0-1, 1, 0, 50])/2)
+             #So it's the Jderiv that's so crazy negative??? Why?????
+             print ("EJinv", EJinv[self.p.z_0-1,1,1,50]/pc_star[self.p.z_0-1,1,1,50])
+             print ("EJpi diff", (EJ1_star_eps[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/self.deriv_eps)
+             print("EJpi direct diff", (EJpi[self.p.z_0-1, 1, 2, 50] - EJpi[self.p.z_0-1, 1, 0, 50])/2) #Note that this approach was incorrect!!! Because this is a derivative STILL wrt today's state, not tomorrow's!
              print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps),2)))
-             print("EJinv diff max:", np.max(np.abs((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps))))
+             #print("EJinv diff 1 senior:", np.mean(np.power((EJinv[:,0,1,:]/pc_star[:,0,1,:] - (EJ1_star_eps[:,0,1,:]-EJ1_star[:,0,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,0,1,:]-EJ1_star[:,0,1,:])/self.deriv_eps),2)))
+             
+             #print("EJinv diff max:", np.max(np.abs((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps))))
 
             
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected

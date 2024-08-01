@@ -27,13 +27,13 @@ class Parameters:
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
         #self.num_np = 5       # Number of non-permanent levels
         self.num_np = 1       # Number of non-permanent levels
-        self.num_z  = 7      # Number of points for match productivity
+        self.num_z  = 1      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
         self.num_n  = 4      # Number of points of support for the number of workers
 
 
         # Time periods in the Model
-        self.dt     = 1.0 #0.25    # Time as a Fraction of Year
+        self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
         # Utility Function Parameters
         self.u_rho = 1.5      # Risk aversion coefficient, was 1.5
@@ -76,7 +76,7 @@ class Parameters:
         self.int_rate = 1 / self.beta - 1         # Period interest rate
 
         # Unemployment Parameters
-        self.u_bf_m = 0.05       # Intercept of benefit function for unemployed(x)
+        self.u_bf_m = 1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
 
         # Unemployment Parameters w_net = tau * w ^ lambda
