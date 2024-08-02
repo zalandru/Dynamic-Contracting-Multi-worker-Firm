@@ -113,7 +113,7 @@ class ContinuousContract_inv:
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
 
-    def J(self,update_eq=1):    
+    def J(self,update_eq=1,Ji=None,W1i=None):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -121,9 +121,11 @@ class ContinuousContract_inv:
                 # create representation for J1p
         w_grid=self.w_grid
         rho_grid=self.rho_grid
-        Ji= self.simple_J
-        W1i=np.zeros((self.p.num_z, self.p.num_v))
-        W1i=W1i+self.v_grid[ax,:]
+        if Ji is None:
+         Ji= self.simple_J
+        if W1i is None:
+         W1i=np.zeros((self.p.num_z, self.p.num_v))
+         W1i=W1i+self.v_grid[ax,:]
 
         J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
 
@@ -166,7 +168,10 @@ class ContinuousContract_inv:
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
             
             #Andrei: this is the FOC that I would actually like to run
-            EJinv=(impose_decreasing(Ji+w_grid[ax,:])-self.fun_prod[:,ax])/self.p.beta #creating expected job value as a function of today's value
+            EJinv=(Ji+w_grid[ax,:]-self.fun_prod[:,ax])/self.p.beta #creating expected job value as a function of today's value
+            if ite_num>1:
+             print("EJinv avg diff", np.mean(np.abs((EJinv/(1-pe_star)-EJ1_star)/EJ1_star)))             
+             print("EJinv max diff", np.max(np.abs((EJinv/(1-pe_star)-EJ1_star)/EJ1_star)))
             foc = rho_grid[ax, :,ax] - (EJinv[:,ax,:]/pc[:,:,ax])* (log_diff[:,:,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
             
             #foc = rho_grid[ax, :,ax] - ((impose_decreasing(Ji[:,ax,:]+w_grid[ax,:,ax])-self.fun_prod[:,ax,ax])/(self.p.beta*pc[:,:,ax]))* (log_diff[:,:,ax] / self.deriv_eps)
@@ -232,7 +237,6 @@ class ContinuousContract_inv:
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
             Ji = self.fun_prod[:, ax] - w_grid[ax, :] + self.p.beta * (1 - pe_star) * EJ1_star
             Ji = .4*Ji + .6*Ji2
-            print("Value diff:", np.max(np.abs(Ji-Ji2)))
             # Update worker value function
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)

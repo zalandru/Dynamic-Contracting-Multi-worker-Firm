@@ -262,13 +262,16 @@ class MultiworkerContract:
              #print("Components of the calculation: Jderiv,marg prod, wage,pc", Jderiv[self.p.z_0-1,1,1,50],self.fun_prod[self.p.z_0-1,0,0,0]*self.fun_prod_1d(self.sum_size[self.p.z_0-1,1,1,50]),self.w_grid[50],pc_star[self.p.z_0-1,1,1,50]) 
              #print("Direct Jderiv", (Ji[self.p.z_0-1, 1, 2, 50] - Ji[self.p.z_0-1, 1, 0, 50])/2)
              #So it's the Jderiv that's so crazy negative??? Why?????
-             print ("EJinv", EJinv[self.p.z_0-1,1,1,50]/pc_star[self.p.z_0-1,1,1,50])
+             #print ("EJinv", EJinv[self.p.z_0-1,1,1,50]/pc_star[self.p.z_0-1,1,1,50])
              #print ("EJ_star direct deriv", (EJ1_star_eps[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/(2*self.deriv_eps))
              EJstardiff=(EJ1_tild-EJ1_star)/self.deriv_eps
              print ("EJstar adjusted deriv", (EJ1_tild[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/self.deriv_eps)
+             print ("EJstar adjusted deriv0", (EJ1_star_eps[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/self.deriv_eps+rho_star[self.p.z_0-1,1,1,50]*(EW1_star_eps[self.p.z_0-1,1,1,50]-EW1_star[self.p.z_0-1,1,1,50])/self.deriv_eps)
+
              #print("EJ_star direct deriv", (EJ1_star[self.p.z_0-1, 1, 2, 50] - EJ1_star[self.p.z_0-1, 1, 0, 50])/2) #Note that this approach was incorrect!!! Because this is a derivative STILL wrt today's state, not tomorrow's!
              #print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps),2)))
              print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - EJstardiff[:,1,1,:]) / EJstardiff[:,1,1,:],2)))
+             #print("EJinv diff 1 sen:", np.mean(np.power((EJinv[:,0,1,:]/pc_star[:,0,1,:] - EJstardiff[:,0,1,:]) / EJstardiff[:,0,1,:],2)))
     
 
             # First boundary condition: forward difference
@@ -288,35 +291,48 @@ class MultiworkerContract:
             Jfullderiv = np.zeros_like(Ji)
             Wderiv = np.zeros_like(Ji)
             Jderiv = np.zeros_like(Ji)
+            Jderiv0 = np.zeros_like(Ji)
             for iz in range(self.p.num_z):
              for in0 in range(self.p.num_n-2):
+              for in1 in range(self.p.num_n):
                 for iv in range(self.p.num_v):
-                    Ji_interpolator = RegularGridInterpolator(
-                        (self.N_grid,), Ji[iz, in0, :, iv], bounds_error=False, fill_value=None)
-                    W1i_interpolator = RegularGridInterpolator(
-                        (self.N_grid,), W1i[iz, in0, :, iv,1], bounds_error=False, fill_value=None)                
-                    Jfullderiv[iz,in0,:,iv] = (Ji_interpolator(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1))-Ji_interpolator(np.maximum(self.N_grid-self.deriv_eps,0)))/(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1)-np.maximum(self.N_grid-self.deriv_eps,0))
-                    Wderiv[iz,in0,:,iv] = (W1i_interpolator(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1))-W1i_interpolator(np.maximum(self.N_grid-self.deriv_eps,0)))/(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1)-np.maximum(self.N_grid-self.deriv_eps,0))
-                    Jderiv = Jfullderiv+rho_grid*Wderiv #accounting for the fact that size change also impacts W
-             
+                    #Ji_interpolator = RegularGridInterpolator(
+                    #    (self.N_grid,), Ji[iz, in0, :, iv], bounds_error=False, fill_value=None)
+                    #W1i_interpolator = RegularGridInterpolator(
+                    #    (self.N_grid,), W1i[iz, in0, :, iv,1], bounds_error=False, fill_value=None)                
+                    #Jfullderiv[iz,in0,:,iv] = (Ji_interpolator(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1))-Ji_interpolator(np.maximum(self.N_grid-self.deriv_eps,0)))/(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1)-np.maximum(self.N_grid-self.deriv_eps,0))
+                    #Wderiv[iz,in0,:,iv] = (W1i_interpolator(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1))-W1i_interpolator(np.maximum(self.N_grid-self.deriv_eps,0)))/(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1)-np.maximum(self.N_grid-self.deriv_eps,0))
+                    Jfullderiv[iz,in0,in1,iv] = (np.interp(self.N_grid[in1]+self.deriv_eps,self.N_grid,Ji[iz,in0,:,iv])-Ji[iz,in0,in1,iv])/(self.deriv_eps)
+                    Wderiv[iz,in0,in1,iv] = (np.interp(self.N_grid[in1]+self.deriv_eps,self.N_grid,W1i[iz,in0,:,iv,1])-W1i[iz,in0,in1,iv,1])/(self.deriv_eps)
+            Jderiv0 = Jfullderiv+rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
+            
             W1i_eps = np.zeros_like(Ji)
             for iz in range(self.p.num_z):
              for in0 in range(self.p.num_n-2):
                 Ji_interpolator = RegularGridInterpolator(
                     (self.N_grid,rho_grid), Ji[iz, in0, :, :], bounds_error=False, fill_value=None)
+
                 for in1 in range(self.p.num_n):
-                #W1i_interpolator = RegularGridInterpolator(
-                #        (self.N_grid, rho_grid), W1i[iz, in0, :, :,1], bounds_error=False, fill_value=None)
-                 W1i_eps[iz,in0,in1,iv] = np.interp(self.N_grid[in1]+self.deriv_eps,self.N_grid,W1i[iz,in0,:,iv,1])
-                 rho_tild = np.interp(W1i[iz,in0,in1,iv,1],W1i_eps[iz,in0,in1,:],rho_grid) #find rho such that the worker value after size change stays the same
-                 J_tild = Ji_interpolator(np.array([self.N_grid[in1]+self.deriv_eps,rho_tild]))
-                 Jderiv[iz,in0,in1,iv] = (J_tild-Ji[iz,in0,in1,iv])/self.deriv_eps
+                 for iv in range(self.p.num_v):
+                  W1i_eps[iz,in0,in1,iv] = np.interp(self.N_grid[in1]+self.deriv_eps,self.N_grid,W1i[iz,in0,:,iv,1])
+                 #rho_interpolator = RegularGridInterpolator( 
+                 #   (W1i_eps[iz,in0,in1,:],), rho_grid, bounds_error=False, fill_value=None)
+                 for iv in range(self.p.num_v):
+                  #BIG NOTE: np.interp requires that the x-axis is monotonically increasing!!!
+                  #But that's okay, because the worker value should indeed be increasing in iv
+                  #rho_tild = rho_interpolator(W1i_eps[iz,in0,in1,iv])
+                  rho_tild = np.interp(W1i[iz,in0,in1,iv,1],W1i_eps[iz,in0,in1,:],rho_grid) #find rho such that the worker value after size change stays the same
+                  J_tild = Ji_interpolator(np.array([self.N_grid[in1]+self.deriv_eps,rho_tild]))
+                  Jderiv[iz,in0,in1,iv] = (J_tild-Ji[iz,in0,in1,iv])/self.deriv_eps
                 #J_tild = np.interp(W1i[iz,in0,in1,iv],W1i_eps[iz,in0,in1,:],Ji[iz,in0,in1,:]) #not exactly, need to interpolate it both rho_tild and n_1+eps
-                
-            
+            print("Jderiv diff:", np.max(np.abs(Jderiv-Jderiv0)))
+            #print("Jderiv0, Jderiv", Jderiv0[0,1,1,50], Jderiv[0,1,1,50])
+            if ite_num>1:
+             print("EJinv,EJinv0", EJinv[0,1,1,50], EJinv0[0,1,1,50])
             
             
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.fun_prod_1d(self.sum_size))/self.p.beta #creating expected job value as a function of today's value
+            EJinv0=(Jderiv0+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.fun_prod_1d(self.sum_size))/self.p.beta #creating expected job value as a function of today's value
             EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
             #print("EJinv diff 1 senior:", np.mean(np.power((EJinv[:,0,1,:]/pc_star[:,0,1,:] - (EJ1_star_eps[:,0,1,:]-EJ1_star[:,0,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,0,1,:]-EJ1_star[:,0,1,:])/self.deriv_eps),2)))
              
@@ -330,7 +346,7 @@ class MultiworkerContract:
             #if ite_num>1:
             # foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[:, :, :, ax, :] / pc_star[:, :, :, ax, :])* (log_diff[:, :, :, :, ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
 
-            foc = foc*self.sum_size[:, :, :, :, ax] - self.N_grid[self.grid[2][:, :, :, ax, :]]*rho_grid[ax, ax, ax, ax, :] - self.N_grid[self.grid[1][:, :, :, ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i[:, :, :, :, ax]+re[:, :, :, :, ax]))
+            foc = foc*self.sum_size[:, :, :, ax, :] - self.N_grid[self.grid[2][:, :, :, ax, :]]*rho_grid[ax, ax, ax, ax, :] - self.N_grid[self.grid[1][:, :, :, ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i[:, :, :, :, ax]+re[:, :, :, :, ax]))
             assert (np.isnan(foc) & (pc[:, :, :, :, ax] > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
@@ -354,7 +370,7 @@ class MultiworkerContract:
                     for iv in Isearch_indices:
 
                       rho_star[iz,in0, in1, iv] = np.interp(0,
-                                                    impose_increasing(foc[iz, in0, in1, Isearch, iv]),
+                                                    foc[iz, in0, in1, Isearch, iv],
                                                     rho_grid[Isearch])                
                 Iquit = ~(pc[iz, in0, in1, :] > 0) 
                 if Iquit.sum() > 0:
@@ -407,7 +423,7 @@ class MultiworkerContract:
             # Update firm value function 
             Ji = self.fun_prod*self.prod - sum_wage -\
                 self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
-            Ji = .2*Ji + .8*Ji2
+            Ji = .4*Ji + .6*Ji2
 
             #print("Value diff:", np.max(np.abs(Ji-Ji2)))
 
@@ -415,7 +431,7 @@ class MultiworkerContract:
             W1i[:,:,:,:,1] = self.pref.utility(self.w_matrix[:,:,:,:,1]) + \
                 self.p.beta * (re_star + EW1_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
             #print("Max search value", re_star.max())
-            W1i[:,:,:,:,1:] = .4*W1i[:,:,:,:,1:] + .6*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
+            W1i[:,:,:,:,1:] = .2*W1i[:,:,:,:,1:] + .8*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
             #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
 
 

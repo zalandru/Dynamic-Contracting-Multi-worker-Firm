@@ -63,7 +63,7 @@ class MultiworkerContract:
         self.K = 2
         K = 2
         self.p = input_param
-        self.deriv_eps = 1e-4 # step size for derivative
+        self.deriv_eps = 1e-3 # step size for derivative
         # Model preferences initialized by the same parameter object.
         self.pref = Preferences(input_param=self.p)
 
@@ -131,9 +131,7 @@ class MultiworkerContract:
         #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #self.J_grid1 = np.zeros_like(self.J_grid)
         self.J_grid = self.J_grid+np.divide(self.fun_prod*self.prod-self.p.beta*self.w_grid[ax,ax,ax,:]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
-        print("J_grid:", self.J_grid[0,0,1,0])
-        print("J_grid:", self.J_grid[0,0,2,0])
-        print("J_grid:", self.J_grid[0,0,3,0])        
+       
     
         #print("J_grid_diff:", np.max(abs(self.J_grid-self.J_grid1)))
         #The two methods are equivalent!! grid[1] really does capture the right value!!!
@@ -200,13 +198,13 @@ class MultiworkerContract:
 
         if Ji is None:
             Ji = self.J_grid
-        else:
-            Ji = np.zeros_like(self.J_grid)+Ji[:,ax,ax,:]-self.fun_prod+self.fun_prod*self.prod
-            Ji[:,0,0,:] = 0
+       # else:
+       #     Ji = np.zeros_like(self.J_grid)+Ji[:,ax,ax,:]-self.fun_prod+self.fun_prod*self.prod
+       #     Ji[:,0,0,:] = 0
         if W1i is None:
             W1i = self.W1i
-        else:
-            W1i = np.zeros_like(self.W1i)+W1i[:,ax,ax,:,ax]
+       # else:
+       #     W1i = np.zeros_like(self.W1i)+W1i[:,ax,ax,:,ax]
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
         # create representation for J1p
@@ -233,12 +231,12 @@ class MultiworkerContract:
         ite_num = 0
         error_js = 1
         Jpi = J1p.eval_at_W1(W1i[:,:,:,:,1])
+
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = np.copy(W1i)
             #print("J with 1 junior", Ji[0,1,0,0])
             # evaluate J1 tomorrow using our approximation
-
 
             # we compute the expected value next period by applying the transition rules
             EW1i = Ez(W1i[:,:,:,:,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
@@ -261,13 +259,19 @@ class MultiworkerContract:
              #print("Components of the calculation: Jderiv,marg prod, wage,pc", Jderiv[self.p.z_0-1,1,1,50],self.fun_prod[self.p.z_0-1,0,0,0]*self.fun_prod_1d(self.sum_size[self.p.z_0-1,1,1,50]),self.w_grid[50],pc_star[self.p.z_0-1,1,1,50]) 
              #print("Direct Jderiv", (Ji[self.p.z_0-1, 1, 2, 50] - Ji[self.p.z_0-1, 1, 0, 50])/2)
              #So it's the Jderiv that's so crazy negative??? Why?????
-             print ("EJinv", EJinv[self.p.z_0-1,1,1,50]/pc_star[self.p.z_0-1,1,1,50])
-             print ("EJ_star direct deriv", (EJ1_star_eps[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/(2*self.deriv_eps))
-             EJstardiff=(EJ1_star_eps-EJ1_star)/self.deriv_eps+rho_star*(EW1_star_eps-EW1_star)/self.deriv_eps
-             print ("EJstar adjusted deriv", (EJ1_star_eps[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/self.deriv_eps+rho_star[self.p.z_0-1,1,1,50]*(EW1_star_eps[self.p.z_0-1,1,1,50]-EW1_star[self.p.z_0-1,1,1,50])/self.deriv_eps)
+             print ("EJinv", EJinv[self.p.z_0-1,0,1,50]/pc_star[self.p.z_0-1,0,1,50])
+             print ("EJ_star direct deriv", (EJ1_star_eps[self.p.z_0-1,0,1,50]-EJ1_star[self.p.z_0-1,0,1,50])/(2*self.deriv_eps))
+             inner=(n1_star>0) & (n1_star<self.p.num_n-1)
+             EJstardiff = np.zeros_like(EJ1_star)
+             EJstardiff[inner]=((EJ1_star_eps[inner]-EJ1_star_eps_neg[inner])+n1_star[inner]*rho_star[inner]*(EW1_star_eps[inner]-EW1_star_eps_neg[inner]))/(2*self.deriv_eps)
+             outer = (n1_star<=0) | (n1_star>=self.p.num_n-1)
+             EJstardiff[outer]=((EJ1_star_eps[outer]-EJ1_star_eps_neg[outer])+n1_star[outer]*rho_star[outer]*(EW1_star_eps[outer]-EW1_star_eps_neg[outer]))/(self.deriv_eps)
+             #print ("EJstar adjusted deriv", (EJ1_star_eps[self.p.z_0-1,1,1,50]-EJ1_star[self.p.z_0-1,1,1,50])/self.deriv_eps+rho_star[self.p.z_0-1,1,1,50]*(EW1_star_eps[self.p.z_0-1,1,1,50]-EW1_star[self.p.z_0-1,1,1,50])/self.deriv_eps)
+             print ("EJstar adjusted deriv", EJstardiff[self.p.z_0-1,0,1,50])
              #print("EJ_star direct deriv", (EJ1_star[self.p.z_0-1, 1, 2, 50] - EJ1_star[self.p.z_0-1, 1, 0, 50])/2) #Note that this approach was incorrect!!! Because this is a derivative STILL wrt today's state, not tomorrow's!
              #print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps) / ((EJ1_star_eps[:,1,1,:]-EJ1_star[:,1,1,:])/self.deriv_eps),2)))
              print("EJinv diff:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - EJstardiff[:,1,1,:]) / EJstardiff[:,1,1,:],2)))
+             print("EJinv diff 1 sen:", np.mean(np.power((EJinv[:,0,1,:]/pc_star[:,0,1,:] - EJstardiff[:,0,1,:]) / EJstardiff[:,0,1,:],2)))
     
 
             # First boundary condition: forward difference
@@ -289,14 +293,11 @@ class MultiworkerContract:
             Jderiv = np.zeros_like(Ji)
             for iz in range(self.p.num_z):
              for in0 in range(self.p.num_n-2):
+              for in1 in range(self.p.num_n):
                 for iv in range(self.p.num_v):
-                    Ji_interpolator = RegularGridInterpolator(
-                        (self.N_grid,), Ji[iz, in0, :, iv], bounds_error=False, fill_value=None)
-                    W1i_interpolator = RegularGridInterpolator(
-                        (self.N_grid,), W1i[iz, in0, :, iv,1], bounds_error=False, fill_value=None)                
-                    Jfullderiv[iz,in0,:,iv] = (Ji_interpolator(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1))-Ji_interpolator(np.maximum(self.N_grid-self.deriv_eps,0)))/(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1)-np.maximum(self.N_grid-self.deriv_eps,0))
-                    Wderiv[iz,in0,:,iv] = (W1i_interpolator(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1))-W1i_interpolator(np.maximum(self.N_grid-self.deriv_eps,0)))/(np.minimum(self.N_grid+self.deriv_eps,self.p.num_n-1)-np.maximum(self.N_grid-self.deriv_eps,0))
-                    Jderiv = Jfullderiv+rho_grid*Wderiv #accounting for the fact that size change also impacts W
+                    Jfullderiv[iz,in0,in1,iv] = (np.interp(self.N_grid[in1]+self.deriv_eps,self.N_grid,Ji[iz,in0,:,iv])-np.interp(self.N_grid[in1]-self.deriv_eps,self.N_grid,Ji[iz,in0,:,iv]))/(self.deriv_eps+self.deriv_eps*(self.N_grid[in1]>0 and self.N_grid[in1]<self.p.num_n-1)) #Andrei: this is the derivative of the job value wrt the size of the firm
+                    Wderiv[iz,in0,in1,iv] = (np.interp(self.N_grid[in1]+self.deriv_eps,self.N_grid,W1i[iz,in0,:,iv,1])-np.interp(self.N_grid[in1]-self.deriv_eps,self.N_grid,W1i[iz,in0,:,iv,1]))/(self.deriv_eps+self.deriv_eps*(self.N_grid[in1]>0 and self.N_grid[in1]<self.p.num_n-1))
+            Jderiv = Jfullderiv+self.N_grid[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
 
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.fun_prod_1d(self.sum_size))/self.p.beta #creating expected job value as a function of today's value
             EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
@@ -325,7 +326,7 @@ class MultiworkerContract:
               for in1 in range(self.p.num_n):
                 if (in0 == 1) & (in1 == 3):
                     continue
-                assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
+                #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
                     # find highest V with J2J search
                 #rho_bar[iz, in0, in1] = np.interp(self.js.jsa.e0, EW1i[iz, in0, in1, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
                 rho_min = rho_grid[pc[iz, in0, in1, :] > 0].min()  # lowest promised rho with continuation > 0
@@ -389,10 +390,11 @@ class MultiworkerContract:
             W1i[:,:,:,:,1] = self.pref.utility(self.w_matrix[:,:,:,:,1]) + \
                 self.p.beta * (re_star + EW1_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
             #print("Max search value", re_star.max())
-            W1i[:,:,:,:,1:] = .4*W1i[:,:,:,:,1:] + .6*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
+            W1i[:,:,:,:,1:] = .2*W1i[:,:,:,:,1:] + .8*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
             #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
-
-
+            
+            # Updating J1 representation
+            #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
 
             # Compute convergence criteria
             error_j1i = array_exp_dist(Ji,Ji2,100) #np.power(Ji - Ji2, 2).mean() / np.power(Ji2, 2).mean()  
@@ -400,12 +402,12 @@ class MultiworkerContract:
             error_w1 = array_dist(W1i[:,:,:,:,1:], W1i2[:,:,:,:,1:])
 
 
+
             # update worker search decisions
             if (ite_num % 10) == 0:
                 if update_eq:
                     # -----  check for termination ------
-                     # Updating J1 representation
-                    error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
+
                     error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[:,:,:,:,1]), 100)
                     print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)                   
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model

@@ -70,7 +70,7 @@ class PowerFunctionGrid:
                                         args=(W1[iz, in0, in1, :, 1], J1[iz, in0, in1, :], W1[iz, in0, in1, : , 1].max())) 
                         p0 = res2.x
                         self.gamma_all[iz, in0, in1, 0:4] = res2.x
-                        self.gamma_all[iz, in0, in1, 4]   = W1[iz, in0, in1, :].max() #Andrei: I'm confused. Is this not part of the [0:4]?
+                        self.gamma_all[iz, in0, in1, 4]   = W1[iz, in0, in1, :, 1].max() #Andrei: I'm confused. Is this not part of the [0:4]?
                         self.rsqr[iz, in0, in1] = res2.fun / np.power(J1[iz, in0, in1, :],2).mean()
 
     def eval_at_zxv(self,z,n0,n1,v): #Andrei: for fixed z,x,v, give the exact prediction for J. this is after J has already been fitted
