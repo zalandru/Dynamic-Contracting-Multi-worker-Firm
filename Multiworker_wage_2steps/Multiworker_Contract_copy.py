@@ -219,7 +219,7 @@ class MultiworkerContract:
         EJ1_star = np.copy(Ji)
         EJ1_star_eps = np.copy(Ji)
         EJ1_star_eps_neg = np.copy(Ji)
-        EW_tild = np.copy(Ji)
+        EW_tild = np.zeros((self.p.num_v))
         EJ1_tild = np.copy(Ji)
         Jderiv = np.zeros_like(Ji)
         rho_bar = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n))
@@ -384,9 +384,10 @@ class MultiworkerContract:
                  #EW_tild[iz,in0,in1,iv] = np.interp(in1+self.deriv_eps/np.interp(rho_star[iz, in0, in1, iv], rho_grid, pc[iz,in0,in1,:]),self.N_grid,EW1_star[iz,in0,:,iv])
                  #kinda stuck on this part. interpretation is: we want to interpolate the future value function at a slightly higher size. since the future value function EW1_star is defined via today's state, we need to adjust today's size for this stuff to fit. although... nah that doesn't work
                  #instead should simply interpolate usualy W to the that point as well as rho_star
-                 EW_tild[iz,in0,in1,iv] = EW1i_interpolator(np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps,rho_star[iz, in0, in1, iv]]))
-
-                 rho_tild = np.interp(EW1_star[iz,in0,in1,iv],EW_tild[iz,in0,in1,:],rho_grid) #find rho such that the worker value after size change stays the same
+                 #EW_tild[iz,in0,in1,iv] = EW1i_interpolator(np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps,rho_grid[:]]))
+                 for iv1 in range(self.p.num_v):
+                  EW_tild[iv1] = np.interp(n1_star[iz, in0, in1, iv]+self.deriv_eps,self.N_grid,EW1i[iz,0,:,iv1])
+                 rho_tild = np.interp(EW1_star[iz,in0,in1,iv],EW_tild[:],rho_grid) #find rho such that the worker value after size change stays the same
                  EJ1_tild[iz,in0,in1,iv] = EJpi_interpolator(np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps,rho_tild]))
 
                  #rho_n_star_points_eps = np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps, np.interp(EW1_star[iz,in0,in1,iv],EW_tilde[iz,in0,in1,:],rho_grid)]) 
