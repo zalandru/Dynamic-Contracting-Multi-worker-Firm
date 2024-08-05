@@ -169,6 +169,7 @@ class PowerFunctionGrid:
                 W = W / W.sum()
                 xbar       = ( Xi * W ).sum()
                 ybar       = ( Yi * W ).sum()
+                #print("in0, in1, xbar, ybar", in0, in1, xbar, ybar)
                 self.gamma_all[iz, in0, in1, 1] = ( (Xi-xbar) * (Yi-ybar) * W ).sum() / (  (Xi-xbar) * (Xi-ybar) * W ).sum()
                 #print("W and gamma_all[1]", W, self.gamma_all[iz, in0, in1, 1])
                 self.gamma_all[iz, in0, in1, 0] = ( (Yi - self.gamma_all[iz, in0, in1, 1]* Xi) * W ).sum()
