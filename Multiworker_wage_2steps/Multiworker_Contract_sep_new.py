@@ -76,6 +76,47 @@ def optimized_loop(pc, rho_grid, foc, rho_star, num_z, num_n, num_v):
                 # Assuming additional logic here if needed
 
     return rho_star
+@jit(nopython=True) #To be done: corerect the inv_utility issue, it doesn't work with numba!
+def optimized_loop_sep(re, pc, EJinv0, EW1i, EUi, rho_grid, foc, rho_star, sep_star, num_z, num_n,v_0, inv_utility_1d,beta):
+    for iz in range(num_z):
+        for in0 in range(num_n - 1):
+            for in1 in range(num_n):
+                if (in0 == 1) & (in1 == 2):
+                    continue
+                Ikeep = (pc[iz, in0, in1, :] > 0) & (EJinv0[iz, in0, in1, :] >= 0) #If the inverted value is positive, firm keeps the worker
+                if Ikeep.sum() > 0:
+                    Ikeep_indices = np.where(Ikeep)[0]
+                    for iv in Ikeep_indices:
+                        
+                      rho_star[iz,in0, in1, iv] = np.interp(0,
+                                                    impose_increasing(foc[iz, in0, in1, :, iv]),
+                                                    rho_grid[:])  
+                      sep_star[iz,in0, in1, iv] = 0 
+
+                Ifire = (pc[iz, in0, in1, :] > 0) & (EJinv0[iz, in0, in1, :] < 0) #If the inverted value is negative, firm separates with some probability
+                if Ifire.sum() > 0:
+                    Ifire_indices = np.where(Ifire)[0]
+                    for iv in Ifire_indices:
+                        
+                        rho_star[iz,in0, in1, iv] = np.interp(0,
+                                                    impose_increasing(foc[iz, in0, in1, :, iv]), #Maybe this can simply be foc? Since for now we've assumed s_1=0, so EJinv already correctly represents what's happening
+                                                    rho_grid[:])  
+                        worker_future_value = np.interp(rho_star[iz, in0, in1, iv], rho_grid, re[iz,in0,in1,:]+EW1i[iz,in0,in1,:])
+
+                        assert worker_future_value > EUi
+                        sep_star[iz,in0, in1, iv] = 1-(EJinv0[iz,in0,in1,iv]/((EUi-worker_future_value) / inv_utility_1d(v_0-beta*(sep_star[iz,in0, in1, iv]*EUi+(1-sep_star[iz,in0, in1, iv])*worker_future_value)))) #The thing is, this wouldn't work: t he corner case of ultra negative EJinv would suggest us negative separations, rather than 1       
+                      
+                      #print(iz, in0, in1, iv, sep_star[iz,in0, in1, iv])
+                sepneg = (pc[iz, in0, in1, :] > 0) & (EJinv0[iz, in0, in1, :] < 0) & (sep_star[iz,in0, in1, :] < 0)
+                sep_star[iz, in0, in1, sepneg] = 1 # This is the corner solution: if EJinv is super-duper negative,then the FOC would always be positive, thus the separation rate would be 1
+                if sepneg.sum() > 0:
+                    sepneg_indices = np.where(sepneg)[0]
+                    for iv in sepneg_indices:
+                        rho_star[iz,in0, in1, iv] = np.interp(0,
+                                                impose_increasing(foc[iz, in0, in1, :, iv]),
+                                                rho_grid[:]) #No need to check whether separations would still be 1, we know they would be as v' goes down so -(R(v')-U) goes up, making it cheaper to fire
+                
+    return rho_star,sep_star
 @jit(nopython=True)
 def optimized_loop_tilde(pc, rho_grid, foc, rho_star, num_z, num_n, num_v):
     for iz in range(num_z):
@@ -212,10 +253,7 @@ class MultiworkerContract:
 
 
         #Create a guess for the MWF value function
-        #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
-        #self.J_grid1 = np.zeros_like(self.J_grid)
         self.J_grid = self.J_grid+np.divide(self.fun_prod*self.prod-self.p.beta*self.w_grid[ax,ax,ax,:]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
-        #self.J_grid = self.J_grid+np.divide(self.fun_prod*self.prod-self.w_grid[0]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
 
     
         #print("J_grid_diff:", np.max(abs(self.J_grid-self.J_grid1)))
@@ -283,13 +321,9 @@ class MultiworkerContract:
 
         if Ji is None:
             Ji = self.J_grid
-       # else:
-       #     Ji = np.zeros_like(self.J_grid)+Ji[:,ax,ax,:]-self.fun_prod+self.fun_prod*self.prod
-       #     Ji[:,0,0,:] = 0
         if W1i is None:
             W1i = self.W1i
-       # else:
-       #     W1i = np.zeros_like(self.W1i)+W1i[:,ax,ax,:,ax]
+        Ui = self.pref.utility_gross(self.unemp_bf)/(1-self.p.beta)
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
         # create representation for J1p
@@ -307,11 +341,14 @@ class MultiworkerContract:
         Jderiv = np.zeros_like(Ji)
         rho_bar = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n))
         rho_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))
+        sep_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))
+
         n0_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))        
         n1_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))   
 
         Jfullderiv = np.zeros_like(Ji)
         Wderiv = np.zeros_like(Ji)
+        Jderiv0 = np.zeros_like(Ji)
 
 
         # prepare expectation call
@@ -328,7 +365,7 @@ class MultiworkerContract:
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = np.copy(W1i)
-
+            Ui2 = Ui
             if ite_num>1:
              print("EJinv", EJinv[self.p.z_0-1,1,1,50]/pc_star[self.p.z_0-1,0,1,50])
              print("EJderiv", EJderiv[self.p.z_0-1,1,1,50])
@@ -339,7 +376,7 @@ class MultiworkerContract:
             EW1i = Ez(W1i[:,:,:,:,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
             EJpi = Ez(Ji, self.Z_trans_mat)
-
+            EUi = Ui
             # get worker decisions
             _, re, pc = self.getWorkerDecisions(EW1i)
             # get worker decisions at EW1i + epsilon
@@ -359,46 +396,65 @@ class MultiworkerContract:
             # First boundary condition: forward difference
             Jfullderiv[:, :, 0, :] = Ji[:, :, 1, :] - Ji[:, :, 0, :]
             Wderiv[:, :, 0, :]     = W1i[:, :, 1, :, 1] - W1i[:, :, 0, :, 1]
+            Jderiv0[:, 0, :, :]    = Ji[:, 1, :, :] - Ji[:, 0, :, :]
             # Last boundary condition: backward difference
             Jfullderiv[:, :, -1, :] = Ji[:, :, -1, :] - Ji[:, :, -2, :]
             Wderiv[:, :, -1, :]     = W1i[:, :, -1, :, 1] - W1i[:, :, -2, :, 1]
+            Jderiv0[:, -1, :, :]    = Ji[:, -1, :, :] - Ji[:, -2, :, :]
             # Central differences: average of forward and backward differences
             Jfullderiv[:, :, 1:-1, :] = (Ji[:, :, 2:, :] - Ji[:, :, :-2, :]) / 2
             Wderiv[:, :, 1:-1, :]     = (W1i[:, :, 2:, :, 1] - W1i[:, :, :-2, :, 1]) / 2
+            Jderiv0[:, 1:-1, :, :]    = (Ji[:, 2:, :, :] - Ji[:, :-2, :, :]) / 2
             
             Jderiv = Jfullderiv+self.N_grid[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
     	    
             #Jderiv = Jfullderiv
 
-            #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_1d)/self.p.beta #creating expected job value as a function of today's value            
             EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
-            
+            if ite_num>1: #I'm using previous guesses for sep_star and EW1_star. This way, it is still as if EJinv0 is a function of today's states only, even though that's not exactly correct
+             EJinv0 = (Jderiv0+wage_jun-self.fun_prod*self.prod_1d)/self.p.beta
+             EJinv0[:,0,0,:] = (Jderiv0[:,0,0,:]+wage_jun[:,0,0,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
+
+
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
             #Because of this, the values are modified with size according to the following formula:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
             if ite_num<=100000000:
+             #Main foc, in the absence for separations
+             inv_utility_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[:,:,:,ax,:]*EUi+(1-sep_star[:,:,:,ax,:])*(EW1i[..., ax]+re[..., ax])))
+             foc_2ndpart = - self.N_grid[self.grid[2][:, :, :, ax, :]]*rho_grid[ax, ax, ax, ax, :] -\
+                 self.N_grid[self.grid[1][:, :, :, ax, :]] * (1-sep_star[:,:,:,ax,:]) / inv_utility_1d             
+             
              foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[:, :, :, ax, :] / pc[..., ax])* (log_diff[..., ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-             foc = foc*self.sum_size[..., ax] - self.N_grid[self.grid[2][..., ax]]*rho_grid[ax, ax, ax, ax, :] - self.N_grid[self.grid[1][..., ax]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i[..., ax]+re[..., ax]))
-            
+             foc = foc*(self.N_grid[self.grid[1][:, :, :, ax, :]] * (1-sep_star[:,:,:,ax,:])+self.N_grid[self.grid[2][:, :, :, ax, :]]) + foc_2ndpart
+            #There are no separations here as this FOC is in the case of NO separations (although, what if s=1?)
+            #Foc for wages if separations are positive
+             foc_rho_s = rho_grid[ax, ax, ax, :,ax]+((re[..., ax]+EW1i[..., ax]-EUi) / inv_utility_1d)*(log_diff[..., ax] / self.deriv_eps)/(pc[..., ax])
+             foc_rho_s =  foc_rho_s*(self.N_grid[self.grid[1][..., ax]] * (1-sep_star[:,:,:,ax,:]) + self.N_grid[self.grid[2][..., ax]]) + foc_2ndpart
+
             if ite_num>100000000:
-             foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[:, :, :, ax, :] / pc)* (log_diff / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+             foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[..., ax, :] / pc)* (log_diff / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
              foc = foc*self.sum_size[..., ax] - self.N_grid[self.grid[2][..., ax]]*rho_grid[ax, ax, ax, ax, :] - self.N_grid[self.grid[1][:, :, :, ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1_tild+re))
+            
+            
             if ite_num<=100000000:
              assert (np.isnan(foc) & (pc[..., ax] > 0)).sum() == 0, "foc has NaN values where p>0"
             else:
              assert (np.isnan(foc) & (pc > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
-                #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
-                    # find highest V with J2J search
-                #rho_bar[iz, in0, in1] = np.interp(self.js.jsa.e0, EW1i[iz, in0, in1, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
-            if ite_num<=100000000:
+            #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
+            if ite_num<=1:
                 rho_star = optimized_loop(
-                    pc, rho_grid, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_v) 
-            else:
-                rho_star = optimized_loop_tilde(
-                    pc, rho_grid, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_v)
+                    pc, rho_grid, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_v)                 
+            if ite_num>1:
+                rho_star,sep_star = optimized_loop_sep(
+                    re, pc, EJinv0, EW1i, EUi, rho_grid, foc, rho_star, sep_star, self.p.num_z, self.p.num_n, self.v_0, self.pref.inv_utility_1d, self.p.beta)
+            #else:
+            #    rho_star = optimized_loop_tilde(
+            #        pc, rho_grid, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_v)
+    
             n0_star = 0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
             rho_star[:, 0, 0, :] = rho_star[:, 0, 1, :]
             if ite_num<=100000000:            
@@ -423,21 +479,23 @@ class MultiworkerContract:
 
             _, re_star, pc_star = self.getWorkerDecisions(EW1_star)
             #print("states at which worker quits:", np.where(~(pc_star[self.p.z_0-1,1,1,:]==0)))
-            # Update firm value function 
+            # Update firm value function
+            wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EUi+(1-sep_star)*(EW1_star+re_star)))
             Ji = self.fun_prod*self.prod - sum_wage -\
-                self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
+                wage_jun*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
             Ji = .2*Ji + .8*Ji2
 
-            #print("Value diff:", np.max(np.abs(Ji-Ji2)))
-
             # Update worker value function
-            W1i[:,:,:,:,1] = self.pref.utility(self.w_matrix[:,:,:,:,1]) + \
+            W1i[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (re_star + EW1_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
-            #W1i[:,0,0,:,1] = W1i[:,0,1,:,1]
-            #print("Max search value", re_star.max())
-            W1i[:,:,:,:,1:] = .4*W1i[:,:,:,:,1:] + .6*W1i2[:,:,:,:,1:] #we're completely ignoring the 0th step
-            #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
             
+            W1i[...,1:] = .4*W1i[...,1:] + .6*W1i2[...,1:] #we're completely ignoring the 0th step
+            #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
+            _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
+            Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
+            Ui = 0.4*Ui + 0.6*Ui2
+            if ite_num>1:
+                print("sep borders", sep_star.min(),sep_star.max())
             # Updating J1 representation
             #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
 
@@ -483,7 +541,7 @@ class MultiworkerContract:
 
         self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
                                      ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        return Ji,W1i,EW1_star,pc_star,n1_star
+        return Ji,W1i,EW1_star,sep_star
 
 
     def construct_z_grid(self):

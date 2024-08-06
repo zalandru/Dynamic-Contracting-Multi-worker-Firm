@@ -224,11 +224,6 @@ class MultiworkerContract:
         rho_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))
         n0_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))        
         n1_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))   
-
-        Jfullderiv = np.zeros_like(Ji)
-        Wderiv = np.zeros_like(Ji)
-
-
         # prepare expectation call
         Ez = oe.contract_expression('anmv,az->znmv', Ji.shape, self.Z_trans_mat.shape)
         #Ex = oe.contract_expression('b,bx->x', Ui.shape, self.X_trans_mat.shape)
@@ -274,7 +269,8 @@ class MultiworkerContract:
              log_diff = np.zeros_like(pc)
              log_diff[:] = np.nan
              log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
-
+             
+            
             if ite_num>1:
              #print("Components of the calculation: Jderiv,marg prod, wage,pc", Jderiv[self.p.z_0-1,1,1,50],self.fun_prod[self.p.z_0-1,0,0,0]*self.fun_prod_1d(self.sum_size[self.p.z_0-1,1,1,50]),self.w_grid[50],pc_star[self.p.z_0-1,1,1,50]) 
              #print("Direct Jderiv", (Ji[self.p.z_0-1, 1, 2, 50] - Ji[self.p.z_0-1, 1, 0, 50])/2)
@@ -295,16 +291,29 @@ class MultiworkerContract:
     
 
             # First boundary condition: forward difference
-            Jfullderiv[:, :, 0, :] = Ji[:, :, 1, :] - Ji[:, :, 0, :]
-            Wderiv[:, :, 0, :]     = W1i[:, :, 1, :, 1] - W1i[:, :, 0, :, 1]
+            Jderiv[:, :, 0, :] = Ji[:, :, 1, :] - Ji[:, :, 0, :]
+
             # Last boundary condition: backward difference
-            Jfullderiv[:, :, -1, :] = Ji[:, :, -1, :] - Ji[:, :, -2, :]
-            Wderiv[:, :, -1, :]     = W1i[:, :, -1, :, 1] - W1i[:, :, -2, :, 1]
+            Jderiv[:, :, -1, :] = Ji[:, :, -1, :] - Ji[:, :, -2, :]
+
             # Central differences: average of forward and backward differences
-            Jfullderiv[:, :, 1:-1, :] = (Ji[:, :, 2:, :] - Ji[:, :, :-2, :]) / 2
-            Wderiv[:, :, 1:-1, :]     = (W1i[:, :, 2:, :, 1] - W1i[:, :, :-2, :, 1]) / 2
+            Jderiv[:, :, 1:-1, :] = (Ji[:, :, 2:, :] - Ji[:, :, :-2, :]) / 2
+
             
-            Jderiv = Jfullderiv+self.N_grid[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
+            #Andrei: need not the J itself, but its derivative wrt n!!!
+            #if ite_num>1:
+             #print("EJinv diff before:", np.mean(np.power((EJinv[:,1,1,:]/pc_star[:,1,1,:] - (EJpi[:,1,1,:]-EJpi[:,1,0,:]))/(EJpi[:,1,1,:]-EJpi[:,1,0,:]),2)))
+            
+            Jfullderiv = np.zeros_like(Ji)
+            Wderiv = np.zeros_like(Ji)
+            #Jderiv = np.zeros_like(Ji)
+            for iz in range(self.p.num_z):
+             for in0 in range(self.p.num_n-1):
+              for in1 in range(self.p.num_n):
+                for iv in range(self.p.num_v):
+                    Jfullderiv[iz,in0,in1,iv] = (np.interp(self.N_grid[in1]+self.deriv_eps,self.N_grid,Ji[iz,in0,:,iv])-np.interp(self.N_grid[in1]-self.deriv_eps,self.N_grid,Ji[iz,in0,:,iv]))/(self.deriv_eps+self.deriv_eps*(self.N_grid[in1]>0 and self.N_grid[in1]<self.p.num_n-1)) #Andrei: this is the derivative of the job value wrt the size of the firm
+                    Wderiv[iz,in0,in1,iv] = (np.interp(self.N_grid[in1]+self.deriv_eps,self.N_grid,W1i[iz,in0,:,iv,1])-np.interp(self.N_grid[in1]-self.deriv_eps,self.N_grid,W1i[iz,in0,:,iv,1]))/(self.deriv_eps+self.deriv_eps*(self.N_grid[in1]>0 and self.N_grid[in1]<self.p.num_n-1))
+            #Jderiv = Jfullderiv+self.N_grid[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
     	    
             #Jderiv = Jfullderiv
 
@@ -320,6 +329,7 @@ class MultiworkerContract:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
             if ite_num<=10000000:
              foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[:, :, :, ax, :] / pc[:, :, :, :, ax])* (log_diff[:, :, :, :, ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+
              foc = foc*self.sum_size[:, :, :, ax, :] - self.N_grid[self.grid[2][:, :, :, ax, :]]*rho_grid[ax, ax, ax, ax, :] - self.N_grid[self.grid[1][:, :, :, ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i[:, :, :, :, ax]+re[:, :, :, :, ax]))
             
             if ite_num>10000000:
@@ -333,6 +343,10 @@ class MultiworkerContract:
              assert (np.isnan(foc) & (pc > 0)).sum() == 0, "foc has NaN values where p>0"
 
             for iz in range(self.p.num_z):
+             EW1i_interpolator = RegularGridInterpolator(
+                        (self.N_grid, rho_grid), EW1i[iz, 0, :, :], bounds_error=False, fill_value=None) #2nd dim set to 0 because n0_star=0
+             EJpi_interpolator = RegularGridInterpolator(
+                        (self.N_grid, rho_grid), EJpi[iz, 0, :, :], bounds_error=False, fill_value=None)
              for in0 in range(self.p.num_n-1):
               for in1 in range(self.p.num_n):
                 if (in0 == 1) & (in1 == 2):
@@ -360,59 +374,42 @@ class MultiworkerContract:
                                                     impose_increasing(foc[iz, in0, in1, :, iv]),
                                                     rho_grid[:]) 
 
-                                                                          
+                                     
                 #Update the future size for each given size.
                 #Issue is: ideally I would use pe_star, but that is only available after I get EW1i. Is there a way around this?
-             n0_star[iz, ...] = 0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
+                n0_star[iz, in0, in1, :] = 0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
+                if ite_num<=10000000:
+                 n1_star[iz, in0, in1, :] = (self.N_grid[in0]+self.N_grid[in1])*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
+                else:
+                 for iv in range(self.p.num_v):
+                  n1_star[iz, in0, in1, :] = (self.N_grid[in0]+self.N_grid[in1])*np.interp(rho_star[iz, in0, in1, iv], rho_grid, pc[iz,in0,in1,:,iv])
+
+
+                #for iv in range(self.p.num_v):
+                 #rho_n_star_points = np.array([iz, in0,  n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
+                # rho_n_star_points = np.array([n1_star[iz, in0, in1, iv], rho_star[iz, in0, in1, iv]])
+                # rho_n_star_points_eps = np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps, rho_star[iz, in0, in1, iv]])
+                # rho_n_star_points_eps_neg = np.array([n1_star[iz, in0, in1, iv]-self.deriv_eps, rho_star[iz, in0, in1, iv]])
+                # EW1_star[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points)
+                # EW1_star_eps[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points_eps)   
+                # EW1_star_eps_neg[iz, in0, in1, iv] = EW1i_interpolator(rho_n_star_points_eps_neg)                                 
+                 #EW_tilde[iz,in0,in1,iv] = np.interp(n1_star[iz,in0,in1,iv]+self.deriv_eps,self.N_grid,EW1i[iz,in0,:,iv])
+                 #rho_n_star_points_eps = np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps, np.interp(EW1_star[iz,in0,in1,iv],EW_tilde[iz,in0,in1,:],rho_grid)]) 
+                # EJ1_star_eps[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_eps)
+                # EJ1_star_eps_neg[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points_eps_neg)
+                # EJ1_star[iz, in0, in1, iv] = EJpi_interpolator(rho_n_star_points)
              rho_star[iz, 0, 0, :] = rho_star[iz, 0, 1, :]
-             for in0 in range(self.p.num_n):
-                for in1 in range(self.p.num_n):
-                    	if ite_num<=10000000:
-                         n1_star[iz, in0, in1, :] = (self.N_grid[in0]+self.N_grid[in1])*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
-                        #else:
-                        # for iv in range(self.p.num_v):
-                        #  n1_star[iz, in0, in1, :] = (self.N_grid[in0]+self.N_grid[in1])*np.interp(rho_star[iz, in0, in1, iv], rho_grid, pc[iz,in0,in1,:,iv])
-
-
-            EW1i_interpolators = [
-                RegularGridInterpolator((self.N_grid, rho_grid), EW1i[iz, 0, :, :], bounds_error=False, fill_value=None)
-                for iz in range(self.p.num_z)
-                ]
-
-            EJpi_interpolators = [
-                RegularGridInterpolator((self.N_grid, rho_grid), EJpi[iz, 0, :, :], bounds_error=False, fill_value=None)
-                for iz in range(self.p.num_z)
-                ]
-
-            # Prepare points for interpolation
-            rho_n_star_points = np.stack((n1_star, rho_star), axis=-1)  # Shape: (num_z, ..., 2)
-            rho_n_star_points_eps = np.stack((n1_star + self.deriv_eps, rho_star), axis=-1)
-            rho_n_star_points_eps_neg = np.stack((n1_star - self.deriv_eps, rho_star), axis=-1)
-
-            # Vectorized interpolation over all iz
-            EW1_star = np.array([
-                interpolator(rho_n_star_points[iz, ...]) for iz, interpolator in enumerate(EW1i_interpolators)
-                ])
-
-            EW1_star_eps = np.array([
-                interpolator(rho_n_star_points_eps[iz, ...]) for iz, interpolator in enumerate(EW1i_interpolators)
-                ])
-
-            EW1_star_eps_neg = np.array([
-                interpolator(rho_n_star_points_eps_neg[iz, ...]) for iz, interpolator in enumerate(EW1i_interpolators)
-                ])
-
-            EJ1_star = np.array([
-                interpolator(rho_n_star_points[iz, ...]) for iz, interpolator in enumerate(EJpi_interpolators)
-                ])
-
-            EJ1_star_eps = np.array([
-                interpolator(rho_n_star_points_eps[iz, ...]) for iz, interpolator in enumerate(EJpi_interpolators)
-                ])
-
-            EJ1_star_eps_neg = np.array([
-                interpolator(rho_n_star_points_eps_neg[iz, ...]) for iz, interpolator in enumerate(EJpi_interpolators)
-                ])
+             rho_n_star_points = np.array([n1_star[iz, ...], rho_star[iz, ...]])
+             rho_n_star_points_eps = np.array([n1_star[iz, ...]+self.deriv_eps, rho_star[iz, ...]])
+             rho_n_star_points_eps_neg = np.array([n1_star[iz, ...]-self.deriv_eps, rho_star[iz,...]])
+             EW1_star[iz, ...] = EW1i_interpolator((rho_n_star_points[0,...],rho_n_star_points[1,...]))
+             EW1_star_eps[iz, ...] = EW1i_interpolator((rho_n_star_points_eps[0,...],rho_n_star_points_eps[1,...]))   
+             EW1_star_eps_neg[iz, ...] = EW1i_interpolator((rho_n_star_points_eps_neg[0,...],rho_n_star_points_eps_neg[1,...]))                                 
+                 #EW_tilde[iz,in0,in1,iv] = np.interp(n1_star[iz,in0,in1,iv]+self.deriv_eps,self.N_grid,EW1i[iz,in0,:,iv])
+                 #rho_n_star_points_eps = np.array([n1_star[iz, in0, in1, iv]+self.deriv_eps, np.interp(EW1_star[iz,in0,in1,iv],EW_tilde[iz,in0,in1,:],rho_grid)]) 
+             EJ1_star_eps[iz, ...] = EJpi_interpolator((rho_n_star_points_eps[0,...],rho_n_star_points_eps[1,...]))
+             EJ1_star_eps_neg[iz, ...] = EJpi_interpolator((rho_n_star_points_eps_neg[0,...],rho_n_star_points_eps_neg[1,...]))
+             EJ1_star[iz, ...] = EJpi_interpolator((rho_n_star_points[0,...],rho_n_star_points[1,...]))
                 
                 #EW1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EW1i[iz, 0, in1, :])
                 #EJ1_star[iz, in0, in1, :] = np.interp(rho_star[iz, in0, in1, :], rho_grid, EJpi[iz, in0, in1, :]) #Andrei: how does interpolating the shadow cost give us the future Value?
