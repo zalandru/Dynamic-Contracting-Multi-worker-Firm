@@ -149,7 +149,7 @@ def n1_tilde(n1,pc,rho_grid,rho_star,N_grid,num_z, num_n, num_v):
     return n1
 #Given rho_star and n1_star, calculate the future derivative
 @jit(nopython=True)
-def EJderivative(EJpi,floorn1,ceiln1,EJderiv,rho_grid,rho_star,num_z, num_n, num_v):
+def EJderivative(EJpi,floorn1,ceiln1,Ederiv,rho_grid,rho_star,num_z, num_n, num_v):
             for iz in range(num_z):
                 for in0 in range(num_n-1):
                     for in1 in range(num_n):
@@ -158,8 +158,22 @@ def EJderivative(EJpi,floorn1,ceiln1,EJderiv,rho_grid,rho_star,num_z, num_n, num
                         if (in0==1) & (in1==2):
                          continue
                         for iv in range(num_v):
-                            EJderiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz,0, ceiln1[iz,in0,in1,iv],:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz,0, floorn1[iz,in0,in1,iv],:]))/(ceiln1[iz,in0,in1,iv]-floorn1[iz,in0,in1,iv])
-            return EJderiv
+                            Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz,0, ceiln1[iz,in0,in1,iv],:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz,0, floorn1[iz,in0,in1,iv],:]))/(ceiln1[iz,in0,in1,iv]-floorn1[iz,in0,in1,iv])
+            return Ederiv
+@jit(nopython=True)
+def EWderivative(EW1i,floorn1,ceiln1,Ederiv,rho_grid,rho_star,num_z, num_n, num_v):
+            for iz in range(num_z):
+                for in0 in range(num_n-1):
+                    for in1 in range(num_n):
+                        if (in0==0) & (in1==0):
+                            continue
+                        if (in0==1) & (in1==2):
+                         continue
+                        for iv in range(num_v):
+                            Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz,0, ceiln1[iz,in0,in1,iv],:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz,0, floorn1[iz,in0,in1,iv],:]))/(ceiln1[iz,in0,in1,iv]-floorn1[iz,in0,in1,iv])
+            return Ederiv
+
+
 #Gives us future worker value as a function of promised value, but with updated size, taken based on a guess of n1_star
 @jit(nopython=True)
 def EW_tild(n1_star,EW1i,N_grid,num_z,num_n,num_v):
@@ -337,6 +351,8 @@ class MultiworkerContract:
         EJ1_star_eps = np.copy(Ji)
         EJ1_star_eps_neg = np.copy(Ji)
         EJderiv = np.zeros_like(EJ1_star)
+        EWderiv = np.zeros_like(EW1_star)
+
         #EW_tilde = np.copy(Ji)
         Jderiv = np.zeros_like(Ji)
         rho_bar = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n))
@@ -474,7 +490,9 @@ class MultiworkerContract:
             #Getting the derivative of the future job value wrt n1:
             ceiln1 = np.ceil(n1_star).astype(int)
             floorn1 = np.floor(n1_star).astype(int)
-            EJderiv = EJderivative(EJpi,floorn1,ceiln1,EJderiv,rho_grid,rho_star,self.p.num_z, self.p.num_n, self.p.num_v)
+            EJderiv0 = EJderivative(EJpi,floorn1,ceiln1,EJderiv,rho_grid,rho_star,self.p.num_z, self.p.num_n, self.p.num_v)
+            EWderiv = EWderivative(EW1i,floorn1,ceiln1,EWderiv,rho_grid,rho_star,self.p.num_z, self.p.num_n, self.p.num_v)
+            EJderiv = EJderiv0+n1_star*rho_star*EWderiv
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
             _, re_star, pc_star = self.getWorkerDecisions(EW1_star)
