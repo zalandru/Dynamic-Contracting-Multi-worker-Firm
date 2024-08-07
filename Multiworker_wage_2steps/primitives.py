@@ -29,7 +29,7 @@ class Parameters:
         self.num_np = 1       # Number of non-permanent levels
         self.num_z  = 7      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 3      # Number of points of support for the number of workers
+        self.num_n  = 4      # Number of points of support for the number of workers
 
 
         # Time periods in the Model

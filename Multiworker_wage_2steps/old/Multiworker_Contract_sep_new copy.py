@@ -131,13 +131,13 @@ def optimized_loop_tilde(pc, rho_grid, foc, rho_star, num_z, num_n, num_v):
     return rho_star
 #Given rho_star, find n1_star
 @jit(nopython=True)
-def n1(pc,rho_grid,rho_star,N_grid,num_z, num_n, num_v):
+def n1(pc, rho_grid, rho_star, sep_star, N_grid, num_z, num_n, num_v):
     n1 = np.zeros((num_z, num_n, num_n, num_v))
     for iz in range(num_z):
      for in0 in range(num_n):
         for in1 in range(num_n):
 
-            n1[iz, in0, in1, :] = (N_grid[in0]+N_grid[in1])*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
+            n1[iz, in0, in1, :] = (N_grid[in0]*(1-sep_star[iz,in0,in1,:])+N_grid[in1])*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
     return n1
 @jit(nopython=True)
 def n1_tilde(n1,pc,rho_grid,rho_star,N_grid,num_z, num_n, num_v):
@@ -472,11 +472,15 @@ class MultiworkerContract:
             #        pc, rho_grid, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_v)
     
             n0_star = 0 #For now, I'm basically assuming that someone extra will come. Can this fuck up the inverse expectation thing?
-            rho_star[:, 0, 0, :] = rho_star[:, 0, 1, :]
-            if ite_num<=100000000:            
-                n1_star = n1(pc,rho_grid,rho_star,self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
-            else:
-                n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star,self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
+            rho_star[:, 0, 0, :] = rho_star[:, 0, 1, :]          
+            n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.p.num_z, self.p.num_n, self.p.num_v)
+
+
+            
+            #if ite_num<=100000000:            
+            #    n1_star = n1(pc,rho_grid,rho_star,self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
+            #else:
+            #    n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star,self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
 
 
             EW1i_interpolators = [RegularGridInterpolator((self.N_grid, rho_grid), EW1i[iz, 0, :, :], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
