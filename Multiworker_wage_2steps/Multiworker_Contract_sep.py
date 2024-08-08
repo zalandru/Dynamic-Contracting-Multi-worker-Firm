@@ -16,7 +16,7 @@ from numba import jit
 from math import floor, ceil
 
 ax = np.newaxis
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def impose_decreasing(M):
     nv = M.shape[1]
     if len(M.shape)==2:
@@ -26,7 +26,7 @@ def impose_decreasing(M):
         for v in reversed(range(nv-1)):
             M[:,v,:] = np.maximum(M[:,v,:],M[:,v+1,:])
     return M
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def impose_increasing(A0):
     A = np.copy(A0)
     nv = len(A)
@@ -50,7 +50,7 @@ def array_dist(A,B):
     """
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 #Solve for rho_star
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def optimized_loop(pc, rho_grid, foc, rho_star, num_z, num_n, num_v):
     for iz in range(num_z):
         for in0 in range(num_n - 1):
@@ -76,8 +76,8 @@ def optimized_loop(pc, rho_grid, foc, rho_star, num_z, num_n, num_v):
                 # Assuming additional logic here if needed
 
     return rho_star
-@jit(nopython=True) #To be done: corerect the inv_utility issue, it doesn't work with numba!
-def optimized_loop_sep(rho_grid, foc, rho_star, sep_star, num_z, num_n,v_0, inv_utility_1d,beta):
+@jit(nopython=True, cache=True) #To be done: corerect the inv_utility issue, it doesn't work with numba!
+def optimized_loop_sep(rho_grid, foc, rho_star, sep_star, num_z, num_n, num_v):
     for iz in range(num_z):
         for in0 in range(num_n - 1):
             for in1 in range(num_n):
@@ -88,7 +88,7 @@ def optimized_loop_sep(rho_grid, foc, rho_star, sep_star, num_z, num_n,v_0, inv_
                                                     impose_increasing(foc[iz, in0, in1, :, iv]),
                                                     rho_grid[:])                  
     return rho_star
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def optimized_loop_tilde(pc, rho_grid, foc, rho_star, num_z, num_n, num_v):
     for iz in range(num_z):
         for in0 in range(num_n - 1):
@@ -101,7 +101,7 @@ def optimized_loop_tilde(pc, rho_grid, foc, rho_star, num_z, num_n, num_v):
                         )
     return rho_star
 #Given rho_star, find n1_star
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def n1(pc, rho_grid, rho_star, sep_star, N_grid, num_z, num_n, num_v):
     n1 = np.zeros((num_z, num_n, num_n, num_v))
     for iz in range(num_z):
@@ -110,7 +110,7 @@ def n1(pc, rho_grid, rho_star, sep_star, N_grid, num_z, num_n, num_v):
 
             n1[iz, in0, in1, :] = (N_grid[in0]*(1-sep_star[iz,in0,in1,:])+N_grid[in1])*np.interp(rho_star[iz, in0, in1, :], rho_grid, pc[iz,in0,in1,:])
     return n1
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def n1_tilde(n1,pc,rho_grid,rho_star,N_grid,num_z, num_n, num_v):
     for iz in range(num_z):
      for in0 in range(num_n):
@@ -119,7 +119,7 @@ def n1_tilde(n1,pc,rho_grid,rho_star,N_grid,num_z, num_n, num_v):
             n1[iz, in0, in1, :] = (N_grid[in0]+N_grid[in1])*np.interp(rho_star[iz, in0, in1, iv], rho_grid, pc[iz,in0,in1,:,iv])
     return n1
 #Given rho_star and n1_star, calculate the future derivative
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def EJderivative(EJpi,floorn1,ceiln1,Ederiv,rho_grid,rho_star,num_z, num_n, num_v):
             for iz in range(num_z):
                 for in0 in range(num_n):
@@ -131,7 +131,7 @@ def EJderivative(EJpi,floorn1,ceiln1,Ederiv,rho_grid,rho_star,num_z, num_n, num_
                             continue
                          Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz,0, ceiln1[iz,in0,in1,iv],:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz,0, floorn1[iz,in0,in1,iv],:]))/(ceiln1[iz,in0,in1,iv]-floorn1[iz,in0,in1,iv])
             return Ederiv
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def EWderivative(EW1i,floorn1,ceiln1,Ederiv,rho_grid,rho_star,num_z, num_n, num_v):
             for iz in range(num_z):
                 for in0 in range(num_n):
@@ -172,7 +172,7 @@ class MultiworkerContract:
         self.K = 2
         K = 2
         self.p = input_param
-        self.deriv_eps = 1e-3 # step size for derivative
+        self.deriv_eps = 1e-4 # step size for derivative
         # Model preferences initialized by the same parameter object.
         self.pref = Preferences(input_param=self.p)
 
@@ -269,8 +269,6 @@ class MultiworkerContract:
         return diff
     def fun_prod_1d(self,sum_n):
         return  self.p.prod_alpha*np.power(sum_n,self.p.prod_alpha-1)*(sum_n>0)
-    #Still kinda insane though, makes it look like the future derivate at zero size is minus infty
-    #Should I do a manual derivative instead?? Like a diff between zero and 1???
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
         """
         :param EW1: Expected value of employment
@@ -349,10 +347,11 @@ class MultiworkerContract:
             W1i2 = np.copy(W1i)
             Ui2 = Ui
             if ite_num>1:
-             print("EJinv", EJinv[self.p.z_0-1,1,1,50]/pc_star[self.p.z_0-1,0,1,50])
-             print("EJderiv", EJderiv[self.p.z_0-1,1,1,50])
-             print("EJinv diff:", np.mean(np.abs((EJinv[:,1,1,:]/pc_star[:,1,1,:] - EJderiv[:,1,1,:]) / EJderiv[:,1,1,:])))
+             print("EJinv", EJinv[self.p.z_0-1,1,2,50]/pc_star[self.p.z_0-1,1,2,50])
+             print("EJderiv", EJderiv[self.p.z_0-1,1,2,50])
+             print("EJinv diff 1j 2s:", np.mean(np.abs((EJinv[:,1,2,:]/pc_star[:,1,2,:] - EJderiv[:,1,2,:]) / EJderiv[:,1,2,:])))
              print("EJinv diff 1 sen:", np.mean(np.abs((EJinv[:,0,1,:]/pc_star[:,0,1,:] - EJderiv[:,0,1,:]) / EJderiv[:,0,1,:])))
+             print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,2,:]/pc_star[:,0,2,:] - EJderiv[:,0,2,:]) / EJderiv[:,0,2,:])))
 
             # we compute the expected value next period by applying the transition rules
             EW1i = Ez(W1i[:,:,:,:,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.

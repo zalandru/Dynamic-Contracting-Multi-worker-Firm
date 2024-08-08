@@ -60,10 +60,8 @@ class ContinuousContract:
 
         # Worker and Match Productivity Heterogeneity in the Model
         self.Z_grid = self.construct_z_grid()   # Create match productivity grid
-        #print("Z_grid:", self.Z_grid)
         # Production Function in the Model
         self.fun_prod = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
-        #print("fun_prod:", self.fun_prod)
         # Unemployment Benefits across Worker Productivities
         self.unemp_bf = np.ones(self.p.num_x) * self.p.u_bf_m
 
@@ -100,7 +98,7 @@ class ContinuousContract:
         if employed:
             pe = pe * self.p.s_job
             re = re * self.p.s_job
-        #print("Shape of pe:", pe.shape)
+
         # construct the continuation probability. #Andrei: probability the worker doesn't get fired and also doesn't leave
         pc = (1 - pe)
 

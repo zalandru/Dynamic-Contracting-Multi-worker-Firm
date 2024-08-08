@@ -225,7 +225,7 @@ class JobSearchArray:
     def update(self,V,P,type=0,relax=0):
         # store the old parameters
         pp0 = self.get_params()
-        print(V.shape)
+        #print(V.shape)
         if len(V.shape)==1:
                 self.jsa.update(V,P[:],type=type,relax=relax) #Andrei: this calls the update function in JobSearch class
         else:
