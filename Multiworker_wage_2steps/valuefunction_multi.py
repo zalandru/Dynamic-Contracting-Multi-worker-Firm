@@ -165,7 +165,7 @@ class PowerFunctionGrid:
                 Xi,Yi = curve_fit_search_terms( self.gamma_all[iz, in0, in1, 0:4], W1[iz, in0, in1, :], J1[iz, in0, in1, :], W1[iz, in0, in1, :].max() )
                 # W = np.exp(- self.weight * np.power(Yi,2))
                 #print("Yi", Yi)
-                W = 1.0 * (Yi >= -50) #Andrei: why -50 here? what's the point? IS this why the thing is nan? Because W=1 for every value so gamma[0],gamma[1] end up divided by 0? THE OPPOSITE! It's because Yi was below -50 everywhere
+                W = 1.0 * (Yi >= -500) #Andrei: why -50 here? what's the point? IS this why the thing is nan? Because W=1 for every value so gamma[0],gamma[1] end up divided by 0? THE OPPOSITE! It's because Yi was below -50 everywhere
                 W = W / W.sum()
                 xbar       = ( Xi * W ).sum()
                 ybar       = ( Yi * W ).sum()

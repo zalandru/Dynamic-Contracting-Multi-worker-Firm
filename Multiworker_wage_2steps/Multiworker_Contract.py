@@ -344,7 +344,6 @@ class MultiworkerContract:
         
         # evaluate J1 tomorrow using our approximation
         Jpi = J1p.eval_at_W1(W1i[:,:,:,:,1])
-
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = np.copy(W1i)
@@ -388,7 +387,7 @@ class MultiworkerContract:
             Jfullderiv[:, :, 1:-1, :] = (Ji[:, :, 2:, :] - Ji[:, :, :-2, :]) / 2
             Wderiv[:, :, 1:-1, :]     = (W1i[:, :, 2:, :, 1] - W1i[:, :, :-2, :, 1]) / 2
             
-            Jderiv = Jfullderiv#+self.N_grid[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
+            Jderiv = Jfullderiv+self.N_grid[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
             #Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:]*W1i[...,1]
             #Jderiv = Jfullderiv
 
@@ -440,7 +439,7 @@ class MultiworkerContract:
             floorn1 = np.floor(n1_star-self.deriv_eps).astype(int)
             EJderiv0 = EJderivative(EJpi,floorn1,ceiln1,EJderiv,rho_grid,rho_star,self.p.num_z, self.p.num_n, self.p.num_v)
             EWderiv = EWderivative(EW1i,floorn1,ceiln1,EWderiv,rho_grid,rho_star,self.p.num_z, self.p.num_n, self.p.num_v)
-            EJderiv = EJderiv0#+n1_star*rho_star*EWderiv
+            EJderiv = EJderiv0+n1_star*rho_star*EWderiv
 
 
 

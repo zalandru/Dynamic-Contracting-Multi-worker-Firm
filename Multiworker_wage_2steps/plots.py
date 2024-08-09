@@ -116,9 +116,9 @@ class Plots:
         plt.ylabel('Job value')
         plt.legend()
 
-        plt.legend()
-
-        #plt.ylim([0, 200])
+        # Save the plot to a file in the specified directory
+        if save==1:
+         plt.savefig(os.path.join(self.output_dir,'Value CRS vs DRS.png'), bbox_inches='tight')  # Save as PNG
 
         # Second subplot
         plt.subplot(1, 2, 2)  # 1 row, 2 columns, second subplot
@@ -136,33 +136,56 @@ class Plots:
         plt.title(f'Value across models, {jun} juniors and {sen} seniors')
         plt.xlabel('Worker value')
         plt.ylabel('Job value')
-
-        #plt.ylim([0, 50])
-
         plt.legend()
-
-
         # Adjust layout to prevent overlap
         plt.tight_layout()
 
-        # Add legend
-        plt.legend()
-
-        # Save the plot to a file in the specified directory
-        if save==1:
-         plt.savefig(os.path.join(self.output_dir,'Value CRS vs DRS.png'), bbox_inches='tight')  # Save as PNG
-
-
-        # Optionally set x and y limits
-        #plt.xlim([-10, 40])
-        #plt.ylim([0, 200])
-        # Save the plot to a file
         if save==1:
           plt.savefig(os.path.join(self.output_dir,'Value CRS vs DRS zoom.png'), bbox_inches='tight')  # Save as PNG
 
         # Show the plot (optional)
         plt.show()
-    
+
+    def sep(self, prod1,prod2,jun1,sen1,jun2,sen2, mwc_s_W=None, mwc_s_sep=None, mwc_s_dir_W=None, mwc_s_dir_sep=None,save=0):
+        plt.figure(figsize=(16, 6))  # Width=16 inches, Height=6 inches
+
+        # First subplot
+        plt.subplot(1, 2, 1)  # 1 row, 2 columns, first subplot
+        prod=prod1
+        jun=jun1
+        sen=sen1
+        if mwc_s_W is not None:        
+            plt.plot(mwc_s_W[prod1, jun, sen, :, 1], mwc_s_sep[prod1, jun, sen, :], label='DRS with inv sep')
+        if mwc_s_dir_W is not None:        
+         plt.plot(mwc_s_dir_W[prod1, jun, sen, :, 1], mwc_s_dir_sep[prod1, jun, sen, :], label='DRS with direct sep')
+
+        plt.title(f'Separations across models, {prod} productivity, {jun} juniors and {sen} seniors')
+        plt.xlabel('Worker value')
+        plt.ylabel('Sep rate')
+        plt.legend()
+        # Second subplot
+        plt.subplot(1, 2, 2)  # 1 row, 2 columns, second subplot
+        prod=prod2
+        jun=jun2
+        sen=sen2
+        if mwc_s_W is not None:        
+            plt.plot(mwc_s_W[prod2, jun, sen, :, 1], mwc_s_sep[prod2, jun, sen, :], label='DRS with inv sep')
+        if mwc_s_dir_W is not None:        
+         plt.plot(mwc_s_dir_W[prod2, jun, sen, :, 1], mwc_s_dir_sep[prod2, jun, sen, :], label='DRS with direct sep')        
+        # Adjust layout to prevent overlap
+        plt.title(f'Separations across models, {prod} productivity, {jun} juniors and {sen} seniors')
+        plt.xlabel('Worker value')
+        plt.ylabel('Sep rate')
+        plt.legend()       
+        
+        plt.tight_layout()
+
+        if save==1:
+          plt.savefig(os.path.join(self.output_dir,'Separations.png'), bbox_inches='tight')  # Save as PNG
+
+        # Show the plot (optional)
+        plt.show()
+
     def CRSvsDRSdirect(self, cc_J, mwc_J=None, save=0):
 
         plt.figure(figsize=(8, 6))  # Width=16 inches, Height=12 inches

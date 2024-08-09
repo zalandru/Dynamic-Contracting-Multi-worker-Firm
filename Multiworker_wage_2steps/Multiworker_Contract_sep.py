@@ -71,10 +71,6 @@ def optimized_loop(pc, rho_grid, foc, rho_star, num_z, num_n, num_v):
                 Iquit = ~(pc[iz, in0, in1, :] > 0)
                 if np.any(Iquit):
                     rho_star[iz, in0, in1, Iquit] = rho_min
-                
-                # Update future size for each given size
-                # Assuming additional logic here if needed
-
     return rho_star
 @jit(nopython=True, cache=True) #To be done: corerect the inv_utility issue, it doesn't work with numba!
 def optimized_loop_sep(rho_grid, foc, rho_star, sep_star, num_z, num_n, num_v):
@@ -143,8 +139,6 @@ def EWderivative(EW1i,floorn1,ceiln1,Ederiv,rho_grid,rho_star,num_z, num_n, num_
                             continue
                          Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz,0, ceiln1[iz,in0,in1,iv],:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz,0, floorn1[iz,in0,in1,iv],:]))/(ceiln1[iz,in0,in1,iv]-floorn1[iz,in0,in1,iv])
             return Ederiv
-
-
 #Gives us future worker value as a function of promised value, but with updated size, taken based on a guess of n1_star
 @jit(nopython=True)
 def EW_tild(n1_star,EW1i,N_grid,num_z,num_n,num_v):
@@ -156,7 +150,7 @@ def EW_tild(n1_star,EW1i,N_grid,num_z,num_n,num_v):
         for iv1 in range(num_v):
             EW_tild[iz,in0,in1,iv1,iv] = np.interp(n1_star[iz,in0,in1,iv],N_grid,EW1i[iz,0,:,iv1])
     return EW_tild
-class MultiworkerContract:
+class MultiworkerContract_s:
     """
         This solves a classic contract model.
     """
@@ -294,7 +288,7 @@ class MultiworkerContract:
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
 
-    def J(self,update_eq=0,Ji=None,W1i=None):    
+    def J(self,Jg=None,Wg=None,update_eq=0):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -302,10 +296,14 @@ class MultiworkerContract:
         sum_wage = self.sum_wage
         rho_grid = self.rho_grid
 
-        if Ji is None:
+        if Jg is None:
             Ji = self.J_grid
-        if W1i is None:
+        else:
+            Ji = np.copy(Jg)
+        if Wg is None:
             W1i = self.W1i
+        else:
+            W1i = np.copy(Wg)
         Ui = self.pref.utility_gross(self.unemp_bf)/(1-self.p.beta)
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
@@ -341,7 +339,6 @@ class MultiworkerContract:
         
         # evaluate J1 tomorrow using our approximation
         Jpi = J1p.eval_at_W1(W1i[:,:,:,:,1])
-
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = np.copy(W1i)
