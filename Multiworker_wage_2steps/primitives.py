@@ -29,8 +29,8 @@ class Parameters:
         self.num_np = 1       # Number of non-permanent levels
         self.num_z  = 1      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 5     # Number of points of support for the number of workers
-
+        self.num_n  = 9     # Number of points of support for the number of workers
+        self.n_bar = 4       # Number of workers in the firm	
 
         # Time periods in the Model
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
@@ -46,6 +46,9 @@ class Parameters:
         self.alpha    = 0.1        # Parameter for probability of finding a job
         self.sigma    = 1.0        # Parameter for probability of finding a job
         self.kappa    = 1.0        # Vacancy cost parameter
+
+        # Hiring cost
+        self.hire_c = 30.0
 
         # effort function that control separation
         self.efcost_sep = 0.005 * self.dt
@@ -69,7 +72,7 @@ class Parameters:
         self.prod_err_y  = 0.0           # Measurement error on wages
 
         #DRS production
-        self.prod_alpha = 1.0
+        self.prod_alpha = 0.5
 
         # Discounting Rates
         self.beta     = 1 - (1 - 0.95) * self.dt  # Impatience
