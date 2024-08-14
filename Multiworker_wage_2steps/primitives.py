@@ -48,9 +48,9 @@ class Parameters:
         self.kappa    = 1.0        # Vacancy cost parameter
 
         # Hiring cost
-        self.hire_c = 50.0
+        self.hire_c = 40.0
         #DRS production
-        self.prod_alpha = 1.0
+        self.prod_alpha = 0.5
 
         # effort function that control separation
         self.efcost_sep = 0.005 * self.dt

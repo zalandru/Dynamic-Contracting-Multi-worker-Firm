@@ -443,7 +443,7 @@ class MultiworkerContract:
 
                         J_interpolator = RegularGridInterpolator((self.N_grid, rho_grid), EJpi[iz, in00, :, :], bounds_error=False, fill_value=None)
                         Jd0[iz, ..., in00] = J_interpolator((n1_star[iz, ...], rho_star[iz, ...]))
-                Ihire = ((Jd0[...,1]-Jd0[...,0]) > self.p.hire_c)
+                Ihire = ((Jd0[...,1]-Jd0[...,0]) > self.p.hire_c) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.num_n - 1)
                 for idx in np.argwhere(Ihire):
                     slice_Jd0 = Jd0[idx[0], idx[1], idx[2], idx[3], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], :-1]  # Shape should be (5,)
                     n0_star[idx[0], idx[1], idx[2], idx[3]] = np.interp( -self.p.hire_c ,impose_increasing(-slice_Jd0),self.N_grid[1:])
