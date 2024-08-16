@@ -51,7 +51,7 @@ def array_dist(A,B):
 @jit(nopython=True, cache=True)
 def optimized_loop(pc, rho_grid, foc, rho_star, num_z, num_n, num_v):
     for iz in range(num_z):
-        for in0 in range(num_n): #Not this: we don't do the case for max juniors. for some reason separations fail otherwise
+        for in0 in range(num_n - 1): #Not this: we don't do the case for max juniors. for some reason separations fail otherwise
             for in1 in range(num_n):
                 if (in0 + in1 > num_n - 1):
                     continue
@@ -435,19 +435,25 @@ class MultiworkerContract:
                 n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star, sep_star, self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
             
             #Getting hiring decisions
+            #Getting hiring decisions
             Jd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_n))
+            Wd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_n))
             n0_star[...] = 0
             if ite_num > 1:
                 for iz in range(self.p.num_z):
                     for in00 in range(self.p.num_n):
 
                         J_interpolator = RegularGridInterpolator((self.N_grid, rho_grid), EJpi[iz, in00, :, :], bounds_error=False, fill_value=None)
+                        W_interpolator = RegularGridInterpolator((self.N_grid, rho_grid), EW1i[iz, in00, :, :], bounds_error=False, fill_value=None)
                         Jd0[iz, ..., in00] = J_interpolator((n1_star[iz, ...], rho_star[iz, ...]))
-                Ihire = ((Jd0[...,1]-Jd0[...,0]) > self.p.hire_c) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.num_n - 1)
+                        Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...]))
+                #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.n_bar - 1)
+                Ihire = (Jd0[...,1]-Jd0[...,0] > self.p.hire_c) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.n_bar - 1)
                 for idx in np.argwhere(Ihire):
-                    slice_Jd0 = Jd0[idx[0], idx[1], idx[2], idx[3], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], :-1]  # Shape should be (5,)
-                    n0_star[idx[0], idx[1], idx[2], idx[3]] = np.interp( -self.p.hire_c ,impose_increasing(-slice_Jd0),self.N_grid[1:])
-            print("n0_star borders", n0_star.min(), n0_star.max())
+                    #slice_Jd0 = Jd0[idx[0], idx[1], idx[2], idx[3], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], :-1]+n1_star[idx[0], idx[1], idx[2], idx[3]]*rho_star[idx[0], idx[1], idx[2], idx[3]]*(Wd0[idx[0], idx[1], idx[2], idx[3],1:]-Wd0[idx[0], idx[1], idx[2], idx[3],:-1])  # Shape should be (5,)
+                    slice_Jd0 = Jd0[idx[0], idx[1], idx[2], idx[3], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], :-1]# Shape should be (5,)
+                    n0_star[idx[0], idx[1], idx[2], idx[3]] = np.interp( -self.p.hire_c ,impose_increasing(-slice_Jd0),self.N_grid[1:]) #oh shit, should we also account for how that affects the worker value???
+            print("n0_star borders", n0_star.min(), n0_star.max())  
             EW1i_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid, rho_grid), EW1i[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
             EJpi_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid, rho_grid), EJpi[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
             # Prepare points for interpolation
@@ -455,7 +461,7 @@ class MultiworkerContract:
             # Vectorized interpolation over all iz
             EW1_star = np.array([interpolator(rho_n_star_points[iz, ...]) for iz, interpolator in enumerate(EW1i_interpolators)])
             EJ1_star = np.array([interpolator(rho_n_star_points[iz, ...]) for iz, interpolator in enumerate(EJpi_interpolators)])
-            
+            #EW1_star = np.interp(n0_star, self.N_grid, Jd0[ax, ax, :, ax, :])
             #Getting the derivative of the future job value wrt n1:
             ceiln1 = np.ceil(n1_star+self.deriv_eps).astype(int)
             floorn1 = np.floor(n1_star-self.deriv_eps).astype(int)

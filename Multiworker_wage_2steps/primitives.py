@@ -29,7 +29,7 @@ class Parameters:
         self.num_np = 1       # Number of non-permanent levels
         self.num_z  = 1      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 5     # Number of points of support for the number of workers
+        self.num_n  = 9     # Number of points of support for the number of workers
         self.n_bar = 4       # Number of workers in the firm	
 
         # Time periods in the Model
@@ -48,10 +48,9 @@ class Parameters:
         self.kappa    = 1.0        # Vacancy cost parameter
 
         # Hiring cost
-        self.hire_c = 40.0
+        self.hire_c = 30.0
         #DRS production
-        self.prod_alpha = 0.5
-
+        self.prod_alpha = 0.7
         # effort function that control separation
         self.efcost_sep = 0.005 * self.dt
         self.efcost_ce  = 0.3
@@ -94,7 +93,7 @@ class Parameters:
         self.verbose          = 5
         self.iter_display     = 25
         self.tol_simple_model = 1e-9
-        self.tol_full_model   = 1e-11
+        self.tol_full_model   = 1e-8
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
         self.eq_weighting_at0 = 0.01      # fitting J function with weight around 0
