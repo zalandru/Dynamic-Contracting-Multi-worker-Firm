@@ -23,15 +23,14 @@ class Parameters:
         # Points in the Model
         self.num_l  = 101     # Number of points of evaluation
         self.num_v  = 100     # Number of points in the grid for V
-        #self.num_x  = 15      # Number of points of support for worker productivity
+        self.num_x  = 15      # Number of points of support for worker productivity
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
-        #self.num_np = 5       # Number of non-permanent levels
-        self.num_np = 1       # Number of non-permanent levels
+        self.num_np = 5       # Number of non-permanent levels
         self.num_z  = 1      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 9     # Number of points of support for the number of workers
+        self.num_n  = 5     # Number of points of support for the number of workers
         self.n_bar = 4       # Number of workers in the firm	
-
+        self.num_q = 6      #Number of avg match quality levels
         # Time periods in the Model
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
@@ -48,7 +47,9 @@ class Parameters:
         self.kappa    = 1.0        # Vacancy cost parameter
 
         # Hiring cost
-        self.hire_c = 30.0
+        self.hire_c = 25.0
+        #Starting match q
+        self.q_0 = 0.5
         #DRS production
         self.prod_alpha = 0.7
         # effort function that control separation
@@ -77,7 +78,7 @@ class Parameters:
         self.int_rate = 1 / self.beta - 1         # Period interest rate
 
         # Unemployment Parameters
-        self.u_bf_m = 1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
+        self.u_bf_m = 0.05 #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
 
         # Unemployment Parameters w_net = tau * w ^ lambda
@@ -93,7 +94,7 @@ class Parameters:
         self.verbose          = 5
         self.iter_display     = 25
         self.tol_simple_model = 1e-9
-        self.tol_full_model   = 1e-8
+        self.tol_full_model   = 1e-7
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
         self.eq_weighting_at0 = 0.01      # fitting J function with weight around 0
