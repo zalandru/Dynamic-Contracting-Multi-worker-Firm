@@ -144,7 +144,7 @@ class ContinuousContract:
             #print("Jpi-Ji max:", np.max(np.abs(Jpi-Ji)))
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
-            EJpi = Exz(Ji, self.Z_trans_mat)
+            EJpi = Exz(Jpi, self.Z_trans_mat)
             #EW1i = W1i
             #EJpi = Jpi
             # get worker decisions
@@ -203,12 +203,12 @@ class ContinuousContract:
             #Andrei: why is the w_grid still preset? Doesn't it depend on what you promised to the worker?
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
             Ji = self.fun_prod[:, ax] - w_grid[ax, :] + self.p.beta * (1 - pe_star) * EJ1_star
-            Ji = .2*Ji+.8*Ji2
+            Ji = .2 * Ji + .8 * Ji2
             #print("Value diff:", np.max(np.abs(Ji-Ji2)))
             # Update worker value function
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
-            W1i = .2*W1i + .8*W1i2
+            W1i = .4 * W1i + .6 * W1i2
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
 
