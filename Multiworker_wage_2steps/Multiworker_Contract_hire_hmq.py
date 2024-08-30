@@ -480,7 +480,7 @@ class MultiworkerContract:
                 n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.N_grid1, self.p.num_z, self.p.num_n, self.p.num_v, self.p.num_q)
             else:
                 n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star, sep_star, self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
-            q_star = (self.p.q_0*self.N_grid[self.grid[1]]*sep_star+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*sep_star+self.N_grid1[self.grid[2]])
+            q_star = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*(1-sep_star)+self.N_grid1[self.grid[2]])
             #Getting hiring decisions
             Jd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
             Wd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
@@ -630,6 +630,7 @@ class MultiworkerContract:
         Jfullderiv = np.zeros_like(Ji)
         Wderiv = np.zeros_like(Ji)
         Jderiv0 = np.zeros_like(Ji)
+        Qderiv = np.zeros_like(Ji)
 
 
         # prepare expectation call
@@ -677,24 +678,25 @@ class MultiworkerContract:
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
 
-            Ji3 = Ji# + self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*W1i[...,1] #This is the full rho
+            Ji3 = Ji + self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*W1i[...,1] #This is the full rho
 
             # First boundary condition: forward difference            
             Jfullderiv[:, :, 0, ...] = (Ji3[:, :, 1,  ...] - Ji3[:, :, 0, ...]) / (self.N_grid1[1] - self.N_grid1[0])
             Wderiv[:, :, 0, ...]     = (W1i[:, :, 1, :, :, 1] - W1i[:, :, 0, :, :, 1]) / (self.N_grid1[1] - self.N_grid1[0])
             Jderiv0[:, 0, :, :]    = Ji[:, 1, ...] - Ji[:, 0, ...] / (self.N_grid[1] - self.N_grid[0])
+            Qderiv[...,0] = (Ji3[...,1]-Ji[...,0]) / (self.Q_grid[1]-self.Q_grid[0])
             # Last boundary condition: backward difference
             Jfullderiv[:, :, -1, ...] = Ji3[:, :, -1,  ...] - Ji3[:, :, -2,  ...]/ (self.N_grid1[-1] - self.N_grid1[-2])
             Wderiv[:, :, -1, ...]     = W1i[:, :, -1, :, :, 1] - W1i[:, :, -2, :, :, 1]/ (self.N_grid1[-1] - self.N_grid1[-2])
             Jderiv0[:, -1, :, :]    = Ji[:, -1, ...] - Ji[:, -2, ...]/ (self.N_grid[-1] - self.N_grid[-2])
-
+            Qderiv[...,-1] = (Ji3[...,-1]-Ji[...,-2]) / (self.Q_grid[-1]-self.Q_grid[-2])
             # Central differences: average of forward and backward differences
             Jfullderiv[:, :, 1:-1, ...] = (Ji3[:, :, 2:,  ...] - Ji3[:, :, :-2, ...]) / (self.N_grid1[ax, ax, 2:, ax, ax] - self.N_grid1[ax, ax, :-2, ax, ax])
             Wderiv[:, :, 1:-1, ...]     = (W1i[:, :, 2:, :, :, 1] - W1i[:, :, :-2, :, :, 1]) / (self.N_grid1[ax, ax, 2:, ax, ax] - self.N_grid1[ax, ax, :-2, ax, ax])
             Jderiv0[:, 1:-1, ...]    = (Ji[:, 2:, ...] - Ji[:, :-2, ...]) / (self.N_grid[ax, ax, 2:, ax, ax] - self.N_grid[ax, ax, :-2, ax, ax])
-
-            #Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:]*W1i[...,1]
-            Jderiv = Jfullderiv+self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
+            Qderiv[...,1:-1] = (Ji3[...,2:] - Ji[...,:-2]) / (self.Q_grid[2:] - self.Q_grid[:-2])
+            Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:]*W1i[...,1]
+            #Jderiv = Jfullderiv+self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
     	    
             #Jderiv0 = Jderiv0+self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv0 #accounting for the fact that size change also impacts W
 
@@ -765,7 +767,7 @@ class MultiworkerContract:
             sep_star[:,0,...] = 0 #This is only for now, as we're not considering separations for seniors
     
             n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.N_grid1, self.p.num_z, self.p.num_n, self.p.num_v, self.p.num_q)
-            q_star = (self.p.q_0*self.N_grid[self.grid[1]]*sep_star+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*sep_star+self.N_grid1[self.grid[2]])
+            q_star = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*(1-sep_star)+self.N_grid1[self.grid[2]])
 
             #Getting hiring decisions
             #Getting hiring decisions
@@ -1073,7 +1075,7 @@ class MultiworkerContract:
                 n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.N_grid1, self.p.num_z, self.p.num_n, self.p.num_v, self.p.num_q)
             else:
                 n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star, sep_star, self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
-            q_star = (self.p.q_0*self.N_grid[self.grid[1]]*sep_star+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*sep_star+self.N_grid1[self.grid[2]])
+            q_star = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*(1-sep_star)+self.N_grid1[self.grid[2]])
             #Getting hiring decisions
             Jd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
             Wd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
