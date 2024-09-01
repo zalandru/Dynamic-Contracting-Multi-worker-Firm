@@ -748,7 +748,7 @@ class MultiworkerContract:
                   for in1 in range(self.p.num_n):
                    for iv in range(self.p.num_v):
                     if Ifire[iz,in0,in1,iv]:
-                        worker_future_value[iz,in0,in1,iv] = np.maximum(np.interp(rho_star[iz, in0, in1, iv], rho_grid, re[iz,in0,in1,:]+EW1i[iz,in0,in1,:]),ru+EUi)
+                        worker_future_value[iz,in0,in1,iv] = np.maximum(np.interp(rho_star[iz, in0, in1, iv], rho_grid, re[iz,in0,in1,:]+EW1i[iz,in0,in1,:]), EUi)
                         #print("Worker future value:", worker_future_value[iz,in0,in1,iv])
                 
                 #assert np.all(rho_star[Ifire]>rho_min)
