@@ -739,8 +739,7 @@ class MultiworkerContract:
 
    
             if ite_num>1:
-                Ikeep = (EJinv0 >= 0)
-                sep_star[Ikeep] = 0  
+                sep_star[...] = 0 
                 Ifire = (EJinv0 < 0) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.num_n-1)
                 worker_future_value = np.zeros_like(EW1i)
                 for iz in range(self.p.num_z):
@@ -1031,9 +1030,8 @@ class MultiworkerContract:
                 EWderiv0 = EWderivative(EW1i,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star,EWderiv0,rho_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v)
                 EJderiv1 = EJderivative(EJpi,np.floor(self.N_grid1[self.grid[2]]*pc_star).astype(int),np.ceil(self.N_grid1[self.grid[2]]*pc_star).astype(int),n0_star,EJderiv1,rho_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v)
                 EWderiv1 = EWderivative(EW1i,np.floor(self.N_grid1[self.grid[2]]*pc_star).astype(int),np.ceil(self.N_grid1[self.grid[2]]*pc_star).astype(int),n0_star,EWderiv1,rho_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v)
-                Ikeep = (EJderiv0+rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0 >= 0)
-                sep_star[Ikeep] = 0  
-                Ifire = (EJderiv0+rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0 < 0) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.num_n-1) & (-(EJderiv1+rho_star*self.N_grid1[self.grid[2]]*pc_star*EWderiv1)*pc_star/self.deriv_eps - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi)) < 0 )
+                sep_star[...] = 0  
+                Ifire = (EJderiv0+rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0 < 0) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.num_n-1) & (-(EJderiv1+rho_star*self.N_grid1[self.grid[2]]*pc_star*EWderiv1)*pc_star - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi)) < 0 )
                 worker_future_value = np.zeros_like(EW1i)
                 for iz in range(self.p.num_z):
                  for in0 in range(self.p.num_n):
@@ -1044,7 +1042,7 @@ class MultiworkerContract:
                         #print("Worker future value:", worker_future_value[iz,in0,in1,iv])
                 sep_star[Ifire] = 1-(EJinv0[Ifire]/((EUi-worker_future_value[Ifire]) / self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[Ifire]*EUi+(1-sep_star[Ifire])*worker_future_value[Ifire])))) #The thing is, this wouldn't work: t he corner case of ultra negative EJinv would suggest us negative separations, rather than 1       
 
-                Icompletefire = (EJderiv0+rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0 < 0) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.num_n-1) & (-(EJderiv1+rho_star*self.N_grid1[self.grid[2]]*pc_star*EWderiv1)*pc_star/self.deriv_eps - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi)) >= 0)
+                Icompletefire = (EJderiv0+rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0 < 0) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.num_n-1) & (-(EJderiv1+rho_star*self.N_grid1[self.grid[2]]*pc_star*EWderiv1)*pc_star - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi)) >= 0)
                 sep_star[Icompletefire] = 1
 
                 #assert np.all(rho_star[Ifire]>rho_min)
