@@ -47,7 +47,7 @@ class Parameters:
         self.kappa    = 1.0        # Vacancy cost parameter
 
         # Hiring cost
-        self.hire_c = 25.0
+        self.hire_c = 45.0
         #Starting match q
         self.q_0 = 0.5
         #DRS production
