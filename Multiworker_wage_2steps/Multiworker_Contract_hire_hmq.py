@@ -308,7 +308,8 @@ class MultiworkerContract:
         self.sum_size = np.zeros(self.J_grid.shape) #Sum size
         self.sum_sizeadj = np.zeros(self.J_grid.shape) #Sum size ADJUSTED FOR QUALITY
         self.sum_wage=np.zeros(self.J_grid.shape) #Calculate the total wage paid for every state
-        self.sum_size[...] = self.N_grid[self.grid[1]] * self.p.q_0
+        self.sum_size[...] = self.N_grid[self.grid[1]]
+        self.sum_sizeadj[...] = self.N_grid[self.grid[1]] * self.p.q_0
         for i in range(2, K + 1):
             self.sum_size += self.N_grid1[self.grid[i]]
             self.sum_sizeadj += self.N_grid1[self.grid[i]] * self.Q_grid[self.grid[self.J_grid.ndim - (K-1) + (i-2)]]
@@ -326,7 +327,7 @@ class MultiworkerContract:
         #Job value and GE first
         self.v_grid = np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod_onedim.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
         #Value promised to the worker at the bottom step
-        self.v_0 = self.v_grid.min()
+        self.v_0 = self.v_grid.min()#-1.0
         
         self.simple_J=np.divide(self.fun_prod_onedim[:,ax] - self.w_grid[ax,:],1-self.p.beta)
         #Apply the matching function: take the simple function and consider its different values across v.
@@ -456,7 +457,7 @@ class MultiworkerContract:
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
 
-            Ji3 = Ji# + self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*W1i[...,1] #This is the full rho
+            Ji3 = Ji + self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:,ax]*W1i[...,1] #This is the full rho
             # First boundary condition: forward difference            
             Jfullderiv[:, :, 0, ...] = (Ji3[:, :, 1,  ...] - Ji3[:, :, 0, ...]) / (self.N_grid1[1] - self.N_grid1[0])
             Wderiv[:, :, 0, ...]     = (W1i[:, :, 1, :, :, 1] - W1i[:, :, 0, :, :, 1]) / (self.N_grid1[1] - self.N_grid1[0])
@@ -467,10 +468,8 @@ class MultiworkerContract:
             Jfullderiv[:, :, 1:-1, ...] = (Ji3[:, :, 2:,  ...] - Ji3[:, :, :-2, ...]) / (self.N_grid1[ax, ax, 2:, ax, ax] - self.N_grid1[ax, ax, :-2, ax, ax])
             Wderiv[:, :, 1:-1, ...]     = (W1i[:, :, 2:, :, :, 1] - W1i[:, :, :-2, :, :, 1]) / (self.N_grid1[ax, ax, 2:, ax, ax] - self.N_grid1[ax, ax, :-2, ax, ax])
 
-
-
-            #Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:]*W1i[...,1]
-            Jderiv = Jfullderiv+self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
+            Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:,ax]*W1i[...,1]
+            #Jderiv = Jfullderiv+self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
 
             #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
@@ -499,8 +498,7 @@ class MultiworkerContract:
             else:
                 rho_star = optimized_loop_tilde(
                     pc, rho_grid, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_v)
-            #rho_star[:, 0, 0, :] = rho_star[:, 0, 1, :] #crucial for replicating CRS because... why??? J[:,0,0,:] is unchanged from this, still zero. Only worker value. Thing is, the foc is completely meaningless at zero size. So what do I do with worker value then? Guess I gotta wait til rehiring
-            #rho_star[:,0,0,:] = rho_grid.min()            
+     
             
             #Getting n1_star
             if ite_num<=100000000:            
@@ -711,17 +709,17 @@ class MultiworkerContract:
             Jfullderiv[:, :, 0, ...] = (Ji3[:, :, 1,  ...] - Ji3[:, :, 0, ...]) / (self.N_grid1[1] - self.N_grid1[0])
             Wderiv[:, :, 0, ...]     = (W1i[:, :, 1, :, :, 1] - W1i[:, :, 0, :, :, 1]) / (self.N_grid1[1] - self.N_grid1[0])
             Jderiv0[:, 0, :, :]    = Ji[:, 1, ...] - Ji[:, 0, ...] / (self.N_grid[1] - self.N_grid[0])
-            Qderiv[...,0] = (Ji3[...,1]-Ji[...,0]) / (self.Q_grid[1]-self.Q_grid[0])
+            Qderiv[...,0] = (Ji3[...,1]-Ji3[...,0]) / (self.Q_grid[1]-self.Q_grid[0])
             # Last boundary condition: backward difference
             Jfullderiv[:, :, -1, ...] = Ji3[:, :, -1,  ...] - Ji3[:, :, -2,  ...]/ (self.N_grid1[-1] - self.N_grid1[-2])
             Wderiv[:, :, -1, ...]     = W1i[:, :, -1, :, :, 1] - W1i[:, :, -2, :, :, 1]/ (self.N_grid1[-1] - self.N_grid1[-2])
             Jderiv0[:, -1, :, :]    = Ji[:, -1, ...] - Ji[:, -2, ...]/ (self.N_grid[-1] - self.N_grid[-2])
-            Qderiv[...,-1] = (Ji3[...,-1]-Ji[...,-2]) / (self.Q_grid[-1]-self.Q_grid[-2])
+            Qderiv[...,-1] = (Ji3[...,-1]-Ji3[...,-2]) / (self.Q_grid[-1]-self.Q_grid[-2])
             # Central differences: average of forward and backward differences
             Jfullderiv[:, :, 1:-1, ...] = (Ji3[:, :, 2:,  ...] - Ji3[:, :, :-2, ...]) / (self.N_grid1[ax, ax, 2:, ax, ax] - self.N_grid1[ax, ax, :-2, ax, ax])
             Wderiv[:, :, 1:-1, ...]     = (W1i[:, :, 2:, :, :, 1] - W1i[:, :, :-2, :, :, 1]) / (self.N_grid1[ax, ax, 2:, ax, ax] - self.N_grid1[ax, ax, :-2, ax, ax])
             Jderiv0[:, 1:-1, ...]    = (Ji[:, 2:, ...] - Ji[:, :-2, ...]) / (self.N_grid[ax, 2:, ax, ax, ax] - self.N_grid[ax, :-2, ax, ax, ax])
-            Qderiv[...,1:-1] = (Ji3[...,2:] - Ji[...,:-2]) / (self.Q_grid[2:] - self.Q_grid[:-2])
+            Qderiv[...,1:-1] = (Ji3[...,2:] - Ji3[...,:-2]) / (self.Q_grid[2:] - self.Q_grid[:-2])
             Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:,ax]*W1i[...,1]
             #Jderiv = Jfullderiv+self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
     	    
@@ -1009,17 +1007,17 @@ class MultiworkerContract:
             Jfullderiv[:, :, 0, ...] = (Ji3[:, :, 1,  ...] - Ji3[:, :, 0, ...]) / (self.N_grid1[1] - self.N_grid1[0])
             Wderiv[:, :, 0, ...]     = (W1i[:, :, 1, :, :, 1] - W1i[:, :, 0, :, :, 1]) / (self.N_grid1[1] - self.N_grid1[0])
             Jderiv0[:, 0, :, :]    = Ji[:, 1, ...] - Ji[:, 0, ...] / (self.N_grid[1] - self.N_grid[0])
-            Qderiv[...,0] = (Ji3[...,1]-Ji[...,0]) / (self.Q_grid[1]-self.Q_grid[0])
+            Qderiv[...,0] = (Ji[...,1]-Ji[...,0]) / (self.Q_grid[1]-self.Q_grid[0])
             # Last boundary condition: backward difference
             Jfullderiv[:, :, -1, ...] = Ji3[:, :, -1,  ...] - Ji3[:, :, -2,  ...]/ (self.N_grid1[-1] - self.N_grid1[-2])
             Wderiv[:, :, -1, ...]     = W1i[:, :, -1, :, :, 1] - W1i[:, :, -2, :, :, 1]/ (self.N_grid1[-1] - self.N_grid1[-2])
             Jderiv0[:, -1, :, :]    = Ji[:, -1, ...] - Ji[:, -2, ...]/ (self.N_grid[-1] - self.N_grid[-2])
-            Qderiv[...,-1] = (Ji3[...,-1]-Ji[...,-2]) / (self.Q_grid[-1]-self.Q_grid[-2])
+            Qderiv[...,-1] = (Ji[...,-1]-Ji[...,-2]) / (self.Q_grid[-1]-self.Q_grid[-2])
             # Central differences: average of forward and backward differences
             Jfullderiv[:, :, 1:-1, ...] = (Ji3[:, :, 2:,  ...] - Ji3[:, :, :-2, ...]) / (self.N_grid1[ax, ax, 2:, ax, ax] - self.N_grid1[ax, ax, :-2, ax, ax])
             Wderiv[:, :, 1:-1, ...]     = (W1i[:, :, 2:, :, :, 1] - W1i[:, :, :-2, :, :, 1]) / (self.N_grid1[ax, ax, 2:, ax, ax] - self.N_grid1[ax, ax, :-2, ax, ax])
             Jderiv0[:, 1:-1, ...]    = (Ji[:, 2:, ...] - Ji[:, :-2, ...]) / (self.N_grid[ax, 2:, ax, ax, ax] - self.N_grid[ax, :-2, ax, ax, ax])
-            Qderiv[...,1:-1] = (Ji3[...,2:] - Ji[...,:-2]) / (self.Q_grid[2:] - self.Q_grid[:-2])
+            Qderiv[...,1:-1] = (Ji[...,2:] - Ji[...,:-2]) / (self.Q_grid[2:] - self.Q_grid[:-2])
             Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:,ax]*W1i[...,1]
             
             #Jderiv = Jfullderiv+self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
@@ -1064,8 +1062,7 @@ class MultiworkerContract:
             #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
             #if ite_num<=1:
             rho_star = optimized_loop(
-                 pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_q) 
-            print("rho_star shape", rho_star.shape)	
+                 pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_q) 	
             if ite_num>1:
                 EJderiv0 = np.zeros_like(EJ1_star)
                 EWderiv0 = np.zeros_like(EW1i)
@@ -1073,22 +1070,21 @@ class MultiworkerContract:
                 EWderiv1 = np.zeros_like(EW1i)
                 q0 = np.zeros_like(EJ1_star)
                 q1 = np.zeros_like(EJ1_star)
-                q0 = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])
-                q1 = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*(1- 0.5)+self.N_grid1[self.grid[2]])
-                print ("q0 shape", q0.shape)
-                print ("(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star shape", ((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).shape)
+                q0 = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]]) + (self.grid[3] - self.grid[3])
+                q1 = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*(1- 0.5)+self.N_grid1[self.grid[2]]) + (self.grid[3] - self.grid[3])
                 EJ0, EW0 = EQs(EJq,EWq,EJpi,EW1i,q0,self.Q_grid,self.p.num_z,self.p.num_n,self.p.num_v,self.p.num_q)
                 EJ1, EW1 = EQs(EJq,EWq,EJpi,EW1i,q1,self.Q_grid,self.p.num_z,self.p.num_n,self.p.num_v,self.p.num_q)
 
                 EJderiv0 = EJderivative(EJ0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EJderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
                 EWderiv0 = EWderivative(EW0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EWderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
-                EJderiv1 = EJderivative(EJ1,np.floor((self.N_grid[self.grid[1]] * (1-0.5)+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]] * (1-0.5)+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EJderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
-                EWderiv1 = EWderivative(EW1,np.floor((self.N_grid[self.grid[1]] * (1-0.5)+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]] * (1-0.5)+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EWderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
-                ERho = Ez(Ji3, self.Z_trans_mat)                
+                EJderiv1 = EJderivative(EJ1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EJderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                EWderiv1 = EWderivative(EW1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EWderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                
+                ERho = Ez(Ji, self.Z_trans_mat)    #Ez(Ji3, self.Z_trans_mat)                
                 Rho_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid1, rho_grid, self.Q_grid), ERho[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
                 # Prepare points for interpolation
                 rho_n_star_points_0 = np.stack((n0_star, (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star, rho_star, q0), axis=-1)  # Shape: (num_z, ..., 2)
-                rho_n_star_points_1 = np.stack((n0_star, (self.N_grid[self.grid[1]] * (1-0.5)+self.N_grid1[self.grid[2]])*pc_star, rho_star, q1), axis=-1)  # Shape: (num_z, ..., 2)
+                rho_n_star_points_1 = np.stack((n0_star, (self.N_grid[self.grid[1]]*self.p.q_0+self.N_grid1[self.grid[2]])*pc_star, rho_star, q1), axis=-1)  # Shape: (num_z, ..., 2)
 
                 # Vectorized interpolation over all iz
                 ERho_star_0 = np.array([interpolator(rho_n_star_points_0[iz, ...]) for iz, interpolator in enumerate(Rho_interpolators)])
@@ -1101,18 +1097,35 @@ class MultiworkerContract:
                 ceilq1=np.ceil(np.interp( q1, self.Q_grid, range(self.p.num_q))).astype(int)
                 for iz in range(self.p.num_z):
                  for in0 in range(self.p.num_n):
+                  if in0 == 0:
+                     continue
                   for in1 in range(self.p.num_n):
                    for iv in range(self.p.num_v):
                      for iq in range(self.p.num_q):
-                        if (floorq0 == ceilq0) | (floorq1 == ceilq1):
-                            print("floorq0 = ceilq0 or floorq1 = ceilq1")
-                            RhoderivQ0[iz,in0,in1,iv,iq] = 0
-                            RhoderivQ1[iz,in0,in1,iv,iq] = 0
+                        if (floorq0[iz,in0,in1,iv,iq] == ceilq0[iz,in0,in1,iv,iq]):
+                            if floorq0[iz,in0,in1,iv,iq] == 0:
+                                RhoderivQ0[iz,in0,in1,iv,iq] = (ERho_star_0[iz,in0,in1,iv,1] - ERho_star_0[iz,in0,in1,iv,0]) / (self.Q_grid[1] - self.Q_grid[0])                             
+                            else:
+                                if floorq0[iz,in0,in1,iv,iq] == self.p.num_q-1:
+                                      RhoderivQ0[iz,in0,in1,iv,iq] = (ERho_star_0[iz,in0,in1,iv,-1] - ERho_star_0[iz,in0,in1,iv,-2]) / (self.Q_grid[-1] - self.Q_grid[-2])
+                                else:
+                                        RhoderivQ0[iz,in0,in1,iv,iq] = (ERho_star_0[iz,in0,in1,iv,floorq0[iz,in0,in1,iv,iq]+1] - ERho_star_0[iz,in0,in1,iv,floorq0[iz,in0,in1,iv,iq]-1]) / (self.Q_grid[floorq0[iz,in0,in1,iv,iq]+1] - self.Q_grid[floorq0[iz,in0,in1,iv,iq]-1])
                             continue
-                        RhoderivQ0[iz,in0,in1,iv,iq] = (ceilq0,self.Q_grid, ERho_star_0[iz,in0,in1,iv,:]) - np.interp(floorq0,self.Q_grid, ERho_star_0[iz,in0,in1,iv,:]) / (self.Q_grid[ceilq0]-self.Q_grid[floorq0])
-                        RhoderivQ1[iz,in0,in1,iv,iq] = (ceilq1,self.Q_grid, ERho_star_1[iz,in0,in1,iv,:]) - np.interp(floorq1,self.Q_grid, ERho_star_1[iz,in0,in1,iv,:]) / (self.Q_grid[ceilq1]-self.Q_grid[floorq1]) 
+                        if (floorq1[iz,in0,in1,iv,iq] == ceilq1[iz,in0,in1,iv,iq]):
+                            if floorq1[iz,in0,in1,iv,iq] == 0:
+                                RhoderivQ1[iz,in0,in1,iv,iq] = (ERho_star_1[iz,in0,in1,iv,1] - ERho_star_1[iz,in0,in1,iv,0]) / (self.Q_grid[1] - self.Q_grid[0])                             
+                            else:
+                                if floorq1[iz,in0,in1,iv,iq] == self.p.num_q-1:
+                                      RhoderivQ1[iz,in0,in1,iv,iq] = (ERho_star_1[iz,in0,in1,iv,-1] - ERho_star_1[iz,in0,in1,iv,-2]) / (self.Q_grid[-1] - self.Q_grid[-2])
+                                else:
+                                        RhoderivQ1[iz,in0,in1,iv,iq] = (ERho_star_1[iz,in0,in1,iv,floorq1[iz,in0,in1,iv,iq]+1] - ERho_star_1[iz,in0,in1,iv,floorq1[iz,in0,in1,iv,iq]-1]) / (self.Q_grid[floorq1[iz,in0,in1,iv,iq]+1] - self.Q_grid[floorq1[iz,in0,in1,iv,iq]-1])
+                            continue
+                        RhoderivQ0[iz,in0,in1,iv,iq] = np.interp(ceilq0[iz,in0,in1,iv,iq],self.Q_grid, ERho_star_0[iz,in0,in1,iv,:]) - np.interp(floorq0[iz,in0,in1,iv,iq],self.Q_grid, ERho_star_0[iz,in0,in1,iv,:]) / (self.Q_grid[ceilq0[iz,in0,in1,iv,iq]]-self.Q_grid[floorq0[iz,in0,in1,iv,iq]])
+                        RhoderivQ1[iz,in0,in1,iv,iq] = np.interp(ceilq1[iz,in0,in1,iv,iq],self.Q_grid, ERho_star_1[iz,in0,in1,iv,:]) - np.interp(floorq1[iz,in0,in1,iv,iq],self.Q_grid, ERho_star_1[iz,in0,in1,iv,:]) / (self.Q_grid[ceilq1[iz,in0,in1,iv,iq]]-self.Q_grid[floorq1[iz,in0,in1,iv,iq]]) 
+                
+                
                 sep_star[...] = 0 #That way all the separations are normalized to zero first.
-                Ifire = ( (-EJderiv0-rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0) + RhoderivQ0 * q0 / (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]]) > 0) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.n_bar) & (-(EJderiv1+rho_star*self.N_grid1[self.grid[2]]*pc_star*EWderiv1)*pc_star - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi)) + RhoderivQ1 * q1 / (self.N_grid[self.grid[1]] * (1-0.5)+self.N_grid1[self.grid[2]]) < 0 )
+                Ifire = ( (-EJderiv0-rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0) + RhoderivQ0 * q0 / (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]]) - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1_star + re_star)) > 0) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.n_bar) & (-(EJderiv1+rho_star*self.N_grid1[self.grid[2]]*pc_star*EWderiv1)*pc_star - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(0.5 * EUi + 0.5 * (EW1_star + re_star))) + RhoderivQ1 * q1 / (self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]]) < 0 )
                 worker_future_value = np.zeros_like(EW1i)
                 for iz in range(self.p.num_z):
                  for in0 in range(self.p.num_n):
@@ -1120,7 +1133,7 @@ class MultiworkerContract:
                    for iv in range(self.p.num_v):
                      for iq in range(self.p.num_q):
                       if Ifire[iz,in0,in1,iv,iq]:
-                        worker_future_value[iz,in0,in1,iv,iq] = np.maximum(np.interp(rho_star[iz, in0, in1, iv,iq], rho_grid, re[iz,in0,in1,:,iq]+EW1i[iz,in0,in1,:,iq]),ru+EUi)
+                        worker_future_value[iz,in0,in1,iv,iq] = np.maximum(np.interp(rho_star[iz, in0, in1, iv,iq], rho_grid, re[iz,in0,in1,:,iq]+EW1i[iz,in0,in1,:,iq]),EUi)
                         #print("Worker future value:", worker_future_value[iz,in0,in1,iv,iq])
                 #sep_star[Ifire] = 1-(EJinv0[Ifire]/((EUi-worker_future_value[Ifire]) / self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[Ifire]*EUi+(1-sep_star[Ifire])*worker_future_value[Ifire])))) #The thing is, this wouldn't work: t he corner case of ultra negative EJinv would suggest us negative separations, rather than 1       
                 for idx in np.argwhere(Ifire):
@@ -1128,7 +1141,7 @@ class MultiworkerContract:
                     sep_star[idx[0], idx[1], idx[2], idx[3], idx[4]] = 1- ( (self.Q_grid[idx[4]]*self.N_grid1[idx[2]]+self.p.q_0*self.N_grid[idx[1]]) * (Qderiv[idx[0], idx[1], idx[2], idx[3], idx[4]]-self.prod_qd[idx[0], idx[1], idx[2], idx[3], idx[4]]) / \
                     (((worker_future_value[idx[0], idx[1], idx[2], idx[3], idx[4]]-EUi) / (self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[idx[0], idx[1], idx[2], idx[3], idx[4]]*EUi+(1-sep_star[idx[0], idx[1], idx[2], idx[3], idx[4]])*worker_future_value[idx[0], idx[1], idx[2], idx[3], idx[4]])))+ EJinv[idx[0], idx[1], idx[2], idx[3], idx[4]]) * self.p.beta * self.N_grid1[idx[2]]) - self.N_grid1[idx[2]]) / self.N_grid[idx[1]]
 
-                Icompletefire = ((-EJderiv0-rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0) + RhoderivQ0 * (self.N_grid[self.grid[1]]*q0) / (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]]) > 0) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.n_bar) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.n_bar) & (-(EJderiv1+rho_star*self.N_grid1[self.grid[2]]*pc_star*EWderiv1)*pc_star - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EUi)) + RhoderivQ1 * q1 / (self.N_grid[self.grid[1]] * (1-0.5)+self.N_grid1[self.grid[2]]) >= 0)
+                Icompletefire = ((-EJderiv0-rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0) + RhoderivQ0 * (self.N_grid[self.grid[1]]*q0) / (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]]) - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1_star + re_star)) > 0) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.n_bar) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] <= self.p.n_bar) & (-(EJderiv1+rho_star*self.N_grid1[self.grid[2]]*pc_star*EWderiv1)*pc_star - (EW1_star+re_star-EUi)/ self.pref.inv_utility_1d(self.v_0-self.p.beta*(0.5 * EUi + 0.5 * (EW1_star + re_star))) + RhoderivQ1 * q1 / (self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]]) >= 0)
                 sep_star[Icompletefire] = 0.5
 
                 #assert np.all(rho_star[Ifire]>rho_min)
@@ -1136,14 +1149,8 @@ class MultiworkerContract:
                 sepneg = ((-EJderiv0-rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0) + RhoderivQ0 * (self.N_grid[self.grid[1]]*q0) / (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]]) > 0) & (sep_star < 0)
                 sep_star[sepneg] = 1
                 sep_star = np.maximum(0.5, sep_star)
-                #sep_star[:,0,...] = 0 #This is only for now, as we're not considering separations for seniors
-            #if ite_num>1:
-            #    rho_star,sep_star = optimized_loop_sep(
-            #        re, pc, EJinv0, EW1i, EUi, rho_grid, foc, rho_star, sep_star, self.p.num_z, self.p.num_n, self.v_0, self.pref.inv_utility_1d, self.p.beta)
-            #else:
-            #    rho_star = optimized_loop_tilde(
-            #        pc, rho_grid, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_v)
-    
+                sep_star[:,0,...] = 0 #This is only for now, as we're not considering separations for seniors
+
             #Getting n1_star
             if ite_num<=100000000:            
                 n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.N_grid1, self.p.num_z, self.p.num_n, self.p.num_v, self.p.num_q)
@@ -1164,11 +1171,7 @@ class MultiworkerContract:
                         Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
                 #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] < self.p.n_bar - 1)
                 Ihire = ((Jd0[...,1]-Jd0[...,0]) / (self.N_grid[1]-self.N_grid[0]) > self.p.hire_c/self.p.beta) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] < self.p.n_bar - 1)
-                #for idx in np.argwhere(Ihire):
-                    #slice_Jd0 = Jd0[idx[0], idx[1], idx[2], idx[3], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], :-1]+n1_star[idx[0], idx[1], idx[2], idx[3]]*rho_star[idx[0], idx[1], idx[2], idx[3]]*(Wd0[idx[0], idx[1], idx[2], idx[3],1:]-Wd0[idx[0], idx[1], idx[2], idx[3],:-1])  # Shape should be (5,)
-                #    slice_Jd0 = (Jd0[idx[0], idx[1], idx[2], idx[3], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], :-1]) / (self.N_grid[1:]-self.N_grid[:-1])# Shape should be (5,)
-                #    n0_star[idx[0], idx[1], idx[2], idx[3]] = np.interp( -self.p.hire_c/self.p.beta ,impose_increasing(-slice_Jd0),self.N_grid[1:]) #oh shit, should we also account for how that affects the worker value???
-             #print("n0_star borders", n0_star.min(), n0_star.max())    
+
                 n0_star = n0(Jd0, n0_star, self.N_grid, Ihire, self.p.hire_c / self.p.beta)
 
             EW1i_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid1, rho_grid, self.Q_grid), EW1i[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
