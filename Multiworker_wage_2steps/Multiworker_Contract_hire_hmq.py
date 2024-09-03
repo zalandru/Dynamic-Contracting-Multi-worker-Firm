@@ -253,7 +253,7 @@ def EQs(EJq,EWq,EJpi,EW1i,q_star,Q_grid,num_z,num_n,num_v,num_q):
     return EJq, EWq
 class MultiworkerContract:
     """
-        This solves a classic contract model.
+        This solves a contract model with DRS production, hirings, and heterogeneous match quality.
     """
     def __init__(self, input_param=None, js=None):
         """
@@ -1150,13 +1150,13 @@ class MultiworkerContract:
                 sep_star[sepneg] = 1
                 sep_star = np.maximum(0.5, sep_star)
                 sep_star[:,0,...] = 0 #This is only for now, as we're not considering separations for seniors
-
             #Getting n1_star
             if ite_num<=100000000:            
                 n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.N_grid1, self.p.num_z, self.p.num_n, self.p.num_v, self.p.num_q)
             else:
                 n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star, sep_star, self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
             q_star = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*(1-sep_star)+self.N_grid1[self.grid[2]])
+            print("q_star", q_star[self.p.z_0-1,1,0,50, :])
             #Getting hiring decisions
             Jd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
             Wd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
