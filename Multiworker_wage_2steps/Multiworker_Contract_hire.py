@@ -480,7 +480,7 @@ class MultiworkerContract:
             
             #Getting n1_star
             if ite_num<=100000000:            
-                n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.N_grid1, self.p.num_z, self.p.num_n, self.p.num_v)
+                n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.N_grid1, self.p.num_z, self.p.num_n, self.p.num_v)            
             else:
                 n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star, sep_star, self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
             
@@ -1185,7 +1185,7 @@ class MultiworkerContract:
         return np.power(sum_n, self.p.prod_alpha)
     def production_diff(self,sum):
 
-        diff = (self.production(np.minimum(sum+1,self.K*(self.p.num_n-1))) - self.production(sum) + self.production(sum) - self.production(np.maximum(sum-1,0))) / (np.minimum(sum+1,self.K*(self.p.num_n-1)) - np.maximum(sum-1,0))
+        diff = (self.production(np.minimum(sum+1,self.K*(self.p.n_bar))) - self.production(np.maximum(sum-1,0))) / (np.minimum(sum+1,self.K*(self.p.n_bar)) - np.maximum(sum-1,0))
         
         return diff
     def fun_prod_1d(self,sum_n):

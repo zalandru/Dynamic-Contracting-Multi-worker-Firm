@@ -34,6 +34,13 @@ class Parameters:
         # Time periods in the Model
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
+        # Hiring cost
+        self.hire_c = 90.0
+        #Starting match q
+        self.q_0 = 0.5
+        #DRS production
+        self.prod_alpha = 1.0
+
         # Utility Function Parameters
         self.u_rho = 1.5      # Risk aversion coefficient, was 1.5
         self.u_a   = 1.0
@@ -46,12 +53,7 @@ class Parameters:
         self.sigma    = 1.0        # Parameter for probability of finding a job
         self.kappa    = 1.0        # Vacancy cost parameter
 
-        # Hiring cost
-        self.hire_c = 90.0
-        #Starting match q
-        self.q_0 = 0.5
-        #DRS production
-        self.prod_alpha = 1.0
+
         # effort function that control separation
         self.efcost_sep = 0.005 * self.dt
         self.efcost_ce  = 0.3
@@ -94,7 +96,7 @@ class Parameters:
         self.verbose          = 5
         self.iter_display     = 25
         self.tol_simple_model = 1e-9
-        self.tol_full_model   = 1e-8
+        self.tol_full_model   = 1e-7
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
         self.eq_weighting_at0 = 0.01      # fitting J function with weight around 0
