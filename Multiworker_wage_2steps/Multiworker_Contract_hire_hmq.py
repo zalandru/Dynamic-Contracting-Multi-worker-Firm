@@ -10,8 +10,11 @@ from search import JobSearchArray
 from valuefunction_multi import PowerFunctionGrid
 from scipy.interpolate import RegularGridInterpolator
 from numba import jit
+import pickle
+import datetime
 
 ax = np.newaxis
+
 
 # Set up the basic configuration for the logger
 logging.basicConfig(
@@ -24,6 +27,16 @@ logging.basicConfig(
     # Suppress debug logs from the numba library
 logging.getLogger('numba').setLevel(logging.WARNING)
 
+
+def load_pickle_file(new_p_value, pickle_file="results_hmq_sep.pkl"):
+    # Step 1: Load the existing data from the pickle file
+    try:
+        with open(pickle_file, "rb") as file:
+            all_results = pickle.load(file)
+    except FileNotFoundError:
+        # If file doesn't exist, start with an empty dictionary
+        all_results = {}
+        print("No existing file found. Creating a new one.")
 
 @jit(nopython=True)
 def impose_decreasing(M):
@@ -295,7 +308,6 @@ class MultiworkerContract:
         self.fun_prod_onedim = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
         self.fun_prod = self.fun_prod_onedim.reshape((self.p.num_z,) + (1,) * (self.J_grid.ndim - 1))
 
-        #self.unemp_bf = self.fun_prod_onedim[3]
 
         # Wage and Shadow Cost Grids
         self.w_grid = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v ) #Note that this is not the true range of possible wages as this excludes the size part of the story
@@ -506,6 +518,7 @@ class MultiworkerContract:
             else:
                 n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star, sep_star, self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
             q_star = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*(1-sep_star)+self.N_grid1[self.grid[2]])
+            
             #Getting hiring decisions
             Jd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
             Wd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
@@ -1075,10 +1088,10 @@ class MultiworkerContract:
                 EJ0, EW0 = EQs(EJq,EWq,EJpi,EW1i,q0,self.Q_grid,self.p.num_z,self.p.num_n,self.p.num_v,self.p.num_q)
                 EJ1, EW1 = EQs(EJq,EWq,EJpi,EW1i,q1,self.Q_grid,self.p.num_z,self.p.num_n,self.p.num_v,self.p.num_q)
 
-                EJderiv0 = EJderivative(EJ0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EJderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
-                EWderiv0 = EWderivative(EW0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EWderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
-                EJderiv1 = EJderivative(EJ1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EJderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
-                EWderiv1 = EWderivative(EW1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star).astype(int),n0_star, EWderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                EJderiv0 = EJderivative(EJ0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star-1e-100).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star+1e-100).astype(int),n0_star, EJderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                EWderiv0 = EWderivative(EW0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star-1e-100).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star+1e-100).astype(int),n0_star, EWderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                EJderiv1 = EJderivative(EJ1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star-1e-100).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star+1e-100).astype(int),n0_star, EJderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                EWderiv1 = EWderivative(EW1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star-1e-100).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star+1e-100).astype(int),n0_star, EWderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
                 
                 ERho = Ez(Ji, self.Z_trans_mat)    #Ez(Ji3, self.Z_trans_mat)                
                 Rho_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid1, rho_grid, self.Q_grid), ERho[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
@@ -1267,7 +1280,46 @@ class MultiworkerContract:
 
         #self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
         #                             ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
+        self.append_results_to_pickle(Ji, W1i, EW1_star, sep_star, n0_star, n1_star)
+
         return Ji,W1i,EW1_star,sep_star, n0_star, n1_star
+
+
+    def append_results_to_pickle(self, Ji, W1i, EW1_star, sep_star, n0_star, n1_star, pickle_file="results_hmq_sep.pkl"):
+        # Step 1: Load the existing data from the pickle file
+        try:
+            with open(pickle_file, "rb") as file:
+                all_results = pickle.load(file)
+        except FileNotFoundError:
+            all_results = {}
+            print("No existing file found. Creating a new one.")
+
+        # Step 2: Create results for the multi-dimensional p
+        new_results = self.save_results_for_p(Ji, W1i, EW1_star, sep_star, n0_star, n1_star)
+
+        # Step 3: Use a tuple (p.num_z, p.num_v, p.num_n) as the key
+        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.hire_c,self.p.prod_alpha,self.p.dt)
+
+        # Step 4: Add the new results to the dictionary
+        all_results[key] = new_results
+
+        # Step 5: Save the updated dictionary back to the pickle file
+        with open(pickle_file, "wb") as file:
+            pickle.dump(all_results, file)
+
+        print(f"Results for p = {key} have been appended to {pickle_file}.")
+    def save_results_for_p(self, Ji, W1i, EW1_star, sep_star, n0_star, n1_star):
+        current_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return {
+        'date': current_date,
+        'Ji': Ji,
+        'W1i': W1i,
+        'EW1_star': EW1_star,
+        'sep_star': sep_star,
+        'n0_star': n0_star,
+        'n1_star': n1_star,
+        'p_value': (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.hire_c,self.p.prod_alpha,self.p.dt)
+    }    
 
 
     def construct_z_grid(self):
