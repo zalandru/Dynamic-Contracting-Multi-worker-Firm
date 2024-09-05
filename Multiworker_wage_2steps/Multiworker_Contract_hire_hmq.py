@@ -1149,6 +1149,8 @@ class MultiworkerContract:
                 sepneg = ((-EJderiv0-rho_star*(self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star*EWderiv0) + RhoderivQ0 * (self.N_grid[self.grid[1]]*q0) / (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]]) > 0) & (sep_star < 0)
                 sep_star[sepneg] = 1
                 sep_star = np.maximum(0.5, sep_star)
+                seplarge = (sep_star>0.5)
+                sep_star[seplarge] = 0.5
                 sep_star[:,0,...] = 0 #This is only for now, as we're not considering separations for seniors
             #Getting n1_star
             if ite_num<=100000000:            
@@ -1204,6 +1206,8 @@ class MultiworkerContract:
             #print("states at which worker quits:", np.where(~(pc_star[self.p.z_0-1,1,1,:]==0)))
             # Update firm value function
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EUi+(1-sep_star)*(EW1_star+re_star)))
+            print("wage_jun", wage_jun[self.p.z_0-1,1,0,50,0])
+            print("wage jun no sep", self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star[self.p.z_0-1,1,0,50,0]+re_star[self.p.z_0-1,1,0,50,0])))
             Ji = self.fun_prod*self.prod - sum_wage - self.p.hire_c*n0_star - \
                 wage_jun*self.N_grid[self.grid[1]]  + self.p.beta * EJ1_star
             Ji = .2*Ji + .8*Ji2
