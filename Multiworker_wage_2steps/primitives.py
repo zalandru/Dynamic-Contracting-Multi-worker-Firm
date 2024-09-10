@@ -36,10 +36,11 @@ class Parameters:
 
         # Hiring cost
         self.hire_c = 90.0
-        #Starting match q
-        self.q_0 = 0.5
+        #HMQ
+        self.q_0 = 0.5 #Starting match q
+        self.prod_q = 0.7 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
         #DRS production
-        self.prod_alpha = 1.0
+        self.prod_alpha = 0.5
 
         # Utility Function Parameters
         self.u_rho = 1.5      # Risk aversion coefficient, was 1.5
