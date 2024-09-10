@@ -321,10 +321,10 @@ class MultiworkerContract:
         self.sum_sizeadj = np.zeros(self.J_grid.shape) #Sum size ADJUSTED FOR QUALITY
         self.sum_wage=np.zeros(self.J_grid.shape) #Calculate the total wage paid for every state
         self.sum_size[...] = self.N_grid[self.grid[1]]
-        self.sum_sizeadj[...] = self.N_grid[self.grid[1]] * self.p.q_0
+        self.sum_sizeadj[...] = self.N_grid[self.grid[1]] * (self.p.prod_q +self.p.q_0*(1.0-self.p.prod_q))
         for i in range(2, K + 1):
             self.sum_size += self.N_grid1[self.grid[i]]
-            self.sum_sizeadj += self.N_grid1[self.grid[i]] * self.Q_grid[self.grid[self.J_grid.ndim - (K-1) + (i-2)]]
+            self.sum_sizeadj += self.N_grid1[self.grid[i]] * (self.p.prod_q + self.Q_grid[self.grid[self.J_grid.ndim - (K-1) + (i-2)]] * (1.0 - self.p.prod_q))
         for i in range(K+1,self.J_grid.ndim - (K-1)):
             self.sum_wage += self.w_grid[self.grid[i]]*self.N_grid1[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
 
@@ -1088,10 +1088,10 @@ class MultiworkerContract:
                 EJ0, EW0 = EQs(EJq,EWq,EJpi,EW1i,q0,self.Q_grid,self.p.num_z,self.p.num_n,self.p.num_v,self.p.num_q)
                 EJ1, EW1 = EQs(EJq,EWq,EJpi,EW1i,q1,self.Q_grid,self.p.num_z,self.p.num_n,self.p.num_v,self.p.num_q)
 
-                EJderiv0 = EJderivative(EJ0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star-1e-100).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star+1e-100).astype(int),n0_star, EJderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
-                EWderiv0 = EWderivative(EW0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star-1e-100).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star+1e-100).astype(int),n0_star, EWderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
-                EJderiv1 = EJderivative(EJ1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star-1e-100).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star+1e-100).astype(int),n0_star, EJderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
-                EWderiv1 = EWderivative(EW1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star-1e-100).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star+1e-100).astype(int),n0_star, EWderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                EJderiv0 = EJderivative(EJ0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star-1e-10).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star+1e-10).astype(int),n0_star, EJderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                EWderiv0 = EWderivative(EW0,np.floor((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star-1e-10).astype(int),np.ceil((self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]])*pc_star+1e-10).astype(int),n0_star, EWderiv0,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                EJderiv1 = EJderivative(EJ1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star-1e-10).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star+1e-10).astype(int),n0_star, EJderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
+                EWderiv1 = EWderivative(EW1,np.floor((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star-1e-10).astype(int),np.ceil((self.N_grid[self.grid[1]] * self.p.q_0+self.N_grid1[self.grid[2]])*pc_star+1e-10).astype(int),n0_star, EWderiv1,rho_grid, self.N_grid, self.N_grid1,rho_star,self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
                 
                 ERho = Ez(Ji, self.Z_trans_mat)    #Ez(Ji3, self.Z_trans_mat)                
                 Rho_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid1, rho_grid, self.Q_grid), ERho[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
@@ -1298,7 +1298,7 @@ class MultiworkerContract:
         new_results = self.save_results_for_p(Ji, W1i, EW1_star, sep_star, n0_star, n1_star)
 
         # Step 3: Use a tuple (p.num_z, p.num_v, p.num_n) as the key
-        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.hire_c,self.p.prod_alpha,self.p.dt)
+        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt)
 
         # Step 4: Add the new results to the dictionary
         all_results[key] = new_results
@@ -1318,7 +1318,7 @@ class MultiworkerContract:
         'sep_star': sep_star,
         'n0_star': n0_star,
         'n1_star': n1_star,
-        'p_value': (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.hire_c,self.p.prod_alpha,self.p.dt)
+        'p_value': (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt)
     }    
 
 
