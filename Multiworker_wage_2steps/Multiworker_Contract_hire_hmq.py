@@ -9,7 +9,8 @@ from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransi
 from search import JobSearchArray
 from valuefunction_multi import PowerFunctionGrid
 from scipy.interpolate import RegularGridInterpolator
-from numba import jit
+import numba as nb
+
 import pickle
 import datetime
 
@@ -38,7 +39,7 @@ def load_pickle_file(new_p_value, pickle_file="results_hmq_sep.pkl"):
         all_results = {}
         print("No existing file found. Creating a new one.")
 
-@jit(nopython=True)
+@nb.njit()
 def impose_decreasing(M):
     nv = M.shape[1]
     if len(M.shape)==2:
@@ -48,14 +49,14 @@ def impose_decreasing(M):
         for v in reversed(range(nv-1)):
             M[:,v,:] = np.maximum(M[:,v,:],M[:,v+1,:])
     return M
-@jit(nopython=True, cache=True)
+@nb.njit(cache=True)
 def impose_increasing(A0):
     A = np.copy(A0)
     nv = len(A)
     for v in range(1,nv):
         A[v] = np.maximum(A[v],A[v-1])
     return A
-#@jit(nopython=True)
+#@nb.njit()
 def array_exp_dist(A,B,h):
     """ 
         computes sqrt( (A-B)^2 ) / sqrt(B^2) weighted by exp(- (B/h)^2 ) 
@@ -67,14 +68,14 @@ def array_exp_dist(A,B,h):
     # return  (np.power( A-B,2) * weight ).mean() / ( np.power(B,2) * weight ).mean() 
     weight = np.exp( - 0.5*np.power(B/h,2))
     return  (np.power( A-B,2) * weight ).mean() / ( np.power(B,2) * weight ).mean() 
-#@jit(nopython=True)
+#@nb.njit()
 def array_dist(A,B):
     """ 
         computes sqrt( (A-B)^2 ) / sqrt(B^2) weighted by exp(- (B/h)^2 ) 
     """
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 #Solve for rho_star
-@jit(nopython=True, cache=True)
+@nb.njit(cache=True)
 def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, num_q):
     for iz in range(num_z):
         for in0 in range(num_n): #Not this: we don't do the case for max juniors. for some reason separations fail otherwise
@@ -97,7 +98,7 @@ def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, nu
                     rho_star[iz, in0, in1, Iquit, iq] = rho_min
 
     return rho_star
-@jit(nopython=True, cache=True) #To be done: corerect the inv_utility issue, it doesn't work with numba!
+@nb.njit(cache=True) #To be done: corerect the inv_utility issue, it doesn't work with numba!
 def optimized_loop_sep(rho_grid, foc, rho_star, sep_star, num_z, num_n, num_v, num_q):
     for iz in range(num_z):
         for in0 in range(num_n - 1):
@@ -110,7 +111,7 @@ def optimized_loop_sep(rho_grid, foc, rho_star, sep_star, num_z, num_n, num_v, n
                                                     impose_increasing(foc[iz, in0, in1, :, iv,iq]),
                                                     rho_grid[:])                  
     return rho_star
-@jit(nopython=True, cache=True)
+@nb.njit(cache=True)
 def optimized_loop_tilde(pc, rho_grid, foc, rho_star, num_z, num_n, num_v, num_q):
     for iz in range(num_z):
         for in0 in range(num_n - 1):
@@ -137,16 +138,18 @@ def optimized_loop_tilde(pc, rho_grid, foc, rho_star, num_z, num_n, num_v, num_q
                         rho_star[iz, in0, in1, Iquit] = rho_min
     return rho_star
 #Given rho_star, find n1_star
-@jit(nopython=True, cache=True)
+@nb.njit( cache=True)
 def n1(pc, rho_grid, rho_star, sep_star, N_grid, N_grid1, num_z, num_n, num_v, num_q):
     n1 = np.zeros((num_z, num_n, num_n, num_v, num_q))
     for iz in range(num_z):
      for in0 in range(num_n):
+        N0=N_grid[in0]
         for in1 in range(num_n):
+         N1=N_grid1[in1]
          for iq in range(num_q):
-            n1[iz, in0, in1, :, iq] = (N_grid[in0]*(1-sep_star[iz,in0,in1,:, iq])+N_grid1[in1])*np.interp(rho_star[iz, in0, in1, :, iq], rho_grid, pc[iz,in0,in1,:,iq])
+            n1[iz, in0, in1, :, iq] = (N0*(1-sep_star[iz,in0,in1,:, iq])+N1)*np.interp(rho_star[iz, in0, in1, :, iq], rho_grid, pc[iz,in0,in1,:,iq])
     return n1
-@jit(nopython=True, cache=True)
+@nb.njit( cache=True)
 def n1_tilde(n1,pc,rho_grid,rho_star, sep_star, N_grid,num_z, num_n, num_v, num_q):
     for iz in range(num_z):
      for in0 in range(num_n):
@@ -156,7 +159,7 @@ def n1_tilde(n1,pc,rho_grid,rho_star, sep_star, N_grid,num_z, num_n, num_v, num_
             n1[iz, in0, in1, :, iq] = (N_grid[in0]*(1-sep_star[iz,in0,in1,:, iq])+N_grid[in1])*np.interp(rho_star[iz, in0, in1, iv,iq], rho_grid, pc[iz,in0,in1,:,iv,iq])
     return n1
 #Given rho_star and n1_star, calculate the future derivative
-@jit(nopython=True, cache=True)
+@nb.njit(cache=True)
 def EJderivative(EJpi,floorn1,ceiln1, n0_star,Ederiv,rho_grid, N_grid, N_grid1,rho_star,num_z, num_n, n_bar, num_v, num_q):
         EJc= np.zeros((num_z,num_n,num_n,num_v,num_v, num_q))
         EJf= np.zeros((num_z,num_n,num_n,num_v,num_v, num_q))           
@@ -174,7 +177,7 @@ def EJderivative(EJpi,floorn1,ceiln1, n0_star,Ederiv,rho_grid, N_grid, N_grid1,r
                            EJf[iz,in0,in1,iv,iv1,iq] = np.interp(n0_star[iz,in0,in1,iv,iq],N_grid,EJpi[iz,:,floorn1[iz,in0,in1,iv,iq],iv1,iq])
                          Ederiv[iz,in0,in1,iv,iq] = (np.interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EJc[iz,in0, in1, iv, :,iq])-np.interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EJf[iz,in0, in1, iv, :,iq]))/(N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
         return Ederiv
-@jit(nopython=True, cache=True)
+@nb.njit(cache=True)
 def EJderivative3(EJpi,EW1i, floorn1,ceiln1,Ederiv,rho_grid,rho_star,num_z, num_n, num_v, num_q):
             for iz in range(num_z):
                 for in0 in range(num_n):
@@ -189,7 +192,7 @@ def EJderivative3(EJpi,EW1i, floorn1,ceiln1,Ederiv,rho_grid,rho_star,num_z, num_
                                                   (np.interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EJpi[iz,0, floorn1[iz,in0,in1,iv,iq],:,iq]))+floorn1[iz,in0,in1,iv,iq]*rho_star[iz,in0,in1,iv,iq]*np.interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EW1i[iz,0, floorn1[iz,in0,in1,iv,iq],:,iq])) \
                                                     /(ceiln1[iz,in0,in1,iv,iq]-floorn1[iz,in0,in1,iv,iq])
             return Ederiv
-@jit(nopython=True, cache=True)
+@nb.njit(cache=True)
 def EWderivative(EW1i,floorn1,ceiln1, n0_star,Ederiv,rho_grid, N_grid, N_grid1,rho_star,num_z, num_n, n_bar, num_v, num_q):
         EWc= np.zeros((num_z,num_n,num_n,num_v,num_v,num_q))
         EWf= np.zeros((num_z,num_n,num_n,num_v,num_v,num_q))
@@ -208,7 +211,7 @@ def EWderivative(EW1i,floorn1,ceiln1, n0_star,Ederiv,rho_grid, N_grid, N_grid1,r
                          Ederiv[iz,in0,in1,iv,iq] = (np.interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EWc[iz,in0, in1,iv, :,iq])-np.interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EWf[iz,in0, in1, iv, :,iq]))/(N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
         return Ederiv
 #Gives us future worker value as a function of promised value, but with updated size, taken based on a guess of n1_star
-
+@nb.njit(cache=True, parallel=True)
 def RhoQderiv(EJpi,floorn1,ceiln1, n0_star,Ederiv,rho_grid, N_grid, N_grid1,rho_star,num_z, num_n, n_bar, num_v, num_q):
         ERc= np.zeros((num_z,num_n,num_n,num_v,num_v, num_q))
         ERf= np.zeros((num_z,num_n,num_n,num_v,num_v, num_q))           
@@ -226,7 +229,7 @@ def RhoQderiv(EJpi,floorn1,ceiln1, n0_star,Ederiv,rho_grid, N_grid, N_grid1,rho_
                            ERf[iz,in0,in1,iv,iv1,iq] = np.interp(n0_star[iz,in0,in1,iv,iq],N_grid,EJpi[iz,:,floorn1[iz,in0,in1,iv,iq],iv1,iq])
                          Ederiv[iz,in0,in1,iv,iq] = (np.interp(rho_star[iz,in0,in1,iv,iq],rho_grid,ERc[iz,in0, in1, iv, :,iq])-np.interp(rho_star[iz,in0,in1,iv,iq],rho_grid,ERf[iz,in0, in1, iv, :,iq]))/(N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
         return Ederiv
-@jit(nopython=True, cache=True, parallel=True)
+@nb.njit(cache=True, parallel=True)
 def EW_tild(n1_star,EW1i,N_grid,num_z,num_n,num_v, num_q):
     EW_tild = np.zeros((num_z, num_n, num_n, num_v, num_v))
     for iz in range(num_z):
@@ -237,24 +240,24 @@ def EW_tild(n1_star,EW1i,N_grid,num_z,num_n,num_v, num_q):
          for iq in range(num_q):
             EW_tild[iz,in0,in1,iv1,iv,iq] = np.interp(n1_star[iz,in0,in1,iv,iq],N_grid,EW1i[iz,0,:,iv1])
     return EW_tild
-@jit(nopython=True, cache=True)
+@nb.njit(cache=True,parallel=True)
 def n0(Jd0, n0_star, N_grid, Ihire, hire_c):
     for idx in np.argwhere(Ihire):
         slice_Jd0 = (Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], :-1]) / (N_grid[1:]-N_grid[:-1])# Shape should be (5,)
         n0_star[idx[0], idx[1], idx[2], idx[3], idx[4]] = np.interp( -hire_c ,impose_increasing(-slice_Jd0),N_grid[1:]) #oh shit, should we also account for how that affects the worker value???
     print("n0_star borders", n0_star.min(), n0_star.max())   
     return n0_star 
-@jit(nopython=True, cache=True)
+@nb.njit(cache=True,parallel=True)
 def EJs(EJ1_star, EW1_star, Jd0, Wd0, n0_star, N_grid, num_z, num_n, num_v, num_q):
     for iz in range(num_z):
         for in0 in range(num_n):
             for in1 in range(num_n):
                 for iv in range(num_v):
                  for iq in range(num_q):
-                    EJ1_star[iz,in0,in1,iv,iq] = np.interp(n0_star[iz,in0,in1,iv,iq],N_grid,Jd0[iz,in0,in1,iv,:])
-                    EW1_star[iz,in0,in1,iv,iq] = np.interp(n0_star[iz,in0,in1,iv,iq],N_grid,Wd0[iz,in0,in1,iv,:])
+                    EJ1_star[iz,in0,in1,iv,iq] = np.interp(n0_star[iz,in0,in1,iv,iq],N_grid,Jd0[iz,in0,in1,iv,iq,:])
+                    EW1_star[iz,in0,in1,iv,iq] = np.interp(n0_star[iz,in0,in1,iv,iq],N_grid,Wd0[iz,in0,in1,iv,iq,:])
     return EJ1_star, EW1_star
-@jit(nopython=True, cache=True)
+@nb.njit(cache=True)
 def EQs(EJq,EWq,EJpi,EW1i,q_star,Q_grid,num_z,num_n,num_v,num_q):
     for iz in range(num_z):
         for in0 in range(num_n):
@@ -264,6 +267,21 @@ def EQs(EJq,EWq,EJpi,EW1i,q_star,Q_grid,num_z,num_n,num_v,num_q):
                 EJq[iz,in0,in1,iv,iq] = np.interp(q_star[iz,in0,in1,iv,iq],Q_grid, EJpi[iz,in0,in1,iv,:]) 
                 EWq[iz,in0,in1,iv,iq] = np.interp(q_star[iz,in0,in1,iv,iq],Q_grid, EW1i[iz,in0,in1,iv,:])
     return EJq, EWq
+
+@nb.njit(cache=True)
+def solve_everything(pc, rho_grid, N_grid, N_grid1, foc, rho_star, sep_star, n1, num_z, num_n, n_bar, num_v, num_q):
+    for iz in range(num_z):
+        for in0 in range(num_n):
+            for in1 in range(num_n):
+                if (in0 +in1 > n_bar):
+                    continue
+                for iv in range(num_v):
+                 for iq in range(num_q):
+                  rho_star[iz,in0, in1, iv,iq] = np.interp(0,
+                                                    impose_increasing(foc[iz, in0, in1, :, iv,iq]),
+                                                    rho_grid[:])      
+                  n1[iz, in0, in1, iv, iq] = (N_grid[in0]*(1-sep_star[iz,in0,in1,iv, iq])+N_grid1[in1])*np.interp(rho_star[iz, in0, in1, iv, iq], rho_grid, pc[iz,in0,in1,:,iq])         
+    return rho_star,n1
 class MultiworkerContract:
     """
         This solves a contract model with DRS production, hirings, and heterogeneous match quality.
@@ -329,11 +347,11 @@ class MultiworkerContract:
             self.sum_wage += self.w_grid[self.grid[i]]*self.N_grid1[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
 
         #Setting up production grids
-        self.prod = self.production(self.sum_sizeadj)
+        self.prod = self.production(self.sum_sizeadj) #F = sum (n* (prod_q+q_1*(1-prod_q)))
         self.prod_diff = self.production_diff(self.sum_sizeadj)
         self.prod_1d = self.fun_prod_1d(self.sum_sizeadj)
-        self.prod_nd = self.prod_1d * self.Q_grid[self.grid[4]] #\partial F / \partial n_1 = q_1 F'(nq)
-        self.prod_qd = self.prod_1d * self.N_grid1[self.grid[2]] #\partial F / \partial q_1 = n_1 F'(nq)
+        self.prod_nd = self.prod_1d * (self.p.prod_q + self.Q_grid[self.grid[4]] * (1.0-self.p.prod_q)) #\partial F / \partial n_1 = q_1 * (prod_q+q_1*(1-prod_q)) F'(nq)
+        self.prod_qd = self.prod_1d * self.N_grid1[self.grid[2]] * (1.0-self.p.prod_q) #\partial F / \partial q_1 = n_1 * (1-prod_q) * F'(nq)
 
 
         #Job value and GE first
@@ -504,19 +522,19 @@ class MultiworkerContract:
              assert (np.isnan(foc) & (pc > 0)).sum() == 0, "foc has NaN values where p>0"
 
                 #assert np.all(EW1i[..., 1:] >= EW1i[..., :-1]) #Andrei: check that worker value is increasing in v
-            if ite_num<=100000000:
-                rho_star = optimized_loop(
-                    pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_q) 
-            else:
-                rho_star = optimized_loop_tilde(
-                    pc, rho_grid, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_v)
+            #if ite_num<=100000000:
+            #    rho_star = optimized_loop(
+            #        pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_q) 
+            #else:
+            #    rho_star = optimized_loop_tilde(
+            #        pc, rho_grid, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_v)
      
-            
+            rho_star, n1_star = solve_everything(pc, rho_grid, self.N_grid, self.N_grid1, foc, rho_star, sep_star, n1_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q)
             #Getting n1_star
-            if ite_num<=100000000:            
-                n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.N_grid1, self.p.num_z, self.p.num_n, self.p.num_v, self.p.num_q)
-            else:
-                n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star, sep_star, self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
+            #if ite_num<=100000000:            
+            #    n1_star = n1(pc, rho_grid, rho_star, sep_star, self.N_grid, self.N_grid1, self.p.num_z, self.p.num_n, self.p.num_v, self.p.num_q)
+            #else:
+            #    n1_star = n1_tilde(n1_star,pc,rho_grid,rho_star, sep_star, self.N_grid,self.p.num_z, self.p.num_n, self.p.num_v)
             q_star = (self.p.q_0*self.N_grid[self.grid[1]]+self.Q_grid[self.grid[4]]*self.N_grid1[self.grid[2]])/(self.N_grid[self.grid[1]]*(1-sep_star)+self.N_grid1[self.grid[2]])
             
             #Getting hiring decisions
@@ -540,15 +558,15 @@ class MultiworkerContract:
              #print("n0_star borders", n0_star.min(), n0_star.max())    
                 n0_star = n0(Jd0, n0_star, self.N_grid, Ihire, self.p.hire_c / self.p.beta)
 
-            EW1i_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid1, rho_grid, self.Q_grid), EW1i[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
-            EJpi_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid1, rho_grid, self.Q_grid), EJpi[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
+            #EW1i_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid1, rho_grid, self.Q_grid), EW1i[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
+            #EJpi_interpolators = [RegularGridInterpolator((self.N_grid, self.N_grid1, rho_grid, self.Q_grid), EJpi[iz, ...], bounds_error=False, fill_value=None) for iz in range(self.p.num_z)]
             # Prepare points for interpolation
-            rho_n_star_points = np.stack((n0_star, n1_star, rho_star, q_star), axis=-1)  # Shape: (num_z, ..., 2)
+            #rho_n_star_points = np.stack((n0_star, n1_star, rho_star, q_star), axis=-1)  # Shape: (num_z, ..., 2)
             # Vectorized interpolation over all iz
-            EW1_star = np.array([interpolator(rho_n_star_points[iz, ...]) for iz, interpolator in enumerate(EW1i_interpolators)])
-            EJ1_star = np.array([interpolator(rho_n_star_points[iz, ...]) for iz, interpolator in enumerate(EJpi_interpolators)])
+            #EW1_star = np.array([interpolator(rho_n_star_points[iz, ...]) for iz, interpolator in enumerate(EW1i_interpolators)])
+            #EJ1_star = np.array([interpolator(rho_n_star_points[iz, ...]) for iz, interpolator in enumerate(EJpi_interpolators)])
             
-            #EJ1_star, EW1_star = EJs(EJ1_star, EW1_star, Jd0, Wd0, n0_star, self.N_grid, self.p.num_z, self.p.num_n, self.p.num_v)
+            EJ1_star, EW1_star = EJs(EJ1_star, EW1_star, Jd0, Wd0, n0_star, self.N_grid, self.p.num_z, self.p.num_n, self.p.num_v, self.p.num_q)
             #I'm interpolating EJ and EW functions on future q's in order to then use them for calculating future derivatives
             #Btw still super confused as to why the EJs function was somehow slower than the full complex interpolation
             EJq, EWq = EQs(EJq,EWq,EJpi,EW1i,q_star,self.Q_grid,self.p.num_z,self.p.num_n,self.p.num_v,self.p.num_q)
@@ -1041,7 +1059,7 @@ class MultiworkerContract:
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
             #EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
             if ite_num>1: #I'm using previous guesses for sep_star and EW1_star. This way, it is still as if EJinv0 is a function of today's states only, even though that's not exactly correct
-             EJinv0 = (Jderiv0+wage_jun-self.p.q_0 * self.fun_prod*self.prod_1d)/self.p.beta
+             EJinv0 = (Jderiv0+wage_jun- (self.p.prod_q + self.p.q_0 * (1-self.p.prod_q)) * self.fun_prod*self.prod_1d)/self.p.beta
              #EJinv0[:,0,0,:] = (Jderiv0[:,0,0,:]+wage_jun[:,0,0,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
 
 
@@ -1075,7 +1093,8 @@ class MultiworkerContract:
             #assert np.all(EW1i[iz, in0, in1, 1:] >= EW1i[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
             #if ite_num<=1:
             rho_star = optimized_loop(
-                 pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_q) 	
+                 pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_q)
+             	
             if ite_num>1:
                 EJderiv0 = np.zeros_like(EJ1_star)
                 EWderiv0 = np.zeros_like(EW1i)
