@@ -12,6 +12,7 @@ from scipy.interpolate import RegularGridInterpolator
 from numba import jit
 import pickle
 import datetime
+import time
 
 ax = np.newaxis
 
@@ -526,13 +527,19 @@ class MultiworkerContract:
             Wd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
             n0_star[...] = 0
             if ite_num > 1:
+                start_time = time.time()
+
                 for iz in range(self.p.num_z):
                     for in00 in range(self.p.num_n):
 
                         J_interpolator = RegularGridInterpolator((self.N_grid1, rho_grid, self.Q_grid), EJpi[iz, in00, ...], bounds_error=False, fill_value=None)
                         W_interpolator = RegularGridInterpolator((self.N_grid1, rho_grid, self.Q_grid), EW1i[iz, in00, ...], bounds_error=False, fill_value=None)
-                        Jd0[iz, ..., in00] = J_interpolator((n1_star[iz, ...], q_star[iz, ...]))
-                        Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], q_star[iz, ...]))
+                        Jd0[iz, ..., in00] = J_interpolator((n1_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
+                        Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
+                end_time = time.time()
+                elapsed_time = end_time - start_time
+                print(f"Interpolation time: {elapsed_time:.4f} seconds")
+                
                 #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] < self.p.n_bar - 1)
                 Ihire = ((Jd0[...,1]-Jd0[...,0]) / (self.N_grid[1]-self.N_grid[0]) > self.p.hire_c/self.p.beta) & (self.N_grid[self.grid[1]]+self.N_grid1[self.grid[2]] < self.p.n_bar - 1)
                 #for idx in np.argwhere(Ihire):

@@ -50,8 +50,8 @@ class ContinuousContract:
             Initialize with a parameter object.
             :param input_param: Input parameter object, can be None
         """
-        self.log = logging.getLogger('ContinuousContract')
-        self.log.setLevel(logging.INFO)
+       # self.log = logging.getLogger('ContinuousContract')
+       # self.log.setLevel(logging.INFO)
 
         self.p = input_param
         self.deriv_eps = 1e-4 # step size for derivative
@@ -144,7 +144,7 @@ class ContinuousContract:
             #print("Jpi-Ji max:", np.max(np.abs(Jpi-Ji)))
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
-            EJpi = Exz(Jpi, self.Z_trans_mat)
+            EJpi = Exz(Ji, self.Z_trans_mat)
             #EW1i = W1i
             #EJpi = Jpi
             # get worker decisions
@@ -235,12 +235,12 @@ class ContinuousContract:
                             and ite_num > 50):
                         break
 
-            if (ite_num % 25) == 0:
-                self.log.debug('[{}] W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}   rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
-                                     ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
+            #if (ite_num % 25) == 0:
+             #   self.log.debug('[{}] W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}   rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
+            #                         ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
 
-        self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
-                                     ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
+        #self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
+        #                             ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
         return Ji,W1i,EW1_star,Jpi,pc_star
 
 
