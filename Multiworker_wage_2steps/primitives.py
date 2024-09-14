@@ -38,7 +38,7 @@ class Parameters:
         self.hire_c = 90.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
-        self.prod_q = 1.0 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
+        self.prod_q = 0.95 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
         #DRS production
         self.prod_alpha = 1.0
 
