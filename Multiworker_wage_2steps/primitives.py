@@ -26,7 +26,7 @@ class Parameters:
         self.num_x  = 15      # Number of points of support for worker productivity
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
         self.num_np = 5       # Number of non-permanent levels
-        self.num_z  = 1      # Number of points for match productivity
+        self.num_z  = 3      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
         self.num_n  = 5     # Number of points of support for the number of workers
         self.n_bar = 4       # Number of workers in the firm	
@@ -35,12 +35,20 @@ class Parameters:
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
         # Hiring cost
-        self.hire_c = 90.0
+        self.hire_c = 25.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
-        self.prod_q = 0.95 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
+        self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
         #DRS production
-        self.prod_alpha = 1.0
+        self.prod_alpha = 0.5
+        # Unemployment Parameters
+        self.u_bf_m = 0.5 #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
+        self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
+
+        #Min wage
+        self.min_wage = 0 * self.u_bf_m
+
+
 
         # Utility Function Parameters
         self.u_rho = 1.5      # Risk aversion coefficient, was 1.5
@@ -80,9 +88,6 @@ class Parameters:
         self.beta     = 1 - (1 - 0.95) * self.dt  # Impatience
         self.int_rate = 1 / self.beta - 1         # Period interest rate
 
-        # Unemployment Parameters
-        self.u_bf_m = 0.05 #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
-        self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
 
         # Unemployment Parameters w_net = tau * w ^ lambda
         self.tax_lambda = 1.0       # curvature of the tax system 
@@ -97,7 +102,7 @@ class Parameters:
         self.verbose          = 5
         self.iter_display     = 25
         self.tol_simple_model = 1e-9
-        self.tol_full_model   = 1e-7
+        self.tol_full_model   = 1e-8
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
         self.eq_weighting_at0 = 0.01      # fitting J function with weight around 0

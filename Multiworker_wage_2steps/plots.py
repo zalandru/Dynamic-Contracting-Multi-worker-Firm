@@ -11,7 +11,7 @@ class Plots:
          os.makedirs(self.output_dir)
         self.p = p
 
-    def CRSvsDRSvalue(self, cc_W, cc_J, mwc_W=None, mwc_J=None, mwc_s_W=None, mwc_s_J=None, mwc_s_dir_W=None, mwc_s_dir_J=None, save=0):
+    def CRSvsDRSvalue(self, names, cc_W, cc_J, mwc_W=None, mwc_J=None, mwc_s_W=None, mwc_s_J=None, mwc_s_dir_W=None, mwc_s_dir_J=None, save=0):
         # Create a figure with a specific size
         plt.figure(figsize=(16, 6))  # Width=16 inches, Height=6 inches
 
@@ -20,12 +20,13 @@ class Plots:
         # Plot the data
         plt.plot(cc_W[self.p.z_0-1, :], cc_J[self.p.z_0-1, :], label='CRS')
         if mwc_W is not None:
-            plt.plot(mwc_W[self.p.z_0-1, 0, 1, :, 1], mwc_J[self.p.z_0-1, 0, 1, :], label='DRS')
+            plt.plot(mwc_W[self.p.z_0-1, 0, 1, :, 1], mwc_J[self.p.z_0-1, 0, 1, :], label=names[0])
         if mwc_s_W is not None:
-            plt.plot(mwc_s_W[self.p.z_0-1, 0, 1, :, 1], mwc_s_J[self.p.z_0-1, 0, 1, :], label='DRS with separations')
+            plt.plot(mwc_s_W[self.p.z_0-1, 0, 1, :, 1], mwc_s_J[self.p.z_0-1, 0, 1, :], label=names[1])
         if mwc_s_dir_W is not None:
-            plt.plot(mwc_s_dir_W[self.p.z_0-1, 0, 1, :, 1], mwc_s_dir_J[self.p.z_0-1, 0, 1, :], label='DRS with direct separations')
+            plt.plot(mwc_s_dir_W[self.p.z_0-1, 0, 1, :, 1], mwc_s_dir_J[self.p.z_0-1, 0, 1, :], label=names[2])
         # Add titles and labels
+        
         plt.title('Value across models, 1 senior worker')
         plt.xlabel('Worker value')
         plt.ylabel('Job value')
@@ -38,11 +39,11 @@ class Plots:
         plt.subplot(1, 2, 2)  # 1 row, 2 columns, second subplot
         plt.plot(cc_W[self.p.z_0-1, :], cc_J[self.p.z_0-1, :], label='CRS')
         if mwc_W is not None:
-            plt.plot(mwc_W[self.p.z_0-1, 0, 1, :, 1], mwc_J[self.p.z_0-1, 0, 1, :], label='DRS')
+            plt.plot(mwc_W[self.p.z_0-1, 0, 1, :, 1], mwc_J[self.p.z_0-1, 0, 1, :], label=names[0])
         if mwc_s_W is not None:
-            plt.plot(mwc_s_W[self.p.z_0-1, 0, 1, :, 1], mwc_s_J[self.p.z_0-1, 0, 1, :], label='DRS with separations')
+            plt.plot(mwc_s_W[self.p.z_0-1, 0, 1, :, 1], mwc_s_J[self.p.z_0-1, 0, 1, :], label=names[1])
         if mwc_s_dir_W is not None:
-            plt.plot(mwc_s_dir_W[self.p.z_0-1, 0, 1, :, 1], mwc_s_dir_J[self.p.z_0-1, 0, 1, :], label='DRS with direct separations')
+            plt.plot(mwc_s_dir_W[self.p.z_0-1, 0, 1, :, 1], mwc_s_dir_J[self.p.z_0-1, 0, 1, :], label=names[2])
 
         # Add titles and labels
         plt.title('Value across models, 1 senior worker zoomed in')
