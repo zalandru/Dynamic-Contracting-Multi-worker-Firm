@@ -31,7 +31,6 @@ logging.basicConfig(
     # Suppress debug logs from the numba library
 logging.getLogger('numba').setLevel(logging.WARNING)
 
-
 def load_pickle_file(new_p_value, pickle_file="results_hmq_sep.pkl"):
     # Step 1: Load the existing data from the pickle file
     try:
@@ -185,150 +184,7 @@ def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, nu
                     rho_star[iz, in0, in1, Iquit, iq] = rho_min
 
     return rho_star
-@nb.njit(cache=True) #To be done: corerect the inv_utility issue, it doesn't work with numba!
-def optimized_loop_sep(rho_grid, foc, rho_star, sep_star, num_z, num_n, num_v, num_q):
-    for iz in range(num_z):
-        for in0 in range(num_n - 1):
-            for in1 in range(num_n):
-                if (in0 +in1 > num_n-1):
-                    continue
-                for iv in range(num_v):
-                 for iq in range(num_q):
-                  rho_star[iz,in0, in1, iv,iq] = interp(0,
-                                                    impose_increasing(foc[iz, in0, in1, :, iv,iq]),
-                                                    rho_grid[:])                  
-    return rho_star
-@nb.njit(cache=True)
-def optimized_loop_tilde(pc, rho_grid, foc, rho_star, num_z, num_n, num_v, num_q):
-    for iz in range(num_z):
-        for in0 in range(num_n - 1):
-            for in1 in range(num_n):
-                if (in0 + in1 > num_n - 1):
-                    continue
-                for iv in range(num_v):
-                 for iq in range(num_q):
-                    #rho_star[iz, in0, in1, iv,iq] = interp(
-                    #        0, impose_increasing(foc[iz, in0, in1, :, iv,iq]), rho_grid[:]
-                    #    )
-                    rho_min = np.min(rho_grid[pc[iz, in0, in1, :, iv,iq] > 0])  # Lowest promised rho with continuation > 0
-                    Isearch = (pc[iz, in0, in1, :, iv,iq] > 0)
-                
-                    if np.any(Isearch):
-                        Isearch_indices = np.where(Isearch)[0]
-                        for iv in Isearch_indices:
-                            rho_star[iz, in0, in1, iv,iq] = interp(
-                                0, impose_increasing(foc[iz, in0, in1, Isearch, iv,iq]), rho_grid[Isearch]
-                                )
-                
-                    Iquit = ~(pc[iz, in0, in1, :, iv,iq] > 0)
-                    if np.any(Iquit):
-                        rho_star[iz, in0, in1, Iquit] = rho_min
-    return rho_star
-#Given rho_star, find n1_star
-#@nb.jit( cache=True,parallel=True)
-def n1(pc_trans, n1, rho_grid, rho_star, sep_star, N_grid, N_grid1, num_v):
-    #for iv in range(num_v):
-    #    n1[...,iv,:] = (N_grid[ax,:,ax,ax]*(1-sep_star[...,iv,:])+N_grid1[ax,ax,:,ax])*interp_multidim_extra_dim(rho_star[...,iv,:],rho_grid,pc_trans)
-    n1 = (N_grid[ax,:,ax,ax,ax]*(1-sep_star)+N_grid1[ax,ax,:,ax,ax])*interp_multidim_extra_dim(rho_star,rho_grid,pc_trans)
-    return n1
 
-@nb.njit( cache=True)
-def n1_tilde(n1,pc,rho_grid,rho_star, sep_star, N_grid,num_z, num_n, num_v, num_q):
-    for iz in range(num_z):
-     for in0 in range(num_n):
-      for in1 in range(num_n):         
-        for iv in range(num_v):
-         for iq in range(num_q):
-            n1[iz, in0, in1, :, iq] = (N_grid[in0]*(1-sep_star[iz,in0,in1,:, iq])+N_grid[in1])*interp(rho_star[iz, in0, in1, iv,iq], rho_grid, pc[iz,in0,in1,:,iv,iq])
-    return n1
-#Given rho_star and n1_star, calculate the future derivative
-@nb.njit(cache=True,parallel=True)
-def EJderivative(EJpi,floorn1,ceiln1, n0_star,Ederiv,rho_grid, N_grid, N_grid1,rho_star,num_z, num_n, n_bar, num_v, num_q):
-        EJc= np.zeros((num_z,num_n,num_n,num_v,num_v, num_q))
-        EJf= np.zeros((num_z,num_n,num_n,num_v,num_v, num_q))           
-        for iz in range(num_z):
-            for in0 in range(num_n):
-                for in1 in range(num_n):
-                    for iv in range(num_v):
-                        for iq in range(num_q):
-                         if ceiln1[iz,in0,in1,iv,iq]==0:
-                            continue
-                         if N_grid1[floorn1[iz,in0,in1,iv,iq]]>=n_bar:
-                            continue
-                         for iv1 in range(num_v):
-                           EJc[iz,in0,in1,iv,iv1,iq] = interp(n0_star[iz,in0,in1,iv,iq],N_grid,EJpi[iz,:,ceiln1[iz,in0,in1,iv,iq],iv1,iq]) #We first interpolate future value to the correct size at step 0. Then we compute the derivative wrt size at step 1 around the optimal size and shadow cost
-                           EJf[iz,in0,in1,iv,iv1,iq] = interp(n0_star[iz,in0,in1,iv,iq],N_grid,EJpi[iz,:,floorn1[iz,in0,in1,iv,iq],iv1,iq]) 
-                         Ederiv[iz,in0,in1,iv,iq] = (interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EJc[iz,in0, in1, iv, :,iq])-interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EJf[iz,in0, in1, iv, :,iq]))/(N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
-        #Alternative approach: start with rho_satr interpolation first.
-        #EJrho[iz,in0,in00,in1,in11,iv,iq,iqq] = interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EJpi[iz,in00,in11,:,iqq]) #This is a large object, but I can then use it for everything.
-        #EJn0 = interp(n0_star[iz,in0,in1,iv],N_grid,EJpi[iz,in0,:,in1,])
-        #FOr this function, Ederiv[iz,in0,in1,iv,iq]
-        
-        
-        return Ederiv
-@nb.njit(cache=True)
-def EJderivative3(EJpi,EW1i, floorn1,ceiln1,Ederiv,rho_grid,rho_star,num_z, num_n, num_v, num_q):
-            for iz in range(num_z):
-                for in0 in range(num_n):
-                    for in1 in range(num_n):
-                        for iv in range(num_v):
-                         for iq in range(num_q):
-                          if ceiln1[iz,in0,in1,iv,iq]==0:
-                            continue
-                          if floorn1[iz,in0,in1,iv,iq]>=num_n-1:
-                            continue
-                          Ederiv[iz,in0,in1,iv,iq] = (interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EJpi[iz,0, ceiln1[iz,in0,in1,iv,iq],:,iq])+ceiln1[iz,in0,in1,iv,iq]*rho_star[iz,in0,in1,iv,iq]*interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EW1i[iz,0, ceiln1[iz,in0,in1,iv,iq],:,iq])- \
-                                                  (interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EJpi[iz,0, floorn1[iz,in0,in1,iv,iq],:,iq]))+floorn1[iz,in0,in1,iv,iq]*rho_star[iz,in0,in1,iv,iq]*interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EW1i[iz,0, floorn1[iz,in0,in1,iv,iq],:,iq])) \
-                                                    /(ceiln1[iz,in0,in1,iv,iq]-floorn1[iz,in0,in1,iv,iq])
-            return Ederiv
-@nb.njit(cache=True,parallel=True)
-def EWderivative(EW1i,floorn1,ceiln1, n0_star,Ederiv,rho_grid, N_grid, N_grid1,rho_star,num_z, num_n, n_bar, num_v, num_q):
-        EWc= np.zeros((num_z,num_n,num_n,num_v,num_v,num_q))
-        EWf= np.zeros((num_z,num_n,num_n,num_v,num_v,num_q))
-        for iz in range(num_z):
-            for in0 in range(num_n):
-                for in1 in range(num_n):
-                    for iv in range(num_v):
-                        for iq in range(num_q):
-                         if ceiln1[iz,in0,in1,iv,iq]==0:
-                            continue
-                         if N_grid1[floorn1[iz,in0,in1,iv,iq]]>=n_bar:
-                            continue
-                         for iv1 in range(num_v):
-                           EWc[iz,in0,in1,iv,iv1,iq] = interp(n0_star[iz,in0,in1,iv,iq],N_grid,EW1i[iz,:,ceiln1[iz,in0,in1,iv,iq],iv1,iq]) #We first interpolate future value to the correct size at step 0. Then we compute the derivative wrt size at step 1 around the optimal size and shadow cost
-                           EWf[iz,in0,in1,iv,iv1,iq] = interp(n0_star[iz,in0,in1,iv,iq],N_grid,EW1i[iz,:,floorn1[iz,in0,in1,iv,iq],iv1,iq])
-                         Ederiv[iz,in0,in1,iv,iq] = (interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EWc[iz,in0, in1,iv, :,iq])-interp(rho_star[iz,in0,in1,iv,iq],rho_grid,EWf[iz,in0, in1, iv, :,iq]))/(N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
-        return Ederiv
-#Gives us future worker value as a function of promised value, but with updated size, taken based on a guess of n1_star
-@nb.njit(cache=True, parallel=True)
-def RhoQderiv(EJpi,floorn1,ceiln1, n0_star,Ederiv,rho_grid, N_grid, N_grid1,rho_star,num_z, num_n, n_bar, num_v, num_q):
-        ERc= np.zeros((num_z,num_n,num_n,num_v,num_v, num_q))
-        ERf= np.zeros((num_z,num_n,num_n,num_v,num_v, num_q))           
-        for iz in range(num_z):
-            for in0 in range(num_n):
-                for in1 in range(num_n):
-                    for iv in range(num_v):
-                        for iq in range(num_q):
-                         if ceiln1[iz,in0,in1,iv,iq]==0:
-                            continue
-                         if N_grid1[floorn1[iz,in0,in1,iv,iq]]>=n_bar:
-                            continue
-                         for iv1 in range(num_v):
-                           ERc[iz,in0,in1,iv,iv1,iq] = interp(n0_star[iz,in0,in1,iv,iq],N_grid,EJpi[iz,:,ceiln1[iz,in0,in1,iv,iq],iv1,iq]) #We first interpolate future value to the correct size at step 0. Then we compute the derivative wrt size at step 1 around the optimal size and shadow cost
-                           ERf[iz,in0,in1,iv,iv1,iq] = interp(n0_star[iz,in0,in1,iv,iq],N_grid,EJpi[iz,:,floorn1[iz,in0,in1,iv,iq],iv1,iq])
-                         Ederiv[iz,in0,in1,iv,iq] = (interp(rho_star[iz,in0,in1,iv,iq],rho_grid,ERc[iz,in0, in1, iv, :,iq])-interp(rho_star[iz,in0,in1,iv,iq],rho_grid,ERf[iz,in0, in1, iv, :,iq]))/(N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
-        return Ederiv
-@nb.njit(cache=True, parallel=True)
-def EW_tild(n1_star,EW1i,N_grid,num_z,num_n,num_v, num_q):
-    EW_tild = np.zeros((num_z, num_n, num_n, num_v, num_v))
-    for iz in range(num_z):
-     for in0 in range(num_n):
-      for in1 in range(num_n):
-       for iv in range(num_v):
-        for iv1 in range(num_v):
-         for iq in range(num_q):
-            EW_tild[iz,in0,in1,iv1,iv,iq] = interp(n1_star[iz,in0,in1,iv,iq],N_grid,EW1i[iz,0,:,iv1])
-    return EW_tild
 @nb.njit(cache=True,parallel=True)
 def n0(Jd0, n0_star, N_grid, Ihire, hire_c):
     for idx in np.argwhere(Ihire):
@@ -347,16 +203,6 @@ def EJs(EJ1_star, EW1_star, Jd0, Wd0, n0_star, N_grid, num_z, num_n, num_v, num_
                     EW1_star[iz,in0,in1,iv,iq] = interp(n0_star[iz,in0,in1,iv,iq],N_grid,Wd0[iz,in0,in1,iv,iq,:])
     return EJ1_star, EW1_star
 @nb.njit(cache=True)
-def EQs(EJq,EWq,EJpi,EW1i,q_star,Q_grid,num_z,num_n,num_v,num_q):
-    for iz in range(num_z):
-        for in0 in range(num_n):
-         for in1 in range(num_n):
-            for iv in range(num_v):
-             for iq in range(num_q):
-                EJq[iz,in0,in1,iv,iq] = interp(q_star[iz,in0,in1,iv,iq],Q_grid, EJpi[iz,in0,in1,iv,:]) 
-                EWq[iz,in0,in1,iv,iq] = interp(q_star[iz,in0,in1,iv,iq],Q_grid, EW1i[iz,in0,in1,iv,:])
-    return EJq, EWq
-@nb.njit(cache=True)
 def solve_everything(pc, rho_grid, N_grid, N_grid1, foc, rho_star, sep_star, n1, num_z, num_n, n_bar, num_v, num_q):
     for iz in range(num_z):
         for in0 in range(num_n):
@@ -371,11 +217,9 @@ def solve_everything(pc, rho_grid, N_grid, N_grid1, foc, rho_star, sep_star, n1,
                   n1[iz, in0, in1, iv, iq] = (N_grid[in0]*(1-sep_star[iz,in0,in1,iv, iq])+N_grid1[in1])*interp(rho_star[iz, in0, in1, iv, iq], rho_grid, pc[iz,in0,in1,:,iq])         
     return rho_star,n1
 @nb.njit(cache=True)
-def anotherEJderivative(Jd0,Wd0,ceiln1,floorn1,n0_star,rho_star,q_star,EJpi,EW1i,N_grid,rho_grid,Q_grid,num_z,num_n,n_bar,num_v,num_q):
-
-                EJderiv0 = np.zeros_like(n0_star)
-                EWderiv = np.zeros_like(n0_star)
-
+def EJderivative(Jd0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,num_z,num_n,n_bar,num_v,num_q):
+                EJderiv0 = np.zeros_like(n1_star)
+                EWderiv = np.zeros_like(n1_star)
                 for iz in range(num_z):
                  for in0 in range(num_n):
                   for in1 in range(num_n):
@@ -383,11 +227,56 @@ def anotherEJderivative(Jd0,Wd0,ceiln1,floorn1,n0_star,rho_star,q_star,EJpi,EW1i
                         for iq in range(num_q):
                          if ceiln1[iz,in0,in1,iv,iq]==0:
                             continue
-                         if N_grid[floorn1[iz,in0,in1,iv,iq]]>=n_bar:
+                         if N_grid1[floorn1[iz,in0,in1,iv,iq]]>=n_bar:
                             continue                
-                         EJderiv0[iz,in0,in1,iv,iq] = (Jd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Jd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid[ceiln1[iz,in0,in1,iv,iq]]-N_grid[floorn1[iz,in0,in1,iv,iq]])
-                         EWderiv[iz,in0,in1,iv,iq] = (Wd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Wd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid[ceiln1[iz,in0,in1,iv,iq]]-N_grid[floorn1[iz,in0,in1,iv,iq]])
-                return EJderiv0,EWderiv
+                         EJderiv0[iz,in0,in1,iv,iq] = (Jd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Jd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
+                         EWderiv[iz,in0,in1,iv,iq] = (Wd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Wd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
+                EJderiv = EJderiv0+n1_star*rho_star*EWderiv
+                return EJderiv
+@nb.njit(cache=True)
+def sep_solve_1(n1_s,q_s,q_deriv_s,pc_temp,sep_grid,N_grid1,size,q1,Q_grid,num_n,num_q,q_0):
+              
+                for s in range(sep_grid.shape[0]):
+                    n1_s[...,s] = (size[...,0]*(1-sep_grid[s])+size[...,1]) * pc_temp
+                    q_s[...,s] = (size[...,0] * np.minimum(q_0,1-sep_grid[s])+q1*size[...,1]) / (size[...,0]*(1-sep_grid[s])+size[...,1])
+                #Calculating derivative of future q wrt s
+                    if sep_grid[s] < 1 - q_0:
+                        q_deriv_s[...,s] = size[...,0]* q_s[...,s] / (size[...,1]+(1-sep_grid[s])*size[...,0])
+                    else:
+                        q_deriv_s[...,s] = (( q1 - 1 ) * size[...,1] * size[...,0]) / np.power(size[...,0]*(1-sep_grid[s])+size[...,1],2)
+                assert np.isnan(n1_s).sum() == 0, "n1_s has NaN values"
+                assert np.isnan(q_s).sum() == 0, "q_s has NaN values"
+                #Calculating closest grid points to each future size and quality
+                range_n = np.arange(num_n)
+                n1_s_ceil = np.ceil(np.interp( n1_s, N_grid1, range_n)).astype(np.int32)
+                n1_s_floor = np.floor(np.interp( n1_s, N_grid1, range_n)).astype(np.int32)
+                range_q = np.arange(num_q)  
+                q_s_ceil = np.ceil(np.interp( q_s, Q_grid, range_q)).astype(np.int32)
+                q_s_floor = np.floor(np.interp( q_s, Q_grid, range_q)).astype(np.int32)
+              
+                return n1_s_ceil,n1_s_floor,q_s_ceil,q_s_floor#,J_fut_deriv_n,J_fut_deriv_q
+#@nb.njit(cache=True)
+def sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW1_star,EUi,sep_grid,size,num_z,num_v,num_n,num_q):
+                #foc_sep = - J_fut_deriv_n * pc_temp[...,ax] * size[...,ax, 0] + J_fut_deriv_q * q_deriv_s - size[...,ax, 0] * (re_star[...,ax]+EW1_star[...,ax] - EUi) / inv_util_1d  
+                foc_sep = J_s_deriv - size[...,ax,0] * (re_star[...,ax]+EW1_star[...,ax] - EUi) / inv_util_1d
+                #print("foc_sep difference", np.max(np.abs(foc_sep-foc_sep_diff)))
+                #NOTE: EW1_star and re_star here are constant, not dependent on s at all (although they kinda should be)
+                #Calculating the separations. Can drop this into jit surely
+                for iz in range(num_z):
+                   for in0 in range(num_n):
+                    if in0 == 0:
+                     continue
+                    for in1 in range(num_n):
+                     for iv in range(num_v):
+                      for iq in range(num_q):
+                        if np.all(foc_sep[iz,in0,in1,iv,iq,:] <= 0):
+                           sep_star[iz,in0,in1,iv,iq] = 0
+                        elif np.all(foc_sep[iz,in0,in1,iv,iq,:] > 0):
+                           sep_star[iz,in0,in1,iv,iq] = 1
+                        else:
+                            #print("check, reached interpolation")
+                            sep_star[iz,in0,in1,iv,iq] = interp(0,impose_increasing(-foc_sep[iz,in0,in1,iv,iq,:]),sep_grid) 
+                return sep_star
 class MultiworkerContract:
     """
         This solves a contract model with DRS production, hirings, and heterogeneous match quality.
@@ -397,6 +286,7 @@ class MultiworkerContract:
             Initialize with a parameter object.
             :param input_param: Input parameter object, can be None
         """
+    
         self.log = logging.getLogger('MWF with Hiring')
         self.log.setLevel(logging.INFO)
         self.K = 2
@@ -451,6 +341,8 @@ class MultiworkerContract:
             self.sum_sizeadj += self.N_grid1[self.grid[i]] * (self.p.prod_q + self.Q_grid[self.grid[self.J_grid.ndim - (K-1) + (i-2)]] * (1.0 - self.p.prod_q))
         for i in range(K+1,self.J_grid.ndim - (K-1)):
             self.sum_wage += self.w_grid[self.grid[i]]*self.N_grid1[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
+
+                
 
         #Setting up production grids
         self.prod = self.production(self.sum_sizeadj) #F = sum (n* (prod_q+q_1*(1-prod_q)))
@@ -507,6 +399,13 @@ class MultiworkerContract:
         self.W1i[...,1] = self.W1i[...,1] + self.pref.utility(self.w_matrix[...,1])/(1-self.p.beta) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
         self.W1i[...,0] = self.W1i[...,0] + self.pref.utility(self.unemp_bf.min())/(1-self.p.beta)
 
+        #Setting up size and quality grids already in the matrix for
+        self.size = np.zeros_like(self.W1i)
+        self.size[...,0] = self.N_grid[self.grid[1]]
+        for i in range(2,K + 1):
+            self.size[...,i-1] = self.N_grid1[self.grid[i]]
+
+        self.q = self.Q_grid[self.grid[4]]
 
     def J(self,Jg=None,Wg=None,update_eq=0):    
         """
@@ -1044,6 +943,8 @@ class MultiworkerContract:
         N_grid1 = self.N_grid1
         Q_grid = self.Q_grid
         grid = self.grid
+        size = self.size
+        q = self.q
 
         if Jg is None:
             Ji = np.copy(self.J_grid)
@@ -1063,8 +964,6 @@ class MultiworkerContract:
         EW1_star = np.copy(Ji)
         EJ1_star = np.copy(Ji)
         EJderiv = np.zeros_like(Ji)
-        EWderiv = np.zeros_like(Ji)
-        #EW_tilde = np.copy(Ji)
         Jderiv = np.zeros_like(Ji)
         rho_star = np.zeros_like(Ji)
         sep_star = np.zeros_like(Ji)
@@ -1080,6 +979,15 @@ class MultiworkerContract:
         Jd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n))
         Wd0 = np.zeros_like(Jd0)
 
+        #Separations related variables
+        sep_grid = np.linspace(0,1,20)
+        n1_s = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, sep_grid.shape[0]))
+        q_s = np.zeros_like(n1_s)
+        q_deriv_s = np.zeros_like(n1_s)
+        J_fut_deriv_n = np.zeros_like(n1_s)
+        J_fut_deriv_q = np.zeros_like(n1_s)
+        J_n1 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, sep_grid.shape[0], self.p.num_n))
+        J_q = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, sep_grid.shape[0], self.p.num_q))
 
         # prepare expectation call
         Ez = oe.contract_expression('anmvq,az->znmvq', Ji.shape, self.Z_trans_mat.shape)
@@ -1129,7 +1037,7 @@ class MultiworkerContract:
 
             
             #Calculating all the value function derivatives (manually of course)
-            Ji3 = Ji + N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:,ax]*W1i[...,1] #This is the full rho
+            Ji3 = Ji + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W1i[...,1] #This is the full rho
 
             # First boundary condition: forward difference            
             Jfullderiv[:, :, 0, ...] = (Ji3[:, :, 1,  ...] - Ji3[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
@@ -1148,8 +1056,8 @@ class MultiworkerContract:
             Qderiv[...,1:-1] = (Ji[...,2:] - Ji[...,:-2]) / (Q_grid[2:] - Q_grid[:-2])
             
             Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:,ax]*W1i[...,1]
-            #Jderiv = Jfullderiv+N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
-            #Jderiv0 = Jderiv0+N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv0 #accounting for the fact that size change also impacts W
+            #Jderiv = Jfullderiv+size[...,1]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
+            #Jderiv0 = Jderiv0+size[...,1]*rho_grid[ax,ax,ax,:]*Wderiv0 #accounting for the fact that size change also impacts W
 
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
             #EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
@@ -1164,11 +1072,11 @@ class MultiworkerContract:
             if ite_num<=100000000:
              #Main foc, in the absence for separations
              inv_utility_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[...,ax,:,:]*EUi+(1-sep_star[...,ax,:,:])*(EW1i[..., ax, :]+re[..., ax, :])))
-             foc_2ndpart = - N_grid1[self.grid[2][..., ax, :]]*rho_grid[ax, ax, ax, ax, :, ax] -\
-                 N_grid[self.grid[1][..., ax, :]] * (1-sep_star[...,ax,:,:]) / inv_utility_1d             
+             foc_2ndpart = - size[..., ax, :, 1]*rho_grid[ax, ax, ax, ax, :, ax] -\
+                 size[..., ax, :,0] * (1-sep_star[...,ax,:,:]) / inv_utility_1d             
              
              foc = rho_grid[ax, ax, ax, :, ax, ax] - (EJinv[:, :, :, ax, :, :] / pc[...,ax,:])* (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-             foc = foc*(N_grid[self.grid[1][..., ax, :]] * (1-sep_star[...,ax,:,:])+N_grid1[self.grid[2][..., ax, :]]) + foc_2ndpart
+             foc = foc*(size[..., ax, :,0] * (1-sep_star[...,ax,:,:])+size[..., ax, :,1]) + foc_2ndpart
             #There are no separations here as this FOC is in the case of NO separations (although, what if s=1?)
             #Foc for wages if separations are positive
             # foc_rho_s = rho_grid[ax, ax, ax, :,ax, ax]+((EW1i[..., ax, :]+re[..., ax, :]-EUi) / inv_utility_1d)*(log_diff[..., ax,:] / self.deriv_eps)/(pc[..., ax,:])
@@ -1192,35 +1100,20 @@ class MultiworkerContract:
             
             #MINIMUM WAGE ADDITION! DON'T ALLOW RHO_GRID TO GO BELOW RELATED MIN WAGE
             #Would this work tho? I dunno if it's the correct way of doing this... anyway let's try
-            rho_cutoff = interp(self.p.min_wage,self.w_grid,rho_grid)
-            rho_star[rho_star < rho_cutoff] = rho_cutoff
+            #rho_cutoff = interp(self.p.min_wage,self.w_grid,rho_grid)
+            #rho_star[rho_star < rho_cutoff] = rho_cutoff
 
             pc_trans = np.moveaxis(pc,3,0)
             rho_trans = np.moveaxis(rho_star,3,0)            
             pc_temp = np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
             #Diff sep approach: interpolate the whole fucking foc!!!
-            sep_grid = np.linspace(0,1,50)
+
             sep_star[...] = 0
             
             if ite_num>0:
-                #Setting up the variables
-                n1_s = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, sep_grid.shape[0]))
-                q_s = np.zeros_like(n1_s)
-                q_deriv_s = np.zeros_like(n1_s)
-                J_fut_deriv_n = np.zeros_like(n1_s)
-                J_fut_deriv_q = np.zeros_like(n1_s)
-                J_n1 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, sep_grid.shape[0], self.p.num_n))
-                J_q = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, sep_grid.shape[0], self.p.num_q))
-                foc_sep = np.zeros_like(n1_s)
-                #Calculating future, separations-contingent, senior size and quality
-                for s in range(sep_grid.shape[0]): #Instead of looping over s, could just use the ax to modify stuff. Uglier, but probably faster than this
-                    n1_s[...,s] = (N_grid[grid[1]]*(1-sep_grid[s])+N_grid1[grid[2]]) * pc_temp
-                    q_s[...,s] = (N_grid[self.grid[1]] * np.minimum(self.p.q_0,1-sep_grid[s])+Q_grid[self.grid[4]]*N_grid1[self.grid[2]]) / (N_grid[self.grid[1]]*(1-sep_grid[s])+N_grid1[self.grid[2]])
-                    #Calculating derivative of future q wrt s
-                    if sep_grid[s] < 1-self.p.q_0:
-                        q_deriv_s[...,s] = N_grid[grid[1]] * q_s[...,s] / (N_grid1[grid[2]]+(1-sep_grid[s])*N_grid[grid[1]])
-                    else:
-                       q_deriv_s[...,s] = (( Q_grid[self.grid[4]] - 1 ) *N_grid1[self.grid[2]] * N_grid[self.grid[1]]) / np.power(N_grid[self.grid[1]]*(1-sep_grid[s])+N_grid1[self.grid[2]],2)
+                
+                #Interpolating the future value functions
+                for s in range(sep_grid.shape[0]):
                     for iz in range(self.p.num_z):
                         #Value function at future quality and arbitrary size
                         for in11 in range(self.p.num_n):
@@ -1228,72 +1121,48 @@ class MultiworkerContract:
                         #Value function at future size and arbitrary quality                   
                         for iqq in range(self.p.num_q):
                            J_q[iz,...,s,iqq] = RegularGridInterpolator((N_grid, N_grid1, rho_grid), EJpi[iz, ..., iqq], bounds_error=False, fill_value=None) ((n0_star[iz, ...], n1_s[iz,...,s], rho_star[iz, ...]))
-                #Calculating closest grid points to each future size and quality
-                n1_s_ceil = np.ceil(np.interp( n1_s, N_grid1, range(self.p.num_n))).astype(int)
-                n1_s_floor = np.floor(np.interp( n1_s, N_grid1, range(self.p.num_n))).astype(int)
-                q_s_ceil = np.ceil(np.interp( q_s, Q_grid, range(self.p.num_q))).astype(int)
-                q_s_floor = np.floor(np.interp( q_s, Q_grid, range(self.p.num_q))).astype(int)
-              
+
+                #WHAT IF. We just do a direct derivative wrt s??? Like, we know what q_s and n1_s are. Inteprolate directly onto them, which will already give us the total derivative of J wrt s, no?
+                J_s = np.zeros_like(n1_s)
+                ERho = EJpi[...,ax] + rho_star[...,ax] * n1_s * EW1i[...,ax]
+                for s in range(sep_grid.shape[0]):
+                    for iz in range(self.p.num_z):
+                        J_s[iz,...,s] = RegularGridInterpolator((N_grid, N_grid1, rho_grid, Q_grid), EJpi[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz, ...], n1_s[iz,...,s], rho_star[iz, ...], q_s[iz, ...,s]))
+                #Solve for q_s,n1_s, and the corresponding (interior) derivatives
+                n1_s_ceil,n1_s_floor,q_s_ceil,q_s_floor = sep_solve_1(n1_s,q_s,q_deriv_s,pc_temp,sep_grid,N_grid1,size,q,Q_grid,self.p.num_n,self.p.num_q,self.p.q_0)
+                sep_reshaped = sep_grid.reshape((1,) * (Ji.ndim) + (-1,))
+
+                J_s_deriv = np.zeros_like(J_s)
+                J_s_deriv[...,0] = (J_s[...,1] - J_s[...,0]) / (sep_grid[1] - sep_grid[0])
+                J_s_deriv[...,-1] = (J_s[...,-1] - J_s[...,-2]) / (sep_grid[-1] - sep_grid[-2]) 
+                J_s_deriv[..., 1:-1]    = (J_s[...,2:] - J_s[...,:-2]) / (sep_reshaped[...,2:] - sep_reshaped[...,:-2]) 
+                                  
                 #Calculating future derivative wrt size
                 iz, in0, in1, iv, iq, s = np.indices(n1_s_ceil.shape)
                 J_fut_deriv_n = (J_n1[iz,in0,in1,iv,iq,s,n1_s_ceil]-J_n1[iz,in0,in1,iv,iq,s,n1_s_floor] ) / (N_grid1[n1_s_ceil]-N_grid1[n1_s_floor])
                 J_fut_deriv_q = (J_q[iz,in0,in1,iv,iq,s,q_s_ceil]-J_q[iz,in0,in1,iv,iq,s,q_s_floor]) / (Q_grid[q_s_ceil]-Q_grid[q_s_floor])
                 # Boundary check for deriv wrt n: 
                 first_bound = (n1_s_ceil==0) 
-                last_bound = (N_grid1[n1_s_floor]==self.p.n_bar)
-                J_fut_deriv_n[:,0,...] = 1e+10000 #Just to set sep_star to zero right away
+                last_bound = (n1_s_floor==n1_s_ceil.max())
                 J_fut_deriv_n[first_bound] = (J_n1[first_bound,1] - J_n1[first_bound,0] ) / (N_grid1[1] - N_grid1[0])
                 J_fut_deriv_n[last_bound] = (J_n1[last_bound,-1] - J_n1[last_bound,-2] ) / (N_grid1[-1] - N_grid1[-2])
-                
-                np.isnan(n1_s).sum() == 0, "n1_s has NaN values"
-                assert np.isnan(q_s).sum() == 0, "q_s has NaN values"
 
                 # Boundary check for deriv wrt q: 
                 first_bound = (q_s_ceil==0)
-                last_bound = (Q_grid[q_s_floor]==Q_grid.max())
-                mid_bound = (q_s_ceil==q_s_floor) & (q_s_ceil != 0) & (Q_grid[q_s_floor] != Q_grid.max())
+                last_bound = (q_s_floor==q_s_ceil.max())
+                mid_bound = (q_s_ceil==q_s_floor) & (q_s_ceil != 0) & (q_s_floor != q_s_ceil.max())
 
                 J_fut_deriv_q[first_bound] = (J_q[first_bound,1] - J_q[first_bound,0] ) / (Q_grid[1] - Q_grid[0])
                 J_fut_deriv_q[last_bound] = (J_q[last_bound,-1] - J_q[last_bound,-2] ) / (Q_grid[-1] - Q_grid[-2])
                 J_fut_deriv_q[mid_bound] = (J_q[mid_bound,q_s_ceil[mid_bound]+1]-J_q[mid_bound,q_s_ceil[mid_bound]-1]) / (Q_grid[q_s_ceil[mid_bound]+1] - Q_grid[q_s_ceil[mid_bound]-1])
 
-                rest = (q_s_ceil!=q_s_floor) & (q_s_ceil != 0) & (Q_grid[q_s_floor] != 1.0)
-                #J_fut_deriv_n[rest] = (J_n1[rest,n1_s_ceil[rest]]-J_n1[rest,n1_s_floor[rest]] ) / (N_grid1[n1_s_ceil]-N_grid1[n1_s_floor[rest]])
-                J_fut_deriv_q[rest] = (J_q[rest,q_s_ceil[rest]]-J_q[rest,q_s_floor[rest]]) / (Q_grid[q_s_ceil[rest]]-Q_grid[q_s_floor[rest]])
-
-                J_fut_deriv_q[:,0,...] = 0.0
-
-                assert np.isnan(J_fut_deriv_n).sum() == 0, "J_fut_deriv_n has NaN values"
-                assert np.isnan(J_fut_deriv_q).sum() == 0, "J_fut_deriv_q has NaN values"
-                #Summing all these up to get the foc:
-                for s in range(sep_grid.shape[0]):
-                   foc_sep[...,s] = - J_fut_deriv_n[...,s] * pc_temp + J_fut_deriv_q[...,s] * q_deriv_s[...,s] - (re_star+EW1_star - EUi) / self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_grid[s] * EUi + (1-sep_grid[s]) * (EW1_star + re_star)))
-    	           #NOTE: EW1_star and re_star here are constant, not dependent on s at all (although they kinda should)
-                #Calculating the separations. Can drop this into jit surely
-                for iz in range(self.p.num_z):
-                   for in0 in range(self.p.num_n):
-                    if in0 == 0:
-                     continue
-                    for in1 in range(self.p.num_n):
-                     for iv in range(self.p.num_v):
-                      for iq in range(self.p.num_q):
-                        if np.all(foc_sep[iz,in0,in1,iv,iq,:] <= 0):
-                           sep_star[iz,in0,in1,iv,iq] = 0
-                        elif np.all(foc_sep[iz,in0,in1,iv,iq,:] > 0):
-                           sep_star[iz,in0,in1,iv,iq] = 1
-                        else:
-                            #print("check, reached interpolation")
-                            sep_star[iz,in0,in1,iv,iq] = interp(0,impose_increasing(-foc_sep[iz,in0,in1,iv,iq,:]),sep_grid) 
-                #sep_neg = np.all (foc_sep <= 0, axis = -1) #this may be a bit too extra, not sure...
-                #sep_max = np.all (foc_sep > 0, axis = -1)
-                #sep_star[sep_neg] = 0.0
-                #sep_star[sep_max] = 1.0 #OH SHIT WHAT IF THE Q IS ALREADY AT ITS MAX? I think this should account for it, no?
-                #sep_star[:,0,...] = 0.0
+                inv_util_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_reshaped * EUi[...,ax] + (1-sep_reshaped) * (EW1_star[...,ax] + re_star[...,ax])))
+                sep_star = sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW1_star,EUi,sep_grid,size,self.p.num_z,self.p.num_v,self.p.num_n,self.p.num_q)
                 print("sep borders", sep_star.min(),sep_star.max())
 
             #Getting n1_star
-            n1_star = (N_grid[self.grid[1]]*(1-sep_star)+N_grid1[self.grid[2]])*pc_temp
-            q_star = (N_grid[self.grid[1]]* np.minimum(self.p.q_0,1-sep_star)+Q_grid[self.grid[4]]*N_grid1[self.grid[2]])/(N_grid[self.grid[1]]*(1-sep_star)+N_grid1[self.grid[2]])
+            n1_star = (size[...,0]*(1-sep_star)+size[...,1])*pc_temp
+            q_star = (size[...,0]* np.minimum(self.p.q_0,1-sep_star)+q*size[...,1])/(size[...,0]*(1-sep_star)+size[...,1])
             print("q_star", q_star[self.p.z_0-1,1,0,50, :])
             
 
@@ -1308,8 +1177,8 @@ class MultiworkerContract:
                     Jd0[iz, ..., in00] = J_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
                     Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             if ite_num > 1:
-                #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar - 1)
-                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar)
+                #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (size[...,0]+size[...,1] < self.p.n_bar - 1)
+                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (size[...,0]+size[...,1] < self.p.n_bar)
                 n0_star = n0(Jd0, n0_star, N_grid, Ihire, self.p.hire_c / self.p.beta)
 
 
@@ -1329,8 +1198,7 @@ class MultiworkerContract:
                     W_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EW1i[iz, :, in11, ...], bounds_error=False, fill_value=None)
                     Jd0[iz,..., in11] = J_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
                     Wd0[iz, ..., in11] = W_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
-            EJderiv0,EWderiv = anotherEJderivative(Jd0,Wd0,ceiln1,floorn1,n0_star,rho_star,q_star,EJpi,EW1i,N_grid,rho_grid,Q_grid,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
-            EJderiv = EJderiv0+n1_star*rho_star*EWderiv
+            EJderiv = EJderivative(Jd0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
 
 
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
@@ -1342,7 +1210,7 @@ class MultiworkerContract:
             #print("wage_jun", wage_jun[self.p.z_0-1,1,0,50,0])
             #print("wage jun no sep", self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star[self.p.z_0-1,1,0,50,0]+re_star[self.p.z_0-1,1,0,50,0])))
             Ji = self.fun_prod*self.prod - sum_wage - self.p.hire_c*n0_star - \
-                wage_jun*N_grid[self.grid[1]]  + self.p.beta * EJ1_star
+                wage_jun*size[...,0]  + self.p.beta * EJ1_star
             Ji = .2*Ji + .8*Ji2
 
             # Update worker value function
