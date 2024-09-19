@@ -255,7 +255,7 @@ def sep_solve_1(n1_s,q_s,q_deriv_s,pc_temp,sep_grid,N_grid1,size,q1,Q_grid,num_n
                 q_s_floor = np.floor(np.interp( q_s, Q_grid, range_q)).astype(np.int32)
               
                 return n1_s_ceil,n1_s_floor,q_s_ceil,q_s_floor#,J_fut_deriv_n,J_fut_deriv_q
-#@nb.njit(cache=True)
+@nb.njit(cache=True)
 def sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW1_star,EUi,sep_grid,size,num_z,num_v,num_n,num_q):
                 #foc_sep = - J_fut_deriv_n * pc_temp[...,ax] * size[...,ax, 0] + J_fut_deriv_q * q_deriv_s - size[...,ax, 0] * (re_star[...,ax]+EW1_star[...,ax] - EUi) / inv_util_1d  
                 foc_sep = J_s_deriv - size[...,ax,0] * (re_star[...,ax]+EW1_star[...,ax] - EUi) / inv_util_1d
@@ -1113,23 +1113,22 @@ class MultiworkerContract:
             if ite_num>0:
                 
                 #Interpolating the future value functions
-                for s in range(sep_grid.shape[0]):
-                    for iz in range(self.p.num_z):
-                        #Value function at future quality and arbitrary size
-                        for in11 in range(self.p.num_n):
-                          J_n1[iz,...,s,in11] = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EJpi[iz, :, in11, ...], bounds_error=False, fill_value=None) ((n0_star[iz, ...], rho_star[iz, ...], q_s[iz, ...,s]))
-                        #Value function at future size and arbitrary quality                   
-                        for iqq in range(self.p.num_q):
-                           J_q[iz,...,s,iqq] = RegularGridInterpolator((N_grid, N_grid1, rho_grid), EJpi[iz, ..., iqq], bounds_error=False, fill_value=None) ((n0_star[iz, ...], n1_s[iz,...,s], rho_star[iz, ...]))
+                #for s in range(sep_grid.shape[0]):
+                #    for iz in range(self.p.num_z):
+                #        #Value function at future quality and arbitrary size
+                #        for in11 in range(self.p.num_n):
+                #          J_n1[iz,...,s,in11] = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EJpi[iz, :, in11, ...], bounds_error=False, fill_value=None) ((n0_star[iz, ...], rho_star[iz, ...], q_s[iz, ...,s]))
+                #        #Value function at future size and arbitrary quality                   
+                #        for iqq in range(self.p.num_q):
+                #           J_q[iz,...,s,iqq] = RegularGridInterpolator((N_grid, N_grid1, rho_grid), EJpi[iz, ..., iqq], bounds_error=False, fill_value=None) ((n0_star[iz, ...], n1_s[iz,...,s], rho_star[iz, ...]))
 
                 #WHAT IF. We just do a direct derivative wrt s??? Like, we know what q_s and n1_s are. Inteprolate directly onto them, which will already give us the total derivative of J wrt s, no?
                 J_s = np.zeros_like(n1_s)
-                ERho = EJpi[...,ax] + rho_star[...,ax] * n1_s * EW1i[...,ax]
                 for s in range(sep_grid.shape[0]):
                     for iz in range(self.p.num_z):
                         J_s[iz,...,s] = RegularGridInterpolator((N_grid, N_grid1, rho_grid, Q_grid), EJpi[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz, ...], n1_s[iz,...,s], rho_star[iz, ...], q_s[iz, ...,s]))
                 #Solve for q_s,n1_s, and the corresponding (interior) derivatives
-                n1_s_ceil,n1_s_floor,q_s_ceil,q_s_floor = sep_solve_1(n1_s,q_s,q_deriv_s,pc_temp,sep_grid,N_grid1,size,q,Q_grid,self.p.num_n,self.p.num_q,self.p.q_0)
+                #n1_s_ceil,n1_s_floor,q_s_ceil,q_s_floor = sep_solve_1(n1_s,q_s,q_deriv_s,pc_temp,sep_grid,N_grid1,size,q,Q_grid,self.p.num_n,self.p.num_q,self.p.q_0)
                 sep_reshaped = sep_grid.reshape((1,) * (Ji.ndim) + (-1,))
 
                 J_s_deriv = np.zeros_like(J_s)
@@ -1138,23 +1137,23 @@ class MultiworkerContract:
                 J_s_deriv[..., 1:-1]    = (J_s[...,2:] - J_s[...,:-2]) / (sep_reshaped[...,2:] - sep_reshaped[...,:-2]) 
                                   
                 #Calculating future derivative wrt size
-                iz, in0, in1, iv, iq, s = np.indices(n1_s_ceil.shape)
-                J_fut_deriv_n = (J_n1[iz,in0,in1,iv,iq,s,n1_s_ceil]-J_n1[iz,in0,in1,iv,iq,s,n1_s_floor] ) / (N_grid1[n1_s_ceil]-N_grid1[n1_s_floor])
-                J_fut_deriv_q = (J_q[iz,in0,in1,iv,iq,s,q_s_ceil]-J_q[iz,in0,in1,iv,iq,s,q_s_floor]) / (Q_grid[q_s_ceil]-Q_grid[q_s_floor])
+                #iz, in0, in1, iv, iq, s = np.indices(n1_s_ceil.shape)
+                #J_fut_deriv_n = (J_n1[iz,in0,in1,iv,iq,s,n1_s_ceil]-J_n1[iz,in0,in1,iv,iq,s,n1_s_floor] ) / (N_grid1[n1_s_ceil]-N_grid1[n1_s_floor])
+                #J_fut_deriv_q = (J_q[iz,in0,in1,iv,iq,s,q_s_ceil]-J_q[iz,in0,in1,iv,iq,s,q_s_floor]) / (Q_grid[q_s_ceil]-Q_grid[q_s_floor])
                 # Boundary check for deriv wrt n: 
-                first_bound = (n1_s_ceil==0) 
-                last_bound = (n1_s_floor==n1_s_ceil.max())
-                J_fut_deriv_n[first_bound] = (J_n1[first_bound,1] - J_n1[first_bound,0] ) / (N_grid1[1] - N_grid1[0])
-                J_fut_deriv_n[last_bound] = (J_n1[last_bound,-1] - J_n1[last_bound,-2] ) / (N_grid1[-1] - N_grid1[-2])
+                #first_bound = (n1_s_ceil==0) 
+                #last_bound = (n1_s_floor==n1_s_ceil.max())
+                #J_fut_deriv_n[first_bound] = (J_n1[first_bound,1] - J_n1[first_bound,0] ) / (N_grid1[1] - N_grid1[0])
+                #J_fut_deriv_n[last_bound] = (J_n1[last_bound,-1] - J_n1[last_bound,-2] ) / (N_grid1[-1] - N_grid1[-2])
 
                 # Boundary check for deriv wrt q: 
-                first_bound = (q_s_ceil==0)
-                last_bound = (q_s_floor==q_s_ceil.max())
-                mid_bound = (q_s_ceil==q_s_floor) & (q_s_ceil != 0) & (q_s_floor != q_s_ceil.max())
+                #first_bound = (q_s_ceil==0)
+                #last_bound = (q_s_floor==q_s_ceil.max())
+                #mid_bound = (q_s_ceil==q_s_floor) & (q_s_ceil != 0) & (q_s_floor != q_s_ceil.max())
 
-                J_fut_deriv_q[first_bound] = (J_q[first_bound,1] - J_q[first_bound,0] ) / (Q_grid[1] - Q_grid[0])
-                J_fut_deriv_q[last_bound] = (J_q[last_bound,-1] - J_q[last_bound,-2] ) / (Q_grid[-1] - Q_grid[-2])
-                J_fut_deriv_q[mid_bound] = (J_q[mid_bound,q_s_ceil[mid_bound]+1]-J_q[mid_bound,q_s_ceil[mid_bound]-1]) / (Q_grid[q_s_ceil[mid_bound]+1] - Q_grid[q_s_ceil[mid_bound]-1])
+                #J_fut_deriv_q[first_bound] = (J_q[first_bound,1] - J_q[first_bound,0] ) / (Q_grid[1] - Q_grid[0])
+                #J_fut_deriv_q[last_bound] = (J_q[last_bound,-1] - J_q[last_bound,-2] ) / (Q_grid[-1] - Q_grid[-2])
+                #J_fut_deriv_q[mid_bound] = (J_q[mid_bound,q_s_ceil[mid_bound]+1]-J_q[mid_bound,q_s_ceil[mid_bound]-1]) / (Q_grid[q_s_ceil[mid_bound]+1] - Q_grid[q_s_ceil[mid_bound]-1])
 
                 inv_util_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_reshaped * EUi[...,ax] + (1-sep_reshaped) * (EW1_star[...,ax] + re_star[...,ax])))
                 sep_star = sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW1_star,EUi,sep_grid,size,self.p.num_z,self.p.num_v,self.p.num_n,self.p.num_q)
