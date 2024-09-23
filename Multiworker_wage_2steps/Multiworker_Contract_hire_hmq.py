@@ -1123,6 +1123,10 @@ class MultiworkerContract:
                 #           J_q[iz,...,s,iqq] = RegularGridInterpolator((N_grid, N_grid1, rho_grid), EJpi[iz, ..., iqq], bounds_error=False, fill_value=None) ((n0_star[iz, ...], n1_s[iz,...,s], rho_star[iz, ...]))
 
                 #WHAT IF. We just do a direct derivative wrt s??? Like, we know what q_s and n1_s are. Inteprolate directly onto them, which will already give us the total derivative of J wrt s, no?
+                for s in range(sep_grid.shape[0]):
+                    n1_s[...,s] = (size[...,0]*(1-sep_grid[s])+size[...,1]) * pc_temp
+                    q_s[...,s] = (size[...,0] * np.minimum(self.p.q_0,1-sep_grid[s])+self.q*size[...,1]) / (size[...,0]*(1-sep_grid[s])+size[...,1])
+                
                 J_s = np.zeros_like(n1_s)
                 for s in range(sep_grid.shape[0]):
                     for iz in range(self.p.num_z):
@@ -1134,8 +1138,11 @@ class MultiworkerContract:
                 J_s_deriv = np.zeros_like(J_s)
                 J_s_deriv[...,0] = (J_s[...,1] - J_s[...,0]) / (sep_grid[1] - sep_grid[0])
                 J_s_deriv[...,-1] = (J_s[...,-1] - J_s[...,-2]) / (sep_grid[-1] - sep_grid[-2]) 
-                J_s_deriv[..., 1:-1]    = (J_s[...,2:] - J_s[...,:-2]) / (sep_reshaped[...,2:] - sep_reshaped[...,:-2]) 
-                                  
+                #J_s_deriv[..., 1:-1]    = (J_s[...,2:] - J_s[...,:-2]) / (sep_reshaped[...,2:] - sep_reshaped[...,:-2]) 
+                J_s_deriv[..., 1:-1]    = (J_s[...,1:-1] - J_s[...,0:-2]) / (sep_reshaped[...,1:-1] - sep_reshaped[...,0:-2])
+                #Maybe make it all be forward difference??? That way we should actually have seprations plateau exactly at 0.5, no?
+                #Gott be somewhat careful around the borders no tho
+
                 #Calculating future derivative wrt size
                 #iz, in0, in1, iv, iq, s = np.indices(n1_s_ceil.shape)
                 #J_fut_deriv_n = (J_n1[iz,in0,in1,iv,iq,s,n1_s_ceil]-J_n1[iz,in0,in1,iv,iq,s,n1_s_floor] ) / (N_grid1[n1_s_ceil]-N_grid1[n1_s_floor])
