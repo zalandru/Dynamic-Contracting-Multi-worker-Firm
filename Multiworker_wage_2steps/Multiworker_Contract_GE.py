@@ -1004,7 +1004,35 @@ class MultiworkerContract:
             Ji2 = Ji
             W1i2 = np.copy(W1i)
             Ui2 = Ui
+            """
+            General Equibrium!!!
+            Step 1: update the hiring cost (call it kappa for now, can rename later):
+             Extra assumption: all firms start at self.p.z_0-1... is it a good idea to have this assumption??? Why would all the firms enter at the same productivity?
+            Quick method: Envelope Theorem
+             self.p.k_entry = E_y (J[y,0,0,0,0] - n0_star[y,0,0,0,0] * (kappa - kappa2))
+            Precise method: Calculate the value directly
+             kappa_grid = np.linspace(0,self.p.kappa_bar,100)
+             n0_k[k] = interp(-kappa, -impose_decreasing(J_diff), N_grid)
+             self.p.k_entry = E_y (yF(0,0) - n0_k[k]*kappa_grid[k] - k_f + beta * interp(n0_k[k],N_grid,EJpi[y,:,0,0,0])) <- this is just approaximate! I am essentially ignoring the non-zero seniors here
 
+            Step 2: calculate theta for each submarket keeping in mind the kappa
+            Basic idea; kappa=x+c/q(theta[x]), where x is the submarket-specific hiring cost (sign-on bonus on my case).
+            Calculating x: for submarket with value v, we should have that u(x)+self.p.beta*self.p.v_0 = v. So x=self.pref.inv_util(v - self.p.beta * self.p.v_0)
+            To solve this for theta (since otherwise we cannot calculate p): theta = q_inv (c/ (kappa -x))
+            From this get the p and we good, right?
+            Ah, I guess the annoying thing is that I'm usually calling on js...
+            Best thing is then to integrate this into js. That way I can also keep the structure of the paper, by calculating the first kappa in the __init__
+            
+            So steps 1 and 2 don't actually require the usage of js. It's the other way instead: I need these guys FOR js!!!
+            Reminder of how BL use js:
+                            #P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, 0, 1, :, 1])
+                            #error_js = self.js.update(W1i[self.p.z_0-1, 0, 0, :, 1], P_xv, type=1, relax=relax)
+            The first line is substituted by Schaal's theta stuff. 
+            The second line tho? What is the grid of submarkets here?? Now that I separated the worker and submarket values this is less clear
+            What did Schaal have for that? 
+
+            """
+            
             if ite_num>1:
              print("EJinv", EJinv[self.p.z_0-1,1,2,50, 0]/pc_star[self.p.z_0-1,1,2,50, 0])
              print("EJderiv", EJderiv[self.p.z_0-1,1,2,50, 0])
