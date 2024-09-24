@@ -34,8 +34,8 @@ class Parameters:
         # Time periods in the Model
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
-        # Hiring cost
-        self.hire_c = 25.0
+        # Vacancy cost
+        self.hire_c = 5.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
         self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
@@ -44,6 +44,9 @@ class Parameters:
         # Unemployment Parameters
         self.u_bf_m = 0.5 #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
+        #Firm entry and maintenance cost
+        self.k_entry = 8.0
+        self.k_f = 4.0
 
         #Min wage
         self.min_wage = 0 * self.u_bf_m
@@ -51,7 +54,7 @@ class Parameters:
 
 
         # Utility Function Parameters
-        self.u_rho = 1.5      # Risk aversion coefficient, was 1.5
+        self.u_rho = 1.1      # Risk aversion coefficient, was 1.5
         self.u_a   = 1.0
         self.u_b   = 1.0
 
@@ -171,6 +174,14 @@ class Preferences:
             self.p = Parameters()
         else:
             self.p = input_param
+
+    def q_inv(self,q):
+         """
+            Computes the tightness function at a particular vacancy-filling probability.
+            :param  q: Argument of the function.
+            :return: Output of the function.
+        """       
+         return np.power( np.power(self.p.alpha/q,self.p.sigma) - np.power(self.p.alpha,self.p.sigma), 1 / self.p.sigma )
 
     def utility(self, wage):
         """

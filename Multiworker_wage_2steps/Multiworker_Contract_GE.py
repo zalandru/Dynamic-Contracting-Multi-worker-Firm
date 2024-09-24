@@ -186,10 +186,10 @@ def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, nu
     return rho_star
 
 @nb.njit(cache=True,parallel=True)
-def n0(Jd0, n0_star, N_grid, Ihire, hire_c):
+def n0(Jd0, n0_star, N_grid, Ihire, kappa):
     for idx in np.argwhere(Ihire):
         slice_Jd0 = (Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], :-1]) / (N_grid[1:]-N_grid[:-1])# Shape should be (5,)
-        n0_star[idx[0], idx[1], idx[2], idx[3], idx[4]] = interp( -hire_c ,impose_increasing(-slice_Jd0),N_grid[1:]) #oh shit, should we also account for how that affects the worker value???
+        n0_star[idx[0], idx[1], idx[2], idx[3], idx[4]] = interp( -kappa ,impose_increasing(-slice_Jd0),N_grid[1:]) #oh shit, should we also account for how that affects the worker value???
     print("n0_star borders", n0_star.min(), n0_star.max())   
     return n0_star 
 @nb.njit(cache=True)
@@ -228,9 +228,13 @@ def EJderivative(Jd0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,num_z,num_n,n_b
                          if ceiln1[iz,in0,in1,iv,iq]==0:
                             continue
                          if N_grid1[floorn1[iz,in0,in1,iv,iq]]>=n_bar:
-                            continue                
-                         EJderiv0[iz,in0,in1,iv,iq] = (Jd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Jd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
-                         EWderiv[iz,in0,in1,iv,iq] = (Wd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Wd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
+                            continue
+                         if floorn1[iz,in0,in1,iv,iq] == ceiln1[iz,in0,in1,iv,iq]:
+                            EJderiv0[iz,in0,in1,iv,iq] = (Jd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]+1]-Jd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]-1]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]+1]-N_grid1[floorn1[iz,in0,in1,iv,iq]-1])
+                            EWderiv[iz,in0,in1,iv,iq] = (Wd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]+1]-Wd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]-1]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]+1]-N_grid1[floorn1[iz,in0,in1,iv,iq]-1])                  
+                         else:
+                            EJderiv0[iz,in0,in1,iv,iq] = (Jd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Jd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
+                            EWderiv[iz,in0,in1,iv,iq] = (Wd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Wd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
                 EJderiv = EJderiv0+n1_star*rho_star*EWderiv
                 return EJderiv
 @nb.njit(cache=True)
@@ -355,7 +359,7 @@ class MultiworkerContract:
         #Job value and GE first
         self.v_grid = np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod_onedim.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
         #Value promised to the worker at the bottom step
-        self.v_0 = self.v_grid.min()#-1.0
+        self.v_0 = self.v_grid[0]#-1.0
         
         self.simple_J=np.divide(self.fun_prod_onedim[:,ax] - self.w_grid[ax,:],1-self.p.beta)
         #Apply the matching function: take the simple function and consider its different values across v.
@@ -407,7 +411,7 @@ class MultiworkerContract:
 
         self.q = self.Q_grid[self.grid[4]]
 
-    def J(self,Jg=None,Wg=None,update_eq=0):    
+    def J(self,Jg=None,Wg=None,update_eq=1):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -417,6 +421,8 @@ class MultiworkerContract:
         N_grid = self.N_grid
         N_grid1 = self.N_grid1
         Q_grid = self.Q_grid
+        size = self.size
+        q = self.q
 
         if Jg is None:
             Ji = np.copy(self.J_grid)
@@ -459,6 +465,12 @@ class MultiworkerContract:
         ite_num = 0
         error_js = 1
         
+        # General equilibrium first time
+        kappa, P = self.GE(Ez(Ji, self.Z_trans_mat))
+        print("kappa", kappa)
+        print("P", P)
+        self.js.update(self.v_grid,P)
+        
         # evaluate J1 tomorrow using our approximation
         #Jpi = J1p.eval_at_W1(W1i[...,1])
         for ite_num in range(self.p.max_iter):
@@ -484,7 +496,8 @@ class MultiworkerContract:
             _, re, pc = self.getWorkerDecisions(EW1i)
             # get worker decisions at EW1i + epsilon
             _, _, pc_d = self.getWorkerDecisions(EW1i + self.deriv_eps) 
-           
+            assert (np.isnan(pc)).sum()==0, "pc has NaN values"
+            assert (np.isnan(re)).sum()==0, "re has NaN values"            
             if ite_num>100000000:
                 EW1_tild = EW_tild(n1_star,EW1i,N_grid,self.p.num_z,self.p.num_n,self.p.num_v)
                 _, re, pc = self.getWorkerDecisions(EW1_tild)
@@ -508,7 +521,7 @@ class MultiworkerContract:
             Wderiv[:, :, 1:-1, ...]     = (W1i[:, :, 2:, :, :, 1] - W1i[:, :, :-2, :, :, 1]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
 
             #Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:,ax]*W1i[...,1]
-            Jderiv = Jfullderiv+N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
+            Jderiv = Jfullderiv+size[...,1]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
 
             #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
@@ -521,7 +534,7 @@ class MultiworkerContract:
              #dim 0 is prod, dim 1 and 2 are size, dim 3 is future v, dim 4 is today's v, dim 5 is hmq
              foc = rho_grid[ax, ax, ax, :, ax, ax] - (EJinv[:, :, :, ax, :, :] / pc[...,ax,:])* (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
              foc = foc*self.sum_size[..., ax, :] - N_grid1[self.grid[2][..., ax, :]]*rho_grid[ax, ax, ax, ax, :, ax] - N_grid[self.grid[1][..., ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i[..., ax, :]+re[..., ax, :]))
-            
+            assert (np.isnan(self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1i+re)))).sum() == 0
             if ite_num>100000000:
              foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[:, :, :, ax, :] / pc)* (log_diff / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
              foc = foc*self.sum_size[..., ax] - N_grid1[self.grid[2][..., ax]]*rho_grid[ax, ax, ax, ax, :] - N_grid[self.grid[1][:, :, :, ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1_tild+re))
@@ -537,9 +550,9 @@ class MultiworkerContract:
             #Future senior size
             pc_trans = np.moveaxis(pc,3,0)
             rho_trans = np.moveaxis(rho_star,3,0)
-            n1_star = (N_grid[self.grid[1]]*(1-sep_star)+N_grid1[self.grid[2]])*np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
+            n1_star = (size[...,0]*(1-sep_star)+size[...,1])*np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
             
-            q_star = (self.p.q_0*N_grid[self.grid[1]]+Q_grid[self.grid[4]]*N_grid1[self.grid[2]])/(N_grid[self.grid[1]]*(1-sep_star)+N_grid1[self.grid[2]])
+            q_star = (size[...,0]* np.minimum(self.p.q_0,1-sep_star)+q*size[...,1])/(size[...,0]*(1-sep_star)+size[...,1])
             
             #Getting hiring decisions
             n0_star[...] = 0
@@ -552,22 +565,20 @@ class MultiworkerContract:
                     Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             if ite_num > 1:
                 #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar - 1)
-                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar - 1)
+                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > kappa / self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar - 1)
 
-                n0_star = n0(Jd0, n0_star, N_grid, Ihire, self.p.hire_c / self.p.beta)
+                n0_star = n0(Jd0, n0_star, N_grid, Ihire, kappa / self.p.beta)
 
 
 
             #Future optimal expectations
             EJ1_star = interp_multidim(n0_star,N_grid,np.moveaxis(Jd0,-1,0))
             EW1_star = interp_multidim(n0_star,N_grid,np.moveaxis(Wd0,-1,0))
-
+     
 
             #Getting the derivative of the future job value wrt n1:
             floorn1=np.floor(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)
             ceiln1=np.ceil(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)            
-
-            #For this, fix the future (arbitrary) senior size, but make sure th ejunior size is correct         
             for iz in range(self.p.num_z):
                 for in11 in range(self.p.num_n): 
                     
@@ -575,8 +586,8 @@ class MultiworkerContract:
                     W_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EW1i[iz, :, in11, ...], bounds_error=False, fill_value=None)
                     Jd0[iz,..., in11] = J_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
                     Wd0[iz, ..., in11] = W_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
-            EJderiv0,EWderiv = anotherEJderivative(Jd0,Wd0,ceiln1,floorn1,n0_star,rho_star,q_star,EJpi,EW1i,N_grid,rho_grid,Q_grid,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
-            EJderiv = EJderiv0+n1_star*rho_star*EWderiv
+            EJderiv = EJderivative(Jd0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
+
 
             
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
@@ -584,8 +595,8 @@ class MultiworkerContract:
             _, re_star, pc_star = self.getWorkerDecisions(EW1_star)
 
             # Update firm value function 
-            Ji = self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - \
-                self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*N_grid[self.grid[1]]  + self.p.beta * EJ1_star
+            Ji = self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa * n0_star - \
+                self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*size[...,0]  + self.p.beta * EJ1_star
             
             Ji = .2 * Ji + .8 * Ji2
 
@@ -616,9 +627,10 @@ class MultiworkerContract:
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
+                            kappa, P = self.GE(EJpi,Ji,n0_star,kappa)
                             #P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, 0, 1, :, 1])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            #error_js = self.js.update(W1i[self.p.z_0-1, 0, 0, :, 1], P_xv, type=1, relax=relax)
+                            error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
                     # Updating J1 representation
@@ -1000,6 +1012,10 @@ class MultiworkerContract:
         # evaluate J1 tomorrow using our approximation
         #Jpi = J1p.eval_at_W1(W1i[:,:,:,:,1])
 
+        # General equilibrium first time
+        kappa, P = self.GE(Ez(Ji, self.Z_trans_mat))
+        print("kappa", kappa)
+        print("P", P)
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = np.copy(W1i)
@@ -1030,7 +1046,19 @@ class MultiworkerContract:
             The first line is substituted by Schaal's theta stuff. 
             The second line tho? What is the grid of submarkets here?? Now that I separated the worker and submarket values this is less clear
             What did Schaal have for that? 
-
+            How about... same as before??? Like, still the worker value? Nah, that would be a mess, no? Because what is the worker value that I'm picking then? aka at which state?
+            How about just a grid of feasible values? So basically v_grid? It's kinda arbitrary still, but I think it makes sense. As long as the firm is of larger size than 1
+              we're good on the upper side. And the lower side is always good since it's the unemp value
+            Okay, so we will have:
+            kappa = ...
+            theta = q_inv ()
+            P_xv = q(theta)/theta
+            error_js = self.js.update(self.v_grid, P_xv, type=1, relax=relax)
+            And then we can just update this every time.
+            All this can be done at the end if we first do this for the initial guess, either in the __init__ or at the start of J
+            Wouldn't work in the __init__ if we have a different guess tho. So gotta do this in J?
+            Guess it's okay if we write a function for it
+            Let's try to do a function (not jit) that contains all of it first. And then we go from there
             """
             
             if ite_num>1:
@@ -1046,7 +1074,9 @@ class MultiworkerContract:
             EW1i = Ez(W1i[...,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
             EJpi = Ez(Ji, self.Z_trans_mat)
+
             EUi = Ui
+
             # get worker decisions
             _, re, pc = self.getWorkerDecisions(EW1i)
             # get worker decisions at EW1i + epsilon
@@ -1212,8 +1242,8 @@ class MultiworkerContract:
                     Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             if ite_num > 1:
                 #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (size[...,0]+size[...,1] < self.p.n_bar - 1)
-                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (size[...,0]+size[...,1] < self.p.n_bar)
-                n0_star = n0(Jd0, n0_star, N_grid, Ihire, self.p.hire_c / self.p.beta)
+                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > kappa/self.p.beta) & (size[...,0]+size[...,1] < self.p.n_bar)
+                n0_star = n0(Jd0, n0_star, N_grid, Ihire, kappa / self.p.beta)
 
 
 
@@ -1308,6 +1338,42 @@ class MultiworkerContract:
 
 
 
+    def GE(self,EJpi,Ji=None,n0_star=None,kappa_old=None):
+        #Find kappa, which is the hiring cost firms have to pay per worker unit
+        #BIG NOTE: For now I'm assuming that all the firms start at the same productivity level, p.z_0-1, rather than the Schaal assumption of them drawing their productivity upon entering.
+        #Quick method: Envelope Theorem
+        if (kappa_old is not None) and (n0_star[self.p.z_0-1,0,0,0,0] > 0):
+            print("Fast kappa method")
+            kappa = np.divide( -self.p.k_entry + Ji[self.p.z_0-1,0,0,0,0] + n0_star[self.p.z_0-1,0,0,0,0] * kappa_old, n0_star[self.p.z_0-1,0,0,0,0] )
+        else:
+        #Slow precise method: Directly compute all this
+            print("Slow kappa method")
+            kappa_grid = np.linspace(0,50,100)
+            n0_k = np.zeros((100))
+            J_diff = (EJpi[self.p.z_0-1,1:,0,0,0] - EJpi[self.p.z_0-1,:-1,0,0,0] ) / (self.N_grid[1:] - self.N_grid[:-1])
+            n0_k[:] = np.interp(-kappa_grid / self.p.beta,impose_increasing(-J_diff),self.N_grid[1:])
+            n0_k[(EJpi[self.p.z_0-1,1,0,0,0] - EJpi[self.p.z_0-1,0,0,0,0]) / (self.N_grid[1] - self.N_grid[0]) - kappa_grid / self.p.beta <= 0] = 0
+            entry = -n0_k * kappa_grid -self.p.k_f + self.p.beta * np.interp(n0_k,self.N_grid,EJpi[self.p.z_0-1,:,0,0,0])
+            kappa = np.interp(-self.p.k_entry,impose_increasing(-entry),kappa_grid)
+        print("kappa", kappa)
+        #if kappa_old is not None:
+        #    print("difference between the two methods")
+        #Find the sign-on bonus
+        assert np.all(self.v_grid[1:]>self.v_grid[:-1])
+        assert np.all(self.v_grid[1:] - self.p.beta * self.v_0 >self.v_grid[:-1] - self.p.beta * self.v_0)
+        assert np.all((self.v_grid - self.p.beta * self.v_0) * (1-self.p.u_rho) * (1-self.p.beta) + 1 >= 0)
+        signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0)*(1-self.p.beta)) #This is the bonus firms have to pay right upon hiring
+        print("signon", signon_bonus)
+        # Given kappa, find the tightness
+        q=np.minimum(self.p.hire_c/(kappa-signon_bonus),1)
+        print("q",q)
+        theta = self.pref.q_inv(q)
+        theta[signon_bonus>kappa-self.p.hire_c]=0 #Hiring cost should be lower now, since chance of hiring<1 AND firms have to pay the sign-on
+        #This is equivalent to kappa < sign-on + hire_c/1, suggesting that we need q>1. OR, if sign-on>kappa, that we need q<0.
+        #Get the job-finding probability for each submarket
+        P = q * theta
+        print("P",P)
+        return kappa, P
     def append_results_to_pickle(self, Ji, W1i, EW1_star, sep_star, n0_star, n1_star, pickle_file="results_hmq_sep.pkl"):
         # Step 1: Load the existing data from the pickle file
         try:
@@ -1381,7 +1447,12 @@ class MultiworkerContract:
         pc = (1 - pe)
 
         return pe, re, pc
-    def matching_function(self,J1): #Andrei: the formula of their matching function, applied to each particula job value J1
+    def matching_function(self,J1): 
+        #Andrei: the formula of their matching function, applied to each particula job value J1. The function is: p(theta) = alpha * (1 - (kappa/max(J,kappa))^sigma)^(1/sigma)
+        #Equivalently (taken from BL paper), q(theta) = [alpha^sigma/(alpha^sigma+theta^sigma)]^(1/sigma)
+        #What is the q inverse then?? 
+        #Alternatively, could go for Schaal/Menzio-Shi functions: p(theta)=theta(1+theta^gamma)^(-1/gamma), q(theta)=p(theta)/theta. This is equivalent to BL with alpha=1,sigma=gamma
+        #So, q(theta)=(1+theta^sigma)^(-1/sigma). So theta=(q^(-sigma)-1)^(1/sigma). Or, with alpha, theta=((alpha/q)^(sigma)-alpha^(sigma))^(1/sigma)
         return self.p.alpha * np.power(1 - np.power(
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
