@@ -260,9 +260,10 @@ def sep_solve_1(n1_s,q_s,q_deriv_s,pc_temp,sep_grid,N_grid1,size,q1,Q_grid,num_n
               
                 return n1_s_ceil,n1_s_floor,q_s_ceil,q_s_floor#,J_fut_deriv_n,J_fut_deriv_q
 @nb.njit(cache=True)
-def sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW1_star,EUi,sep_grid,size,num_z,num_v,num_n,num_q):
+def sep_solve_2(sep_star,rho_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW1_star,EUi,sep_grid,size,num_z,num_v,num_n,num_q):
                 #foc_sep = - J_fut_deriv_n * pc_temp[...,ax] * size[...,ax, 0] + J_fut_deriv_q * q_deriv_s - size[...,ax, 0] * (re_star[...,ax]+EW1_star[...,ax] - EUi) / inv_util_1d  
-                foc_sep = J_s_deriv - size[...,ax,0] * (re_star[...,ax]+EW1_star[...,ax] - EUi) / inv_util_1d
+                foc_sep = J_s_deriv - size[...,ax,0] * (re_star[...,ax]+EW1_star[...,ax] - EUi) / inv_util_1d #+ rho_star[...,ax] * EW1_star[...,ax] * size[...,ax,0] * pc_temp[...,ax]
+                #The last part of the foc_sep is the derivative of  -omega_1 * n'1 * v' wrt s_0.
                 #print("foc_sep difference", np.max(np.abs(foc_sep-foc_sep_diff)))
                 #NOTE: EW1_star and re_star here are constant, not dependent on s at all (although they kinda should be)
                 #Calculating the separations. Can drop this into jit surely
@@ -644,7 +645,7 @@ class MultiworkerContract:
 
         return Ji,W1i,EW1_star,pc_star,n0_star, n1_star
 
-    def J_sep(self,Jg=None,Wg=None,update_eq=0):    
+    def J_sep(self,Jg=None,Wg=None,update_eq=1):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -944,7 +945,7 @@ class MultiworkerContract:
         #                             ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
         return Ji,W1i,EW1_star,sep_star, n0_star, n1_star
 
-    def J_sep_dir(self,Jg=None,Wg=None,update_eq=0):    
+    def J_sep_dir(self,Jg=None,Wg=None,update_eq=1):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -1096,7 +1097,7 @@ class MultiworkerContract:
             
             #Calculating all the value function derivatives (manually of course)
             Ji3 = Ji + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W1i[...,1] #This is the full rho
-
+            EJi3 = Ez(Ji3, self.Z_trans_mat)
             # First boundary condition: forward difference            
             Jfullderiv[:, :, 0, ...] = (Ji3[:, :, 1,  ...] - Ji3[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
             Wderiv[:, :, 0, ...]     = (W1i[:, :, 1, :, :, 1] - W1i[:, :, 0, :, :, 1]) / (N_grid1[1] - N_grid1[0])
@@ -1118,10 +1119,6 @@ class MultiworkerContract:
             #Jderiv0 = Jderiv0+size[...,1]*rho_grid[ax,ax,ax,:]*Wderiv0 #accounting for the fact that size change also impacts W
 
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
-            #EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
-            #if ite_num>1: #I'm using previous guesses for sep_star and EW1_star. This way, it is still as if EJinv0 is a function of today's states only, even though that's not exactly correct
-            # EJinv0 = (Jderiv0+wage_jun- (self.p.prod_q + self.p.q_0 * (1-self.p.prod_q)) * self.fun_prod*self.prod_1d)/self.p.beta
-             #EJinv0[:,0,0,:] = (Jderiv0[:,0,0,:]+wage_jun[:,0,0,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
 
 
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
@@ -1221,7 +1218,7 @@ class MultiworkerContract:
                 #J_fut_deriv_q[mid_bound] = (J_q[mid_bound,q_s_ceil[mid_bound]+1]-J_q[mid_bound,q_s_ceil[mid_bound]-1]) / (Q_grid[q_s_ceil[mid_bound]+1] - Q_grid[q_s_ceil[mid_bound]-1])
 
                 inv_util_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_reshaped * EUi[...,ax] + (1-sep_reshaped) * (EW1_star[...,ax] + re_star[...,ax])))
-                sep_star = sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW1_star,EUi,sep_grid,size,self.p.num_z,self.p.num_v,self.p.num_n,self.p.num_q)
+                sep_star = sep_solve_2(sep_star,rho_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW1_star,EUi,sep_grid,size,self.p.num_z,self.p.num_v,self.p.num_n,self.p.num_q)
                 print("sep borders", sep_star.min(),sep_star.max())
 
             #Getting n1_star
@@ -1273,9 +1270,9 @@ class MultiworkerContract:
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EUi+(1-sep_star)*(EW1_star+re_star)))
             #print("wage_jun", wage_jun[self.p.z_0-1,1,0,50,0])
             #print("wage jun no sep", self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star[self.p.z_0-1,1,0,50,0]+re_star[self.p.z_0-1,1,0,50,0])))
-            Ji = self.fun_prod*self.prod - sum_wage - self.p.hire_c*n0_star - \
+            Ji = self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa * n0_star - \
                 wage_jun*size[...,0]  + self.p.beta * EJ1_star
-            Ji = .2*Ji + .8*Ji2
+            Ji = .2 * Ji + .8 * Ji2
 
             # Update worker value function
             W1i[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
@@ -1308,9 +1305,10 @@ class MultiworkerContract:
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
+                            kappa, P = self.GE(EJpi,Ji,n0_star,kappa)
                             #P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, 0, 1, :, 1])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            #error_js = self.js.update(W1i[self.p.z_0-1, 0, 0, :, 1], P_xv, type=1, relax=relax)
+                            error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
                     # Updating J1 representation
@@ -1342,7 +1340,7 @@ class MultiworkerContract:
         #Find kappa, which is the hiring cost firms have to pay per worker unit
         #BIG NOTE: For now I'm assuming that all the firms start at the same productivity level, p.z_0-1, rather than the Schaal assumption of them drawing their productivity upon entering.
         #Quick method: Envelope Theorem
-        if (kappa_old is not None) and (n0_star[self.p.z_0-1,0,0,0,0] > 0):
+        if (kappa_old is not None) and (n0_star[self.p.z_0-1,0,0,0,0] > 0) and (n0_star[self.p.z_0-1,0,0,0,0] == 0):
             print("Fast kappa method")
             kappa = np.divide( -self.p.k_entry + Ji[self.p.z_0-1,0,0,0,0] + n0_star[self.p.z_0-1,0,0,0,0] * kappa_old, n0_star[self.p.z_0-1,0,0,0,0] )
         else:
@@ -1359,8 +1357,6 @@ class MultiworkerContract:
         #if kappa_old is not None:
         #    print("difference between the two methods")
         #Find the sign-on bonus
-        assert np.all(self.v_grid[1:]>self.v_grid[:-1])
-        assert np.all(self.v_grid[1:] - self.p.beta * self.v_0 >self.v_grid[:-1] - self.p.beta * self.v_0)
         assert np.all((self.v_grid - self.p.beta * self.v_0) * (1-self.p.u_rho) * (1-self.p.beta) + 1 >= 0)
         signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0)*(1-self.p.beta)) #This is the bonus firms have to pay right upon hiring
         print("signon", signon_bonus)
@@ -1387,7 +1383,7 @@ class MultiworkerContract:
         new_results = self.save_results_for_p(Ji, W1i, EW1_star, sep_star, n0_star, n1_star)
 
         # Step 3: Use a tuple (p.num_z, p.num_v, p.num_n) as the key
-        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt)
+        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.k_entry,self.p.k_f,self.p.prod_alpha,self.p.dt)
 
         # Step 4: Add the new results to the dictionary
         all_results[key] = new_results
