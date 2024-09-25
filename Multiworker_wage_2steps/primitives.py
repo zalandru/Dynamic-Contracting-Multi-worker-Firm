@@ -46,7 +46,7 @@ class Parameters:
         self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
         self.k_entry = 8.0
-        self.k_f = 4.0
+        self.k_f = 1.0
 
         #Min wage
         self.min_wage = 0 * self.u_bf_m
