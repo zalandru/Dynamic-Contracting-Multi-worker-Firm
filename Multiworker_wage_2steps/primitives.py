@@ -42,7 +42,7 @@ class Parameters:
         #DRS production
         self.prod_alpha = 0.5
         # Unemployment Parameters
-        self.u_bf_m = 0.5 #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
+        self.u_bf_m = 1.0 #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
         self.k_entry = 8.0
