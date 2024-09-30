@@ -45,8 +45,8 @@ class Parameters:
         self.u_bf_m = 1.0 #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
-        self.k_entry = 8.0
-        self.k_f = 1.0
+        self.k_entry = 25.0
+        self.k_f = 0.0
 
         #Min wage
         self.min_wage = 0 * self.u_bf_m
@@ -60,15 +60,15 @@ class Parameters:
 
         # Search Environment
         self.z_0      = int(self.num_z/2+0.5)         # Slice of value function of firms (index starts at 1)
-        self.s_job    = 1.0        # Relative Efficiency of Search on the Job
-        self.alpha    = 0.1        # Parameter for probability of finding a job
-        self.sigma    = 1.0        # Parameter for probability of finding a job
-        self.kappa    = 1.0        # Vacancy cost parameter
+        self.s_job    = 0.53        # Relative Efficiency of Search on the Job
+        self.alpha    = 0.19        # Parameter for probability of finding a job
+        self.sigma    = 0.8         # Parameter for probability of finding a job
+        self.kappa    = 1.0         # Vacancy cost parameter
 
 
         # effort function that control separation
-        self.efcost_sep = 0.005 * self.dt
-        self.efcost_ce  = 0.3
+        #self.efcost_sep = 0.005 * self.dt
+        #self.efcost_ce  = 0.3
 
         # Productivity shocks
         self.x_corr = 0.95  # Correlation in worker productivity
@@ -77,7 +77,7 @@ class Parameters:
         # Productivity Function Parameters
         self.prod_var_x  = 1.0           # Variance of X (permanent)
         self.prod_var_x2 = 1.0           # Variance of X (non-permanent)
-        self.prod_var_z  = 1.0           # Variance of Z
+        self.prod_var_z  = 0.49           # Variance of Z
         self.prod_z      = 0.5           # Production function parameter
         self.prod_rho    = 1.0           # Production function parameter
         self.prod_mu     = 0.2           # Worker contribution
@@ -215,6 +215,10 @@ class Preferences:
         aa = self.p.u_a * np.power(self.p.tax_tau, 1.0 - self.p.u_rho) 
         return np.power(np.divide((1.0 - self.p.u_rho) * value + self.p.u_b, aa),
                         (np.divide(1.0, self.p.tax_lambda * (1.0 - self.p.u_rho))))
+    
+    # u= (c^(1-rho)-1)/(1-rho)
+    # u(1-rho)+1 = c^(1-rho)
+    # c = [u(1-rho)+1 ]^ (1/(1-rho))
         #return np.exp(value)
     def utility_1d(self, wage):
         """

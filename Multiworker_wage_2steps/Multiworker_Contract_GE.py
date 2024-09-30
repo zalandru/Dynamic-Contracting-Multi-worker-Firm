@@ -465,7 +465,7 @@ class MultiworkerContract:
         error_js = 1
         
         # General equilibrium first time
-        kappa, P = self.GE(Ez(Ji, self.Z_trans_mat))
+        kappa, P = self.GE(Ez(Ji, self.Z_trans_mat),Ez(W1i[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
         print("kappa", kappa)
         print("P", P)
         self.js.update(self.v_grid,P)
@@ -622,10 +622,10 @@ class MultiworkerContract:
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            kappa, P = self.GE(EJpi,Ji,n0_star,kappa)
+                            kappa, P = self.GE(EJpi,EW1i[self.p.z_0-1,0,1,:,0],Ji,n0_star,kappa)
                             #P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, 0, 1, :, 1])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
+                            error_js = self.js.update(EW1i[self.p.z_0-1,0,1,:,0], P, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
                     # Updating J1 representation
@@ -1322,7 +1322,7 @@ class MultiworkerContract:
 
 
 
-    def GE(self,EJpi,Ji=None,n0_star=None,kappa_old=None):
+    def GE(self,EJpi,EW1i,Ji=None,n0_star=None,kappa_old=None):
         #Find kappa, which is the hiring cost firms have to pay per worker unit
         #BIG NOTE: For now I'm assuming that all the firms start at the same productivity level, p.z_0-1, rather than the Schaal assumption of them drawing their productivity upon entering.
         #Quick method: Envelope Theorem
@@ -1332,7 +1332,7 @@ class MultiworkerContract:
         else:
         #Slow precise method: Directly compute all this
             print("Slow kappa method")
-            kappa_grid = np.linspace(0,50,100)
+            kappa_grid = np.linspace(0,40,100)
             n0_k = np.zeros((100))
             J_diff = (EJpi[self.p.z_0-1,1:,0,0,0] - EJpi[self.p.z_0-1,:-1,0,0,0] ) / (self.N_grid[1:] - self.N_grid[:-1])
             n0_k[:] = np.interp(-kappa_grid / self.p.beta,impose_increasing(-J_diff),self.N_grid[1:])
@@ -1343,8 +1343,8 @@ class MultiworkerContract:
         #if kappa_old is not None:
         #    print("difference between the two methods")
         #Find the sign-on bonus
-        assert np.all((self.v_grid - self.p.beta * self.v_0) * (1-self.p.u_rho) * (1-self.p.beta) + 1 >= 0)
-        signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0)*(1-self.p.beta)) #This is the bonus firms have to pay right upon hiring
+        assert np.all((EW1i - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
+        signon_bonus = self.pref.inv_utility((EW1i - self.p.beta * self.v_0)) #This is the bonus firms have to pay right upon hiring
         print("signon", signon_bonus)
         # Given kappa, find the tightness
         q=np.minimum(self.p.hire_c/(kappa-signon_bonus),1)
