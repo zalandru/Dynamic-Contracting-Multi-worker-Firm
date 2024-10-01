@@ -1343,8 +1343,11 @@ class MultiworkerContract:
         #if kappa_old is not None:
         #    print("difference between the two methods")
         #Find the sign-on bonus
-        assert np.all((EW1i - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
-        signon_bonus = self.pref.inv_utility((EW1i - self.p.beta * self.v_0)) #This is the bonus firms have to pay right upon hiring
+        # Sign-on formula: u(w*(1-beta))/(1-beta)+beta*v_0=v_m. This is basically allowing the worker to split their bonus forever
+        # The issue with this is that, theoretically, this should then impact all worker future utility...
+        # Man I didn't expect this to be such an annoying bottleneck
+        #assert np.all((EW1i - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
+        signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0)) #This is the bonus firms have to pay right upon hiring
         print("signon", signon_bonus)
         # Given kappa, find the tightness
         q=np.minimum(self.p.hire_c/(kappa-signon_bonus),1)

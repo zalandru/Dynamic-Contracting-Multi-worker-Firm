@@ -189,10 +189,10 @@ class Preferences:
             :param wage: Argument of the function.
             :return: Output of the function.
         """
-        aa = self.p.u_a * np.power(self.p.tax_tau, 1 - self.p.u_rho) 
-        return np.divide(aa * np.power( wage, self.p.tax_lambda * (1.0 - self.p.u_rho)) - self.p.u_b,
-                         1 - self.p.u_rho)
-        #return np.log(wage)
+        #aa = self.p.u_a * np.power(self.p.tax_tau, 1 - self.p.u_rho) 
+        #return np.divide(aa * np.power( wage, self.p.tax_lambda * (1.0 - self.p.u_rho)) - self.p.u_b,
+        #                 1 - self.p.u_rho)
+        return np.log(wage)
 
     def utility_gross(self, wage): #Standard CRRA utility
         """
@@ -200,9 +200,9 @@ class Preferences:
             :param wage: Argument of the function.
             :return: Output of the function.
         """
-        return np.divide(self.p.u_a * np.power(wage, 1 - self.p.u_rho) - self.p.u_b,
-                         1 - self.p.u_rho)
-        #return np.log(wage)
+        #return np.divide(self.p.u_a * np.power(wage, 1 - self.p.u_rho) - self.p.u_b,
+        #                 1 - self.p.u_rho)
+        return np.log(wage)
     
 
 
@@ -212,22 +212,22 @@ class Preferences:
             :param value: Argument of the function.
             :return: Output of the function.
         """
-        aa = self.p.u_a * np.power(self.p.tax_tau, 1.0 - self.p.u_rho) 
-        return np.power(np.divide((1.0 - self.p.u_rho) * value + self.p.u_b, aa),
-                        (np.divide(1.0, self.p.tax_lambda * (1.0 - self.p.u_rho))))
-    
+        #aa = self.p.u_a * np.power(self.p.tax_tau, 1.0 - self.p.u_rho) 
+        #return np.power(np.divide((1.0 - self.p.u_rho) * value + self.p.u_b, aa),
+        #                (np.divide(1.0, self.p.tax_lambda * (1.0 - self.p.u_rho))))
+        return np.exp(value)
     # u= (c^(1-rho)-1)/(1-rho)
     # u(1-rho)+1 = c^(1-rho)
     # c = [u(1-rho)+1 ]^ (1/(1-rho))
-        #return np.exp(value)
+
     def utility_1d(self, wage):
         """
             Computes the first derivative of the utility function at a particular wage.
             :param wage: Argument of the function.
             :return: Output of the function.
         """
-        return self.p.u_a * np.power(wage, - self.p.u_rho)
-        #return 1/wage
+        #return self.p.u_a * np.power(wage, - self.p.u_rho)
+        return 1/wage
 
     def inv_utility_1d(self, value):
         """
@@ -235,11 +235,11 @@ class Preferences:
             :param value: Argument of the function.
             :return: Output of the function.
         """
-        aa = self.p.u_a * np.power(self.p.tax_tau, 1 - self.p.u_rho) 
-        pow_arg = ( (1 - self.p.u_rho) * value + self.p.u_b   ) / aa
+        #aa = self.p.u_a * np.power(self.p.tax_tau, 1 - self.p.u_rho) 
+        #pow_arg = ( (1 - self.p.u_rho) * value + self.p.u_b   ) / aa
         #return np.power( pow_arg, 1.0/( self.p.tax_lambda * (1 - self.p.u_rho) ) - 1.0) / ( self.p.tax_lambda * aa )
-        return np.power( pow_arg, -self.p.u_rho / ( 1 - self.p.u_rho )) / ( self.p.tax_lambda * aa )
-        #return np.exp(value)
+        #return np.power( pow_arg, -self.p.u_rho / ( 1 - self.p.u_rho )) / ( self.p.tax_lambda * aa )
+        return np.exp(value)
 
 
     def log_consumption_eq(self, V):
