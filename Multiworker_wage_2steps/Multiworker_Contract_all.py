@@ -137,7 +137,10 @@ def EJderivative(EJpi,floorn1,ceiln1,Ederiv,rho_grid, N_grid1, rho_star,num_z, n
                             continue
                          if N_grid1[floorn1[iz,in0,in1,iv]]>=n_bar:
                             continue
-                         Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz, 0, ceiln1[iz,in0,in1,iv],:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz, 0, floorn1[iz,in0,in1,iv],:]))/(N_grid1[ceiln1[iz,in0,in1,iv]]-N_grid1[floorn1[iz,in0,in1,iv]])
+                         if floorn1[iz,in0,in1,iv] == ceiln1[iz,in0,in1,iv]:
+                            Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz, 0, ceiln1[iz,in0,in1,iv]+1,:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz, 0, floorn1[iz,in0,in1,iv]-1,:]))/(N_grid1[ceiln1[iz,in0,in1,iv]+1]-N_grid1[floorn1[iz,in0,in1,iv]-1])
+                         else:   
+                            Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz, 0, ceiln1[iz,in0,in1,iv],:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EJpi[iz, 0, floorn1[iz,in0,in1,iv],:]))/(N_grid1[ceiln1[iz,in0,in1,iv]]-N_grid1[floorn1[iz,in0,in1,iv]])
             return Ederiv
 @jit(nopython=True, cache=True)
 def EJderivative3(EJpi,EW1i, floorn1,ceiln1,Ederiv,rho_grid, N_grid1, rho_star,num_z, num_n, n_bar, num_v):
@@ -163,7 +166,10 @@ def EWderivative(EW1i,floorn1,ceiln1,Ederiv,rho_grid, N_grid1,rho_star,num_z, nu
                             continue
                          if N_grid1[floorn1[iz,in0,in1,iv]]>=n_bar:
                             continue
-                         Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz,0, ceiln1[iz,in0,in1,iv],:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz,0, floorn1[iz,in0,in1,iv],:]))/(N_grid1[ceiln1[iz,in0,in1,iv]]-N_grid1[floorn1[iz,in0,in1,iv]])
+                         if floorn1[iz,in0,in1,iv] == ceiln1[iz,in0,in1,iv]:
+                            Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz, 0, ceiln1[iz,in0,in1,iv]+1,:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz, 0, floorn1[iz,in0,in1,iv]-1,:]))/(N_grid1[ceiln1[iz,in0,in1,iv]+1]-N_grid1[floorn1[iz,in0,in1,iv]-1])
+                         else:                            
+                            Ederiv[iz,in0,in1,iv] = (np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz,0, ceiln1[iz,in0,in1,iv],:])-np.interp(rho_star[iz,in0,in1,iv],rho_grid,EW1i[iz,0, floorn1[iz,in0,in1,iv],:]))/(N_grid1[ceiln1[iz,in0,in1,iv]]-N_grid1[floorn1[iz,in0,in1,iv]])
             return Ederiv
 #Gives us future worker value as a function of promised value, but with updated size, taken based on a guess of n1_star
 @jit(nopython=True, cache=True, parallel=True)

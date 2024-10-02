@@ -4,6 +4,11 @@ from scipy.stats import lognorm as lnorm
 
 import opt_einsum as oe
 
+#For printing
+import matplotlib.pyplot as plt
+import subprocess
+import shlex
+
 from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
 from search import JobSearchArray
@@ -370,7 +375,7 @@ class MultiworkerContract:
 
         if js is None:
             self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
-            self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+        #    self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
         else:
             self.js = js       
 
@@ -560,8 +565,7 @@ class MultiworkerContract:
                     Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             if ite_num > 1:
                 #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar - 1)
-                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > kappa / self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar - 1)
-
+                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > kappa / self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar)
                 n0_star = n0(Jd0, n0_star, N_grid, Ihire, kappa / self.p.beta)
 
 
@@ -582,7 +586,6 @@ class MultiworkerContract:
                     Jd0[iz,..., in11] = J_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
                     Wd0[iz, ..., in11] = W_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
             EJderiv = EJderivative(Jd0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
-
 
             
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
@@ -625,7 +628,7 @@ class MultiworkerContract:
                             kappa, P = self.GE(EJpi,EW1i[self.p.z_0-1,0,1,:,0],Ji,n0_star,kappa)
                             #P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, 0, 1, :, 1])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            error_js = self.js.update(EW1i[self.p.z_0-1,0,1,:,0], P, type=1, relax=relax)
+                            error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
                     # Updating J1 representation
@@ -635,6 +638,9 @@ class MultiworkerContract:
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
+            if (ite_num % 100) == 0:   
+                plt.plot(W1i[self.p.z_0-1, 0, 1, :, 0 ,1], Ji[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function')        
+                plt.show() # this will load image to console before executing next line of code
 
 
         return Ji,W1i,EW1_star,pc_star,n0_star, n1_star
@@ -1008,7 +1014,7 @@ class MultiworkerContract:
         #Jpi = J1p.eval_at_W1(W1i[:,:,:,:,1])
 
         # General equilibrium first time
-        kappa, P = self.GE(Ez(Ji, self.Z_trans_mat))
+        kappa, P = self.GE(Ez(Ji, self.Z_trans_mat),Ez(W1i[...,1], self.Z_trans_mat))
         print("kappa", kappa)
         print("P", P)
         for ite_num in range(self.p.max_iter):
@@ -1291,7 +1297,7 @@ class MultiworkerContract:
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            kappa, P = self.GE(EJpi,Ji,n0_star,kappa)
+                            kappa, P = self.GE(EJpi,EW1i,Ji,n0_star,kappa)
                             #P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, 0, 1, :, 1])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
                             error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
@@ -1346,8 +1352,15 @@ class MultiworkerContract:
         # Sign-on formula: u(w*(1-beta))/(1-beta)+beta*v_0=v_m. This is basically allowing the worker to split their bonus forever
         # The issue with this is that, theoretically, this should then impact all worker future utility...
         # Man I didn't expect this to be such an annoying bottleneck
+        # For now, try this still: u(w*(1-beta)) = (v_m - beta*v_0) * (1-beta), so w=u^{-1}[(v_m - beta*v_0) * (1-beta)] / (1-beta)
+        # Okay, this didn't work lmao
+        # Instead, augment v_0 somehow??? util( inv_util[v_0 * (1-beta)] + signon * (1-beta) ) / (1-beta) = v_m
+        # The inv_util part is just unemp_bf, so we get signon = (inv_util(v*(1-beta)) - unemp_bf ) /(1-beta)
         #assert np.all((EW1i - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
-        signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0)) #This is the bonus firms have to pay right upon hiring
+        #signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0) * (1 - self.p.beta)) / (1 - self.p.beta) #This is the bonus firms have to pay right upon hiring
+        #signon_bonus = (self.pref.inv_utility(self.v_grid * (1-self.p.beta)) - self.unemp_bf ) / (1 - self.p.beta) #This is the bonus firms have to pay right upon hiring
+        #Another signon bonus alternative: just linear!!!
+        signon_bonus = self.v_grid - self.p.beta * self.v_0
         print("signon", signon_bonus)
         # Given kappa, find the tightness
         q=np.minimum(self.p.hire_c/(kappa-signon_bonus),1)
