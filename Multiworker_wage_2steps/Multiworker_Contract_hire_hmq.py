@@ -228,9 +228,13 @@ def EJderivative(Jd0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,num_z,num_n,n_b
                          if ceiln1[iz,in0,in1,iv,iq]==0:
                             continue
                          if N_grid1[floorn1[iz,in0,in1,iv,iq]]>=n_bar:
-                            continue                
-                         EJderiv0[iz,in0,in1,iv,iq] = (Jd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Jd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
-                         EWderiv[iz,in0,in1,iv,iq] = (Wd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Wd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
+                            continue
+                         if floorn1[iz,in0,in1,iv,iq] == ceiln1[iz,in0,in1,iv,iq]:
+                            EJderiv0[iz,in0,in1,iv,iq] = (Jd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]+1]-Jd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]-1]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]+1]-N_grid1[floorn1[iz,in0,in1,iv,iq]-1])
+                            EWderiv[iz,in0,in1,iv,iq] = (Wd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]+1]-Wd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]-1]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]+1]-N_grid1[floorn1[iz,in0,in1,iv,iq]-1])                  
+                         else:
+                            EJderiv0[iz,in0,in1,iv,iq] = (Jd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Jd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
+                            EWderiv[iz,in0,in1,iv,iq] = (Wd0[iz,in0,in1,iv,iq,ceiln1[iz,in0,in1,iv,iq]]-Wd0[iz,in0,in1,iv,iq,floorn1[iz,in0,in1,iv,iq]]) / (N_grid1[ceiln1[iz,in0,in1,iv,iq]]-N_grid1[floorn1[iz,in0,in1,iv,iq]])
                 EJderiv = EJderiv0+n1_star*rho_star*EWderiv
                 return EJderiv
 @nb.njit(cache=True)
@@ -306,8 +310,7 @@ class MultiworkerContract:
         self.N_grid1[0] = 1e-100 #So that it's not exactly zeor and I thus can keep my interpretation
 
         #self.N_grid=np.linspace(0,1,self.p.num_n)
-        # Unemployment Benefits across Worker Productivities
-        self.unemp_bf = np.ones(self.p.num_x) * self.p.u_bf_m
+
 
         # Transition matrices
         self.Z_trans_mat = createPoissonTransitionMatrix(self.p.num_z, self.p.z_corr)
@@ -322,6 +325,8 @@ class MultiworkerContract:
         self.fun_prod_onedim = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
         self.fun_prod = self.fun_prod_onedim.reshape((self.p.num_z,) + (1,) * (self.J_grid.ndim - 1))
 
+        # Unemployment Benefits across Worker Productivities
+        self.unemp_bf = np.ones(self.p.num_x) * 0.5 * self.fun_prod.min()
 
         # Wage and Shadow Cost Grids
         self.w_grid = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v ) #Note that this is not the true range of possible wages as this excludes the size part of the story
@@ -348,7 +353,7 @@ class MultiworkerContract:
         self.prod = self.production(self.sum_sizeadj) #F = sum (n* (prod_q+q_1*(1-prod_q)))
         self.prod_diff = self.production_diff(self.sum_sizeadj)
         self.prod_1d = self.fun_prod_1d(self.sum_sizeadj)
-        self.prod_nd = self.prod_1d * (self.p.prod_q + self.Q_grid[self.grid[4]] * (1.0-self.p.prod_q)) #\partial F / \partial n_1 = q_1 * (prod_q+q_1*(1-prod_q)) F'(nq)
+        self.prod_nd = self.prod_1d * (self.p.prod_q + self.Q_grid[self.grid[4]] * (1.0-self.p.prod_q)) #\partial F / \partial n_1 = (prod_q+q_1*(1-prod_q)) F'(nq)
         self.prod_qd = self.prod_1d * self.N_grid1[self.grid[2]] * (1.0-self.p.prod_q) #\partial F / \partial q_1 = n_1 * (1-prod_q) * F'(nq)
 
 
@@ -417,6 +422,9 @@ class MultiworkerContract:
         N_grid = self.N_grid
         N_grid1 = self.N_grid1
         Q_grid = self.Q_grid
+        grid = self.grid
+        size = self.size
+        q = self.q
 
         if Jg is None:
             Ji = np.copy(self.J_grid)
@@ -539,7 +547,7 @@ class MultiworkerContract:
             rho_trans = np.moveaxis(rho_star,3,0)
             n1_star = (N_grid[self.grid[1]]*(1-sep_star)+N_grid1[self.grid[2]])*np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
             
-            q_star = (self.p.q_0*N_grid[self.grid[1]]+Q_grid[self.grid[4]]*N_grid1[self.grid[2]])/(N_grid[self.grid[1]]*(1-sep_star)+N_grid1[self.grid[2]])
+            q_star = (size[...,0]* np.minimum(self.p.q_0,1-sep_star)+q*size[...,1])/(size[...,0]*(1-sep_star)+size[...,1])
             
             #Getting hiring decisions
             n0_star[...] = 0
@@ -566,17 +574,14 @@ class MultiworkerContract:
             #Getting the derivative of the future job value wrt n1:
             floorn1=np.floor(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)
             ceiln1=np.ceil(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)            
-
-            #For this, fix the future (arbitrary) senior size, but make sure th ejunior size is correct         
             for iz in range(self.p.num_z):
                 for in11 in range(self.p.num_n): 
                     
                     J_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EJpi[iz, :, in11, ...], bounds_error=False, fill_value=None)
                     W_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EW1i[iz, :, in11, ...], bounds_error=False, fill_value=None)
-                    Jd0[iz,..., in11] = J_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
+                    Jd0[iz, ..., in11] = J_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
                     Wd0[iz, ..., in11] = W_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
-            EJderiv0,EWderiv = anotherEJderivative(Jd0,Wd0,ceiln1,floorn1,n0_star,rho_star,q_star,EJpi,EW1i,N_grid,rho_grid,Q_grid,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
-            EJderiv = EJderiv0+n1_star*rho_star*EWderiv
+            EJderiv = EJderivative(Jd0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
 
             
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"

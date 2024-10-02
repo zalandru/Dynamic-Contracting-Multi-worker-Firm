@@ -35,18 +35,18 @@ class Parameters:
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
         # Vacancy cost
-        self.hire_c = 5.0
+        self.hire_c = 1.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
         self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
         #DRS production
         self.prod_alpha = 0.5
         # Unemployment Parameters
-        self.u_bf_m = 1.0 #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
+        self.u_bf_m = 1.0        #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
-        self.k_entry = 25.0
-        self.k_f = 0.0
+        self.k_entry = 10.0
+        self.k_f = 1.0
 
         #Min wage
         self.min_wage = 0 * self.u_bf_m
@@ -105,7 +105,7 @@ class Parameters:
         self.verbose          = 5
         self.iter_display     = 25
         self.tol_simple_model = 1e-9
-        self.tol_full_model   = 1e-8
+        self.tol_full_model   = 1e-7
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
         self.eq_weighting_at0 = 0.01      # fitting J function with weight around 0
@@ -203,8 +203,6 @@ class Preferences:
         #return np.divide(self.p.u_a * np.power(wage, 1 - self.p.u_rho) - self.p.u_b,
         #                 1 - self.p.u_rho)
         return np.log(wage)
-    
-
 
     def inv_utility(self, value):
         """
@@ -239,7 +237,8 @@ class Preferences:
         #pow_arg = ( (1 - self.p.u_rho) * value + self.p.u_b   ) / aa
         #return np.power( pow_arg, 1.0/( self.p.tax_lambda * (1 - self.p.u_rho) ) - 1.0) / ( self.p.tax_lambda * aa )
         #return np.power( pow_arg, -self.p.u_rho / ( 1 - self.p.u_rho )) / ( self.p.tax_lambda * aa )
-        return np.exp(value)
+        # return self.utility_1d(self.inv_utility(value))
+        return 1 / np.exp(value)
 
 
     def log_consumption_eq(self, V):
