@@ -444,11 +444,11 @@ class MultiworkerContract:
                         Jd0[iz, ..., in00] = J_interpolator((n1_star[iz, ...], rho_star[iz, ...]))
                         Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...]))
                 #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.n_bar - 1)
-                Ihire = ((Jd0[...,1]-Jd0[...,0])/ (self.N_grid[1]-self.N_grid[0]) > self.p.hire_c) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.n_bar - 1)
+                Ihire = ((Jd0[...,1]-Jd0[...,0])/ (self.N_grid[1]-self.N_grid[0]) > self.p.hire_c / self.p.beta) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.n_bar - 1)
                 for idx in np.argwhere(Ihire):
                     #slice_Jd0 = Jd0[idx[0], idx[1], idx[2], idx[3], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], :-1]+n1_star[idx[0], idx[1], idx[2], idx[3]]*rho_star[idx[0], idx[1], idx[2], idx[3]]*(Wd0[idx[0], idx[1], idx[2], idx[3],1:]-Wd0[idx[0], idx[1], idx[2], idx[3],:-1])  # Shape should be (5,)
                     slice_Jd0 = (Jd0[idx[0], idx[1], idx[2], idx[3], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], :-1]) / (self.N_grid[1:]-self.N_grid[:-1])# Shape should be (5,)
-                    n0_star[idx[0], idx[1], idx[2], idx[3]] = np.interp( -self.p.hire_c ,impose_increasing(-slice_Jd0),self.N_grid[1:]) #oh shit, should we also account for how that affects the worker value???
+                    n0_star[idx[0], idx[1], idx[2], idx[3]] = np.interp( -self.p.hire_c / self.p.beta,impose_increasing(-slice_Jd0),self.N_grid[1:]) #oh shit, should we also account for how that affects the worker value???
             print("n0_star borders", n0_star.min(), n0_star.max())          
             
             #rho_star[:, 0, 0, :] = rho_star[:, 0, 1, :] #crucial for replicating CRS because... why??? J[:,0,0,:] is unchanged from this, still zero. Only worker value. Thing is, the foc is completely meaningless at zero size. So what do I do with worker value then? Guess I gotta wait til rehiring

@@ -35,7 +35,7 @@ class Parameters:
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
         # Vacancy cost
-        self.hire_c = 30.0
+        self.hire_c = 20.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
         self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
@@ -60,7 +60,7 @@ class Parameters:
 
         # Search Environment
         self.z_0      = int(self.num_z/2+0.5)         # Slice of value function of firms (index starts at 1)
-        self.s_job    = 1.0        # Relative Efficiency of Search on the Job
+        self.s_job    = 1.0        # Relative Efficiency of Search on the Job #0.53 in BL, but this is a bit of a pain at lower values since worker value is then below then unemp
         self.alpha    = 0.19        # Parameter for probability of finding a job
         self.sigma    = 0.8         # Parameter for probability of finding a job
         self.kappa    = 1.0         # Vacancy cost parameter
