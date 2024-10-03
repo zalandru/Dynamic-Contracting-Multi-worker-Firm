@@ -434,7 +434,7 @@ class MultiworkerContract:
             W1i = np.copy(self.W1i)
         else:
             W1i = np.copy(Wg)
-        
+        Ui = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
         # create representation for J1p
@@ -472,7 +472,7 @@ class MultiworkerContract:
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = np.copy(W1i)
-
+            Ui2 = np.copy(Ui)
             if ite_num>1:
              print("EJinv", EJinv[self.p.z_0-1,1,2,50, 0]/pc_star[self.p.z_0-1,1,2,50, 0])
              print("EJderiv", EJderiv[self.p.z_0-1,1,2,50, 0])
@@ -487,7 +487,7 @@ class MultiworkerContract:
             EW1i = Ez(W1i[...,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
             EJpi = Ez(Ji, self.Z_trans_mat)
-
+            EUi = Ui
             # get worker decisions
             _, re, pc = self.getWorkerDecisions(EW1i)
             # get worker decisions at EW1i + epsilon
@@ -588,6 +588,10 @@ class MultiworkerContract:
 
             _, re_star, pc_star = self.getWorkerDecisions(EW1_star)
 
+            _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
+            Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
+            Ui = 0.4*Ui + 0.6*Ui2
+
             # Update firm value function 
             Ji = self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - \
                 self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*N_grid[self.grid[1]]  + self.p.beta * EJ1_star
@@ -598,6 +602,9 @@ class MultiworkerContract:
             # Update worker value function
             W1i[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW1_star + re_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
+
+            W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
+            Ji[Ji < 0] = 0
 
             W1i[...,1:] = .4 * W1i[...,1:] + .6 * W1i2[...,1:] #we're completely ignoring the 0th step
 
@@ -1216,6 +1223,11 @@ class MultiworkerContract:
 
             _, re_star, pc_star = self.getWorkerDecisions(EW1_star)
             #print("states at which worker quits:", np.where(~(pc_star[self.p.z_0-1,1,1,:]==0)))
+            
+            _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
+            Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
+            Ui = 0.4*Ui + 0.6*Ui2
+
             # Update firm value function
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EUi+(1-sep_star)*(EW1_star+re_star)))
             #print("wage_jun", wage_jun[self.p.z_0-1,1,0,50,0])
@@ -1229,11 +1241,12 @@ class MultiworkerContract:
                 self.p.beta * (re_star + EW1_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
             #W1i[:,:,0,:,1] = W1i[:,:,1,:,1]
 
+            W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
+            Ji[Ji < 0] = 0
+
             W1i[...,1:] = .4*W1i[...,1:] + .6*W1i2[...,1:] #we're completely ignoring the 0th step
             #print("Worker Value diff:", np.max(np.abs(W1i[:,:,:,:,1:]-W1i2[:,:,:,:,1:])))   
-            _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
-            Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
-            Ui = 0.4*Ui + 0.6*Ui2
+
 
 
             # Updating J1 representation

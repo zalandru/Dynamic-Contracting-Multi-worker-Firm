@@ -312,6 +312,7 @@ class MultiworkerContract:
             W1i = np.copy(self.W1i)
         else:
             W1i = np.copy(Wg)
+        Ui = self.pref.utility_gross(self.unemp_bf)/(1-self.p.beta)
         
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
@@ -344,8 +345,9 @@ class MultiworkerContract:
         # evaluate J1 tomorrow using our approximation
         Jpi = J1p.eval_at_W1(W1i[...,1])
         for ite_num in range(self.p.max_iter):
-            Ji2 = Ji
+            Ji2 = np.copy(Ji)
             W1i2 = np.copy(W1i)
+            Ui2 = np.copy(Ui)
 
             if ite_num>1:
              print("EJinv", EJinv[self.p.z_0-1,1,2,50]/pc_star[self.p.z_0-1,1,2,50])
@@ -364,7 +366,7 @@ class MultiworkerContract:
                 EJpi = Ez(Jpi, self.Z_trans_mat)
             else:
                 EJpi = Ez(Ji, self.Z_trans_mat)
-
+            EUi = Ui
             # get worker decisions
             _, re, pc = self.getWorkerDecisions(EW1i)
             # get worker decisions at EW1i + epsilon
@@ -495,6 +497,12 @@ class MultiworkerContract:
                 self.p.beta * (EW1_star + re_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
             #W1i[:,:,0,:,1] = W1i[:,:,1,:,1]
 
+            _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
+            Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
+            Ui = 0.4*Ui + 0.6*Ui2
+
+            W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
+            Ji[Ji < 0] = 0
             W1i[...,1:] = .4 * W1i[...,1:] + .6 * W1i2[...,1:] #we're completely ignoring the 0th step
 
             
