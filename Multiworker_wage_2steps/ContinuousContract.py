@@ -144,7 +144,7 @@ class ContinuousContract:
             #print("Jpi-Ji max:", np.max(np.abs(Jpi-Ji)))
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
-            EJpi = Exz(Ji, self.Z_trans_mat)
+            EJpi = Exz(Jpi, self.Z_trans_mat)
             #EW1i = W1i
             #EJpi = Jpi
             # get worker decisions
