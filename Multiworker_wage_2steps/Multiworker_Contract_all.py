@@ -72,7 +72,7 @@ def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, nu
 
     return rho_star
 @jit(nopython=True, cache=True) #To be done: corerect the inv_utility issue, it doesn't work with numba!
-def optimized_loop_sep(rho_grid, N_grid1, foc, rho_star, sep_star, num_z, num_n, n_bar, num_v):
+def optimized_loop_sep(rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, num_v):
     for iz in range(num_z):
         for in0 in range(num_n - 1):
             for in1 in range(num_n):
@@ -317,7 +317,7 @@ class MultiworkerContract:
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
         # create representation for J1p
-        J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
+        #J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
 
 
         EW1_star = np.copy(Ji)
@@ -343,7 +343,7 @@ class MultiworkerContract:
         error_js = 1
         
         # evaluate J1 tomorrow using our approximation
-        Jpi = J1p.eval_at_W1(W1i[...,1])
+        #Jpi = J1p.eval_at_W1(W1i[...,1])
         for ite_num in range(self.p.max_iter):
             Ji2 = np.copy(Ji)
             W1i2 = np.copy(W1i)
@@ -424,8 +424,8 @@ class MultiworkerContract:
 
                 #assert np.all(EW1i[..., 1:] >= EW1i[..., :-1]) #Andrei: check that worker value is increasing in v
             if ite_num<=100000000:
-                rho_star = optimized_loop(
-                    pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v) 
+                rho_star = optimized_loop_sep(
+                    rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v) 
             else:
                 rho_star = optimized_loop_tilde(
                     pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v)
@@ -496,14 +496,16 @@ class MultiworkerContract:
             W1i[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW1_star + re_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
             #W1i[:,:,0,:,1] = W1i[:,:,1,:,1]
+            W1i[...,1:] = .4 * W1i[...,1:] + .6 * W1i2[...,1:] #we're completely ignoring the 0th step
+
+            #Firm exit: Firm is free to exit at any time, but workers know this so they're aware that their value will be U when that happens. This should tie back to the PK constraint
+            W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
+            Ji[Ji < 0] = 0
 
             _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
             Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
             Ui = 0.4*Ui + 0.6*Ui2
 
-            W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
-            Ji[Ji < 0] = 0
-            W1i[...,1:] = .4 * W1i[...,1:] + .6 * W1i2[...,1:] #we're completely ignoring the 0th step
 
             
             # Updating J1 representation
@@ -519,7 +521,7 @@ class MultiworkerContract:
                     # -----  check for termination ------
 
                     error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
-                    print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)                   
+                    #print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)                   
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
@@ -531,23 +533,23 @@ class MultiworkerContract:
                 else:
                     # -----  check for termination ------
                     # Updating J1 representation
-                    error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[...,1], Ji)
-                    error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
-                    print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)    
+                    #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[...,1], Ji)
+                    #error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
+                    print("Errors:",  error_j1i, error_w1, error_js)    
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
 
             if (ite_num % 25) == 0:
                 # Updating J1 representation
-                error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[...,1], Ji)
-                error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
-                print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)    
-                self.log.debug('[{}] W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}   rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
-                                     ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
+                #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[...,1], Ji)
+                #error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
+                print("Errors:", error_j1i, error_w1, error_js)    
+                #self.log.debug('[{}] W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}   rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
+                #                     ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
 
-        self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
-                                     ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
+        #self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
+        #                             ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
         return Ji,W1i,EW1_star,pc_star,n0_star, n1_star
 
     def J_sep(self,Jg=None,Wg=None,update_eq=0):    
@@ -1136,7 +1138,10 @@ class MultiworkerContract:
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
 
-#from primitives import Parameters
-#p = Parameters()
-#mwc=MultiworkerContract(p)
-#(mwc_J,mwc_W,mwc_Wstar,mwc_pc,mwc_n1)=mwc.J()
+from primitives import Parameters
+p = Parameters()
+from ContinuousContract import ContinuousContract
+cc=ContinuousContract(p)
+(cc_J,cc_W,cc_Wstar,cc_Jpi,cc_pc)=cc.J(1)
+mwc=MultiworkerContract(p,cc.js)
+(mwc_J,mwc_W,mwc_Wstar,mwc_pc,mwc_n1)=mwc.J()
