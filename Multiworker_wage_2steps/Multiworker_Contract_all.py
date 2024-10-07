@@ -74,7 +74,7 @@ def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, nu
 @jit(nopython=True, cache=True) #To be done: corerect the inv_utility issue, it doesn't work with numba!
 def optimized_loop_sep(rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, num_v):
     for iz in range(num_z):
-        for in0 in range(num_n - 1):
+        for in0 in range(num_n):
             for in1 in range(num_n):
                 if (N_grid1[in0] + N_grid1[in1] > n_bar):
                     continue
@@ -499,8 +499,8 @@ class MultiworkerContract:
             W1i[...,1:] = .4 * W1i[...,1:] + .6 * W1i2[...,1:] #we're completely ignoring the 0th step
 
             #Firm exit: Firm is free to exit at any time, but workers know this so they're aware that their value will be U when that happens. This should tie back to the PK constraint
-            W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
-            Ji[Ji < 0] = 0
+            #W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
+            #Ji[Ji < 0] = 0
 
             _, ru, _ = self.getWorkerDecisions(EUi, employed=False)
             Ui = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EUi)
@@ -1138,10 +1138,10 @@ class MultiworkerContract:
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
 
-from primitives import Parameters
-p = Parameters()
-from ContinuousContract import ContinuousContract
-cc=ContinuousContract(p)
-(cc_J,cc_W,cc_Wstar,cc_Jpi,cc_pc)=cc.J(1)
-mwc=MultiworkerContract(p,cc.js)
-(mwc_J,mwc_W,mwc_Wstar,mwc_pc,mwc_n1)=mwc.J()
+#from primitives import Parameters
+#p = Parameters()
+#from ContinuousContract import ContinuousContract
+#cc=ContinuousContract(p)
+#(cc_J,cc_W,cc_Wstar,cc_Jpi,cc_pc)=cc.J(1)
+#mwc=MultiworkerContract(p,cc.js)
+#(mwc_J,mwc_W,mwc_Wstar,mwc_pc,mwc_n1)=mwc.J()
