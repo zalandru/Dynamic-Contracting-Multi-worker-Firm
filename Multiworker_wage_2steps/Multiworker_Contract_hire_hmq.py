@@ -603,8 +603,8 @@ class MultiworkerContract:
             W1i[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW1_star + re_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
 
-            W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
-            Ji[Ji < 0] = 0
+            #W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
+            #Ji[Ji < 0] = 0
 
             W1i[...,1:] = .4 * W1i[...,1:] + .6 * W1i2[...,1:] #we're completely ignoring the 0th step
 
@@ -1380,6 +1380,6 @@ class MultiworkerContract:
 #p = Parameters()
 #from ContinuousContract import ContinuousContract
 #cc=ContinuousContract(p)
-
+#(cc_J,cc_W,cc_Wstar,cc_Jpi,cc_pc)=cc.J(1)
 #mwc_hmq=MultiworkerContract(p,cc.js)
-#(mwc_hmq_sd_J,mwc_hmq_sd_W,mwc_hmq_sd_Wstar,mwc_hmq_sd_sep,mwc_hmq_sd_n0,mwc_hmq_sd_n1)=mwc_hmq.J_sep_dir()
+#(mwc_hmq_sd_J,mwc_hmq_sd_W,mwc_hmq_sd_Wstar,mwc_hmq_sd_sep,mwc_hmq_sd_n0,mwc_hmq_sd_n1)=mwc_hmq.J()
