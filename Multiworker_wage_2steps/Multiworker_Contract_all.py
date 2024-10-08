@@ -313,7 +313,7 @@ class MultiworkerContract:
         else:
             W1i = np.copy(Wg)
         Ui = self.pref.utility_gross(self.unemp_bf)/(1-self.p.beta)
-        
+        Rho = Ji + self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*W1i[...,1]        
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
         # create representation for J1p
@@ -331,7 +331,7 @@ class MultiworkerContract:
         n0_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))        
         n1_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v))   
 
-        Jfullderiv = np.zeros_like(Ji)
+        Rhoderiv = np.zeros_like(Ji)
         Wderiv = np.zeros_like(Ji)
 
 
@@ -366,6 +366,8 @@ class MultiworkerContract:
                 EJpi = Ez(Jpi, self.Z_trans_mat)
             else:
                 EJpi = Ez(Ji, self.Z_trans_mat)
+            ERho = Ez(Rho, self.Z_trans_mat)
+
             EUi = Ui
             # get worker decisions
             _, re, pc = self.getWorkerDecisions(EW1i)
@@ -383,24 +385,20 @@ class MultiworkerContract:
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
 
-            Ji3 = Ji #+ self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*W1i[...,1] #This is the full rho
             # First boundary condition: forward difference            
-            Jfullderiv[:, :, 0, :] = (Ji3[:, :, 1, :] - Ji3[:, :, 0, :]) / (self.N_grid1[1] - self.N_grid1[0])
+            Rhoderiv[:, :, 0, :] = (Rho[:, :, 1, :] - Rho[:, :, 0, :]) / (self.N_grid1[1] - self.N_grid1[0])
             Wderiv[:, :, 0, :]     = (W1i[:, :, 1, :, 1] - W1i[:, :, 0, :, 1]) / (self.N_grid1[1] - self.N_grid1[0])
             # Last boundary condition: backward difference
-            Jfullderiv[:, :, -1, :] = Ji3[:, :, -1, :] - Ji3[:, :, -2, :]/ (self.N_grid1[-1] - self.N_grid1[-2])
+            Rhoderiv[:, :, -1, :] = Rho[:, :, -1, :] - Rho[:, :, -2, :]/ (self.N_grid1[-1] - self.N_grid1[-2])
             Wderiv[:, :, -1, :]     = W1i[:, :, -1, :, 1] - W1i[:, :, -2, :, 1]/ (self.N_grid1[-1] - self.N_grid1[-2])
             # Central differences: average of forward and backward differences
-            Jfullderiv[:, :, 1:-1, :] = (Ji3[:, :, 2:, :] - Ji3[:, :, :-2, :]) / (self.N_grid1[ax, ax, 2:, ax] - self.N_grid1[ax, ax, :-2, ax])
+            Rhoderiv[:, :, 1:-1, :] = (Rho[:, :, 2:, :] - Rho[:, :, :-2, :]) / (self.N_grid1[ax, ax, 2:, ax] - self.N_grid1[ax, ax, :-2, ax])
             Wderiv[:, :, 1:-1, :]     = (W1i[:, :, 2:, :, 1] - W1i[:, :, :-2, :, 1]) / (self.N_grid1[ax, ax, 2:, ax] - self.N_grid1[ax, ax, :-2, ax])
 
 
-            #Jderiv = Jfullderiv-rho_grid[ax,ax,ax,:]*W1i[...,1]
+            Jderiv = Rhoderiv-rho_grid[ax,ax,ax,:]*W1i[...,1]
 
-            #Jderiv[:,1,0,:]= Ji[0,1,1,:]-Ji[0,1,0,:]+rho_grid[:]*(W1i[0,1,1,1]-W1i[0,1,0,1])#Should I then set W[:,1,0,:]=W[:,1,1,:]?
-            #Jderiv[:,2,0,:]= Ji[0,2,1,:]-Ji[0,2,0,:]+rho_grid[:]*(W1i[0,2,1,1]-W1i[0,2,0,1]) #More generally, set W[:,:,0,:]=W[:,:,1,:]
-
-            Jderiv = Jfullderiv+self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
+            #Jderiv = Rhoderiv+self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*Wderiv #accounting for the fact that size change also impacts W
 
             #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_1d)/self.p.beta #creating expected job value as a function of today's value            
@@ -424,8 +422,11 @@ class MultiworkerContract:
 
                 #assert np.all(EW1i[..., 1:] >= EW1i[..., :-1]) #Andrei: check that worker value is increasing in v
             if ite_num<=100000000:
-                rho_star = optimized_loop_sep(
-                    rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v) 
+                rho_star = optimized_loop(
+                    pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v) 
+                #rho_star = optimized_loop_sep(
+                #    rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v)                 
+
             else:
                 rho_star = optimized_loop_tilde(
                     pc, rho_grid, self.N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v)
@@ -435,15 +436,15 @@ class MultiworkerContract:
             Jd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_n))
             Wd0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_n))
             n0_star[...] = 0
+
             if ite_num > 1:
                 for iz in range(self.p.num_z):
                     for in00 in range(self.p.num_n):
-
-                        J_interpolator = RegularGridInterpolator((self.N_grid1, rho_grid), EJpi[iz, in00, :, :], bounds_error=False, fill_value=None)
+                        J_interpolator = RegularGridInterpolator((self.N_grid1, rho_grid), ERho[iz, in00, :, :], bounds_error=False, fill_value=None)
                         W_interpolator = RegularGridInterpolator((self.N_grid1, rho_grid), EW1i[iz, in00, :, :], bounds_error=False, fill_value=None)
                         Jd0[iz, ..., in00] = J_interpolator((n1_star[iz, ...], rho_star[iz, ...]))
                         Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...]))
-                #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.n_bar - 1)
+                #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c / self.p.beta) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.n_bar - 1)
                 Ihire = ((Jd0[...,1]-Jd0[...,0])/ (self.N_grid[1]-self.N_grid[0]) > self.p.hire_c / self.p.beta) & (self.N_grid[self.grid[1]]+self.N_grid[self.grid[2]] < self.p.n_bar - 1)
                 for idx in np.argwhere(Ihire):
                     #slice_Jd0 = Jd0[idx[0], idx[1], idx[2], idx[3], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], :-1]+n1_star[idx[0], idx[1], idx[2], idx[3]]*rho_star[idx[0], idx[1], idx[2], idx[3]]*(Wd0[idx[0], idx[1], idx[2], idx[3],1:]-Wd0[idx[0], idx[1], idx[2], idx[3],:-1])  # Shape should be (5,)
@@ -497,6 +498,9 @@ class MultiworkerContract:
                 self.p.beta * (EW1_star + re_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
             #W1i[:,:,0,:,1] = W1i[:,:,1,:,1]
             W1i[...,1:] = .4 * W1i[...,1:] + .6 * W1i2[...,1:] #we're completely ignoring the 0th step
+
+            #The Dual Value Function Rho
+            Rho = Ji + self.N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:]*W1i[...,1] #This is the full rho
 
             #Firm exit: Firm is free to exit at any time, but workers know this so they're aware that their value will be U when that happens. This should tie back to the PK constraint
             #W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
