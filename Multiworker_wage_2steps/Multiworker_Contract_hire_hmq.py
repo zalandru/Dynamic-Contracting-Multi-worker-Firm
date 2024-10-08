@@ -186,9 +186,10 @@ def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, nu
     return rho_star
 
 @nb.njit(cache=True,parallel=True)
-def n0(Jd0, n0_star, N_grid, Ihire, hire_c):
+def n0(Jd0, Wd0, n0_star, n1_star, rho_star, N_grid, Ihire, hire_c):
     for idx in np.argwhere(Ihire):
-        slice_Jd0 = (Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], :-1]) / (N_grid[1:]-N_grid[:-1])# Shape should be (5,)
+        #slice_Jd0 = Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], :-1]+n1_star[idx[0], idx[1], idx[2], idx[3], idx[4]]*rho_star[idx[0], idx[1], idx[2], idx[3], idx[4]]*(Wd0[idx[0], idx[1], idx[2], idx[3], idx[4],1:]-Wd0[idx[0], idx[1], idx[2], idx[3], idx[4],:-1]) 
+        slice_Jd0 = (Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], 1:] - Jd0[idx[0], idx[1], idx[2], idx[3], idx[4], :-1]) / (N_grid[1:]-N_grid[:-1])
         n0_star[idx[0], idx[1], idx[2], idx[3], idx[4]] = interp( -hire_c ,impose_increasing(-slice_Jd0),N_grid[1:]) #oh shit, should we also account for how that affects the worker value???
     print("n0_star borders", n0_star.min(), n0_star.max())   
     return n0_star 
@@ -559,10 +560,10 @@ class MultiworkerContract:
                     Jd0[iz, ..., in00] = J_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
                     Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             if ite_num > 1:
-                #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar - 1)
-                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar - 1)
+                #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c/self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar )
+                Ihire = ((Jd0[...,1]-Jd0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar)
 
-                n0_star = n0(Jd0, n0_star, N_grid, Ihire, self.p.hire_c / self.p.beta)
+                n0_star = n0(Jd0, Wd0, n0_star, n1_star, rho_star, N_grid, Ihire, self.p.hire_c / self.p.beta)
 
 
 

@@ -35,7 +35,7 @@ class Parameters:
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
         # Vacancy cost
-        self.hire_c = 15.0
+        self.hire_c = 20.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
         self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
