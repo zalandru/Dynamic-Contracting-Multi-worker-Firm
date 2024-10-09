@@ -469,9 +469,10 @@ class MultiworkerContract:
         # evaluate J1 tomorrow using our approximation
         #Jpi = J1p.eval_at_W1(W1i[...,1])
         for ite_num in range(self.p.max_iter):
-            Ji2 = Ji
+            Ji2 = np.copy(Ji)
             W1i2 = np.copy(W1i)
             Ui2 = np.copy(Ui)
+            Rho2 = np.copy(Rho)
             if ite_num>1:
              print("EJinv", EJinv[self.p.z_0-1,1,2,50, 0]/pc_star[self.p.z_0-1,1,2,50, 0])
              print("EJderiv", EJderiv[self.p.z_0-1,1,2,50, 0])
@@ -534,8 +535,8 @@ class MultiworkerContract:
             #Future senior size
             pc_trans = np.moveaxis(pc,3,0)
             rho_trans = np.moveaxis(rho_star,3,0)
-            n1_star = (N_grid[self.grid[1]]*(1-sep_star)+N_grid1[self.grid[2]])*np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
             
+            n1_star = (size[...,0]*(1-sep_star)+size[...,1])*np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
             q_star = (size[...,0]* np.minimum(self.p.q_0,1-sep_star)+q*size[...,1])/(size[...,0]*(1-sep_star)+size[...,1])
             
             #Getting hiring decisions
@@ -544,22 +545,22 @@ class MultiworkerContract:
                 for in00 in range(self.p.num_n):
 
                     Rho_interpolator = RegularGridInterpolator((N_grid1, rho_grid, Q_grid), ERho[iz, in00, ...], bounds_error=False, fill_value=None)
-                    W_interpolator = RegularGridInterpolator((N_grid1, rho_grid, Q_grid), EW1i[iz, in00, ...], bounds_error=False, fill_value=None)
+                    #W_interpolator = RegularGridInterpolator((N_grid1, rho_grid, Q_grid), EW1i[iz, in00, ...], bounds_error=False, fill_value=None)
                     Rhod0[iz, ..., in00] = Rho_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
-                    Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
+                    #Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             if ite_num > 1:
                 #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c/self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar )
                 Ihire = ((Rhod0[...,1]-Rhod0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar)
-
                 n0_star = n0(Rhod0, n0_star, N_grid, Ihire, self.p.hire_c / self.p.beta)
 
 
 
             #Future optimal expectations
             ERho_star = interp_multidim(n0_star,N_grid,np.moveaxis(Rhod0,-1,0))
-            EW1_star = interp_multidim(n0_star,N_grid,np.moveaxis(Wd0,-1,0))
+            #EW1_star = interp_multidim(n0_star,N_grid,np.moveaxis(Wd0,-1,0))
             for iz in range(self.p.num_z):            
-                EJ1_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EJpi[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
+                #EJ1_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EJpi[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
+                EW1_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EW1i[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             #EJ1_star = ERho_star - rho_star * n1_star * EW1_star
 
 
@@ -585,29 +586,32 @@ class MultiworkerContract:
             Ui = 0.4 * Ui + 0.6 * Ui2
 
             # Update firm value function 
-            Ji = self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - \
-                self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*size[...,0]  + self.p.beta * EJ1_star
-            
-            Ji = .2 * Ji + .8 * Ji2
-
+            #Ji = self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - \
+            #    self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*size[...,0]  + self.p.beta * EJ1_star
+            #Ji = .2 * Ji + .8 * Ji2
+            #Update the dual value function rho
+            #Rho = Ji + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W1i[...,1]
+            Rho = self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - \
+                self.pref.inv_utility(self.v_0-self.p.beta*(EW1_star+re_star))*size[...,0] + \
+                rho_grid[ax,ax,ax,:,ax]*size[...,1]*W1i[...,1] + self.p.beta * (ERho_star - rho_star*n1_star*EW1_star)
 
             # Update worker value function
             W1i[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW1_star + re_star) #For more steps the ax at the end won't be needed as EW1_star itself will have multiple steps
 
+            # Updating Ji representation
+            Ji = Rho - size[...,1]*rho_grid[ax,ax,ax,:,ax]*W1i[...,1]
             #W1i[...,1] = W1i[...,1] * (Ji >= 0) + Ui * (Ji < 0)
             #Ji[Ji < 0] = 0
-
+            Rho = .2 * Rho + .8 * Rho2
             W1i[...,1:] = .4 * W1i[...,1:] + .6 * W1i2[...,1:] #we're completely ignoring the 0th step
 
-            #Update the dual value function rho
-            Rho = Ji + N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:,ax]*W1i[...,1]
-            
-            # Updating J1 representation
+
+
             #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[:,:,:,:,1], Ji)
 
             # Compute convergence criteria
-            error_j1i = array_exp_dist(Ji,Ji2,100) #np.power(Ji - Ji2, 2).mean() / np.power(Ji2, 2).mean()  
+            error_j1i = array_exp_dist(Rho,Rho2,100) #np.power(Ji - Ji2, 2).mean() / np.power(Ji2, 2).mean()  
             error_w1 = array_dist(W1i[...,1:], W1i2[...,1:])
 
             # update worker search decisions
@@ -636,7 +640,7 @@ class MultiworkerContract:
                         break
 
 
-        return Ji,W1i,EW1_star,pc_star,n0_star, n1_star
+        return Ji,W1i,Rho,EW1_star,pc_star,n0_star, n1_star
 
     def J_sep(self,Jg=None,Wg=None,update_eq=0):    
         """
