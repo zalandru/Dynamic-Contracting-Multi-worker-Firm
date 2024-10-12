@@ -703,6 +703,8 @@ class MultiworkerContract:
         q_deriv_s = np.zeros_like(n1_s)
         J_fut_deriv_n = np.zeros_like(n1_s)
         J_fut_deriv_q = np.zeros_like(n1_s)
+        J_s = np.zeros_like(n1_s)
+
 
         # prepare expectation call
         Ez = oe.contract_expression('anmvq,az->znmvq', J.shape, self.Z_trans_mat.shape)
@@ -820,10 +822,8 @@ class MultiworkerContract:
                     n1_s[...,s] = (size[...,0]*(1-sep_grid[s])+size[...,1]) * pc_temp
                     q_s[...,s] = (size[...,0] * np.minimum(self.p.q_0,1-sep_grid[s])+self.q*size[...,1]) / (size[...,0]*(1-sep_grid[s])+size[...,1])
                 
-                J_s = np.zeros_like(n1_s)
                 for iz in range(self.p.num_z):
-                #       J_s[iz,...,s] = RegularGridInterpolator((N_grid, N_grid1, rho_grid, Q_grid), EJ[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz, ...], n1_s[iz,...,s], rho_star[iz, ...], q_s[iz, ...,s]))
-                        J_s[iz,...] = RegularGridInterpolator((N_grid, N_grid1, rho_grid, Q_grid), ERho[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz, ...,ax], n1_s[iz,...], rho_star[iz, ...,ax], q_s[iz, ...]))
+                        J_s[iz,...] = RegularGridInterpolator((N_grid, N_grid1, rho_grid, Q_grid), EJ[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz, ...,ax], n1_s[iz,...], rho_star[iz, ...,ax], q_s[iz, ...]))
 
                 sep_reshaped = sep_grid.reshape((1,) * (J.ndim) + (-1,))
 
@@ -970,7 +970,7 @@ class MultiworkerContract:
         new_results = self.save_results_for_p(J, W, EW_star, sep_star, n0_star, n1_star)
 
         # Step 3: Use a tuple (p.num_z, p.num_v, p.num_n) as the key
-        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt)
+        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt,self.p.u_bf_m)
 
         # Step 4: Add the new results to the dictionary
         all_results[key] = new_results
@@ -990,7 +990,7 @@ class MultiworkerContract:
         'sep_star': sep_star,
         'n0_star': n0_star,
         'n1_star': n1_star,
-        'p_value': (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt)
+        'p_value': (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt,self.p.u_bf_m)
     }    
     def construct_z_grid(self):
         """
