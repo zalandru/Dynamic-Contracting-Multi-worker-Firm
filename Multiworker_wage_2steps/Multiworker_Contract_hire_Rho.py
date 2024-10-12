@@ -262,9 +262,11 @@ def sep_solve_1(n1_s,q_s,q_deriv_s,pc_temp,sep_grid,N_grid1,size,q1,Q_grid,num_n
               
                 return n1_s_ceil,n1_s_floor,q_s_ceil,q_s_floor#,J_fut_deriv_n,J_fut_deriv_q
 @nb.njit(cache=True)
-def sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW_star,EU,sep_grid,size,num_z,num_v,num_n,num_q):
+def sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,rho_star,re_star,EW_star,EU,sep_grid,size,num_z,num_v,num_n,num_q):
                 #foc_sep = - J_fut_deriv_n * pc_temp[...,ax] * size[...,ax, 0] + J_fut_deriv_q * q_deriv_s - size[...,ax, 0] * (re_star[...,ax]+EW_star[...,ax] - EU) / inv_util_1d  
                 foc_sep = J_s_deriv - size[...,ax,0] * (re_star[...,ax]+EW_star[...,ax] - EU) / inv_util_1d
+                #foc_sep = J_s_deriv - size[...,ax,0] * (re_star[...,ax]+EW_star[...,ax] - EU) / inv_util_1d + size[...,ax,0] * pc_temp[...,ax] * rho_star[...,ax] * EW_star[...,ax]
+
                 #print("foc_sep difference", np.max(np.abs(foc_sep-foc_sep_diff)))
                 #NOTE: EW_star and re_star here are constant, not dependent on s at all (although they kinda should be)
                 #Calculating the separations. Can drop this into jit surely
@@ -697,7 +699,7 @@ class MultiworkerContract:
         Wd0 = np.zeros_like(Rhod0)
 
         #Separations related variables
-        sep_grid = np.linspace(0,1,20)
+        sep_grid = np.linspace(0,1,40)
         n1_s = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, sep_grid.shape[0]))
         q_s = np.zeros_like(n1_s)
         q_deriv_s = np.zeros_like(n1_s)
@@ -836,7 +838,7 @@ class MultiworkerContract:
                 #Gott be somewhat careful around the borders no tho
 
                 inv_util_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_reshaped * EU[...,ax] + (1-sep_reshaped) * (EW_star[...,ax] + re_star[...,ax])))
-                sep_star = sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,re_star,EW_star,EU,sep_grid,size,self.p.num_z,self.p.num_v,self.p.num_n,self.p.num_q)
+                sep_star = sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,rho_star,re_star,EW_star,EU,sep_grid,size,self.p.num_z,self.p.num_v,self.p.num_n,self.p.num_q)
                 print("sep borders", sep_star.min(),sep_star.max())
 
             #Getting n1_star
@@ -889,16 +891,15 @@ class MultiworkerContract:
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EU+(1-sep_star)*(EW_star+re_star)))
             J= self.fun_prod*self.prod - sum_wage - self.p.hire_c*n0_star - \
                 wage_jun*size[...,0]  + self.p.beta * EJ_star
-            
             Rho = self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - \
                 wage_jun*size[...,0] + \
                 rho_grid[ax,ax,ax,:,ax]*size[...,1]*W[...,1] + self.p.beta * (ERho_star - rho_star*n1_star*EW_star)
-            Rho_alt = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]            
+            Rho_alt = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]                    
             
             # Update worker value function
             W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
-            
+        
 
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
