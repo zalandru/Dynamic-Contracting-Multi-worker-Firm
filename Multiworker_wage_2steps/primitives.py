@@ -28,7 +28,7 @@ class Parameters:
         self.num_np = 5       # Number of non-permanent levels
         self.num_z  = 3      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 9     # Number of points of support for the number of workers
+        self.num_n  = 5     # Number of points of support for the number of workers
         self.n_bar = 4       # Number of workers in the firm	
         self.num_q = 6      #Number of avg match quality levels
         # Time periods in the Model
@@ -42,7 +42,7 @@ class Parameters:
         #DRS production
         self.prod_alpha = 0.5
         # Unemployment Parameters
-        self.u_bf_m = 1.0        #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
+        self.u_bf_m = 0.05        #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
         self.k_entry = 10.0
@@ -105,7 +105,7 @@ class Parameters:
         self.verbose          = 5
         self.iter_display     = 25
         self.tol_simple_model = 1e-9
-        self.tol_full_model   = 5e-8
+        self.tol_full_model   = 5e-9
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
         self.eq_weighting_at0 = 0.01      # fitting J function with weight around 0
