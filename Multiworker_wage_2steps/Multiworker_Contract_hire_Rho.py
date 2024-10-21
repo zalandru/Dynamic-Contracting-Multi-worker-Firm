@@ -614,7 +614,7 @@ class MultiworkerContract:
 
             Rho = .2 * Rho + .8 * Rho2
             J= .2 * J + .8 * J2
-            W[...,1:] = .4 * W[...,1:] + .6 * W2[...,1:] #we're completely ignoring the 0th step
+            W[...,1:] = .2 * W[...,1:] + .8 * W2[...,1:] #we're completely ignoring the 0th step
             #Rho = J+ size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
 
 

@@ -628,7 +628,7 @@ class MultiworkerContract:
             error_w1 = array_dist(W[...,1:], W2[...,1:])
 
             # update worker search decisions
-            if (ite_num % 10) == 0:
+            if (ite_num % 25) == 0:
                 if update_eq:
                     # -----  check for termination ------
 
@@ -1072,9 +1072,9 @@ class MultiworkerContract:
         # The inv_util part is just unemp_bf, so we get signon = (inv_util(v*(1-beta)) - unemp_bf ) /(1-beta)
         #assert np.all((EW - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
         #signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0) * (1 - self.p.beta)) / (1 - self.p.beta) #This is the bonus firms have to pay right upon hiring
-        #signon_bonus = (self.pref.inv_utility(self.v_grid * (1-self.p.beta)) - self.unemp_bf ) / (1 - self.p.beta) #This is the bonus firms have to pay right upon hiring
+        signon_bonus = (self.pref.inv_utility(self.v_grid * (1-self.p.beta)) - self.unemp_bf ) / (1 - self.p.beta) 
         #Another signon bonus alternative: just linear!!!
-        signon_bonus = self.v_grid - self.p.beta * self.v_0
+        #signon_bonus = self.v_grid - self.p.beta * self.v_0
         print("signon", signon_bonus)
         # Given kappa, find the tightness
         q=np.minimum(self.p.hire_c/(kappa-signon_bonus),1)
