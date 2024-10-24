@@ -472,6 +472,8 @@ class MultiworkerContract:
         error_js = 1
         
         # General eqUlibrium first time
+        self.v_0 = U
+        #self.v_grid = np.linspace(W[self.p.z_0-1,...,1].min(),W[self.p.z_0-1,...,1].max(),self.p.num_v)
         kappa, P = self.GE(Ez(J, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
         print("kappa", kappa)
         print("P", P)
@@ -538,14 +540,9 @@ class MultiworkerContract:
              #dim 0 is prod, dim 1 and 2 are size, dim 3 is future v, dim 4 is today's v, dim 5 is hmq
              foc = rho_grid[ax, ax, ax, :, ax, ax] - (EJinv[:, :, :, ax, :, :] / pc[...,ax,:])* (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
              foc = foc*self.sum_size[..., ax, :] - N_grid1[self.grid[2][..., ax, :]]*rho_grid[ax, ax, ax, ax, :, ax] - N_grid[self.grid[1][..., ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW[..., ax, :]+re[..., ax, :]))
+            
             assert (np.isnan(self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW+re)))).sum() == 0
-            if ite_num>100000000:
-             foc = rho_grid[ax, ax, ax, :, ax] - (EJinv[:, :, :, ax, :] / pc)* (log_diff / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-             foc = foc*self.sum_size[..., ax] - N_grid1[self.grid[2][..., ax]]*rho_grid[ax, ax, ax, ax, :] - N_grid[self.grid[1][:, :, :, ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW1_tild+re))
-            if ite_num<=100000000:
-             assert (np.isnan(foc) & (pc[..., ax, :] > 0)).sum() == 0, "foc has NaN values where p>0"
-            else:
-             assert (np.isnan(foc) & (pc > 0)).sum() == 0, "foc has NaN values where p>0"
+            assert (np.isnan(foc) & (pc[..., ax, :] > 0)).sum() == 0, "foc has NaN values where p>0"
 
             #Future senior wage
             rho_star = optimized_loop(
@@ -596,7 +593,6 @@ class MultiworkerContract:
             _, ru, _ = self.getWorkerDecisions(EU, employed=False)
             U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
             U = 0.4 * U + 0.6 * U2
-
             # Update firm value function 
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EU+(1-sep_star)*(EW_star+re_star)))
             J= self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n0_star - \
@@ -614,7 +610,6 @@ class MultiworkerContract:
             J[J< 0] = 0
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
-
             Rho = .2 * Rho + .8 * Rho2
             J= .2 * J + .8 * J2
             W[...,1:] = .2 * W[...,1:] + .8 * W2[...,1:] #we're completely ignoring the 0th step
@@ -639,10 +634,13 @@ class MultiworkerContract:
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            kappa, P = self.GE(EJ,EW[self.p.z_0-1,0,1,:,0],J,n0_star,kappa)
+                            self.v_0 = U
+                            #self.v_grid = np.linspace(W[self.p.z_0-1, 0, 1, :, :,1].min(),W[self.p.z_0-1, 0, 1, :, :,1].max(),self.p.num_v)
+                            kappa, P = self.GE(EJ,W,J,n0_star,kappa)
                             #P_xv = self.matching_function(J1p.eval_at_W1(W)[self.p.z_0-1, 0, 1, :, 1])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
                             error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
+
                 else:
                     # -----  check for termination ------
                     # Updating J1 representation
@@ -653,9 +651,10 @@ class MultiworkerContract:
                             and ite_num > 50):
                         break
             if (ite_num % 100) == 0:   
-                plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function')        
-                plt.show() # this will load image to console before executing next line of code
-
+                #plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function')        
+                #plt.show() # this will load image to console before executing next line of code
+                plt.plot(W[self.p.z_0-1, 0, 1, :, 0, 1], 1-pc_star[self.p.z_0-1, 0, 1, :, 0], label='Probability of the worker leaving across submarkets')      
+                plt.show()
 
         return J,W,EW_star,pc_star,n0_star, n1_star
 
@@ -1042,7 +1041,7 @@ class MultiworkerContract:
 
 
 
-    def GE(self,EJ,EW,J=None,n0_star=None,kappa_old=None):
+    def GE(self,EJ,W,J=None,n0_star=None,kappa_old=None):
         #Find kappa, which is the hiring cost firms have to pay per worker unit
         #BIG NOTE: For now I'm assuming that all the firms start at the same productivity level, p.z_0-1, rather than the Schaal assumption of them drawing their productivity upon entering.
         #QUck method: Envelope Theorem
@@ -1072,7 +1071,9 @@ class MultiworkerContract:
         # The inv_util part is just unemp_bf, so we get signon = (inv_util(v*(1-beta)) - unemp_bf ) /(1-beta)
         #assert np.all((EW - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
         #signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0) * (1 - self.p.beta)) / (1 - self.p.beta) #This is the bonus firms have to pay right upon hiring
-        signon_bonus = (self.pref.inv_utility(self.v_grid * (1-self.p.beta)) - self.unemp_bf ) / (1 - self.p.beta) 
+        #signon_bonus = (self.pref.inv_utility(self.v_grid * (1-self.p.beta)) - self.unemp_bf ) / (1 - self.p.beta) 
+        signon_bonus = self.pref.inv_utility(self.v_grid * (1 - self.p.beta)) - self.pref.inv_utility(self.v_0 * (1 - self.p.beta))
+        signon_bonus[signon_bonus < 0] = 0
         #Another signon bonus alternative: just linear!!!
         #signon_bonus = self.v_grid - self.p.beta * self.v_0
         print("signon", signon_bonus)
@@ -1081,10 +1082,14 @@ class MultiworkerContract:
         print("q",q)
         theta = self.pref.q_inv(q)
         theta[signon_bonus>kappa-self.p.hire_c]=0 #Hiring cost should be lower now, since chance of hiring<1 AND firms have to pay the sign-on
+
         #This is eqUvalent to kappa < sign-on + hire_c/1, suggesting that we need q>1. OR, if sign-on>kappa, that we need q<0.
         #Get the job-finding probability for each submarket
         P = q * theta
         print("P",P)
+        #plt.plot(self.v_grid, P, label='Probability of finding a job across submarkets')       
+        #plt.show() # this will load image to console before executing next line of code
+ 
         return kappa, P
     def append_results_to_pickle(self, J, W, EW_star, sep_star, n0_star, n1_star, pickle_file="results_hmq_sep.pkl"):
         # Step 1: Load the existing data from the pickle file

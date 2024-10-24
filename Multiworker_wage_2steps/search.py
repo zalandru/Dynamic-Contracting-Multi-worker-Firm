@@ -101,15 +101,15 @@ class JobSearch:
         self.input_P  = P
 
         for v in range(nv):
-            imax = np.argmax(P * (V - V[v])) #Andrei: so this only works for the value of employment!!! Doesn't with unemployment at all. How does he find the u2e then?
-            self.input_Ps[v] = P[imax]
-            self.input_Vs[v] = V[imax]
+            imax = np.argmax(P * (V - V[v])) #Andrei: this is where the "optimal decision" happens, I guess? Looks like the worker is maximizing p(v_hat-v')
+            self.input_Ps[v] = P[imax] #Essentially, they're picking the optimal submarket to search for each v. Then Ps = probability to find a job in imax given that you're currently promised v
+            self.input_Vs[v] = V[imax] #Vs = v_hat in my terminology. Submarket that the worker is gonna search in if he's promised v
 
         I = self.input_Ps > 0
 
-        self.input_V2 = self.input_V[I]
-        self.input_Vs2 = self.input_Vs[I]
-        self.input_Ps2 = self.input_Ps[I]
+        self.input_V2 = self.input_V[I] #Simply v
+        self.input_Vs2 = self.input_Vs[I] #v_hat(v), not used anywhere
+        self.input_Ps2 = self.input_Ps[I] #Probability of finding a job if promised v, p(v_hat(v))
 
         #self.e_asy =self.input_V2.max() + 10 # we overshoot the intercept to not have to deal with -infinity
         #res = minimize(curve_fit_search_and_grad,  self.x,  jac=True, options={'gtol': 1e-8, 'disp': disp},args= (self.e_asy, self.input_V2, self.input_Ps2))
@@ -119,7 +119,7 @@ class JobSearch:
         # to try: implement gradient
         if (type==0):
             res2 = minimize(curve_fit_search2, [0, -1, -1,np.log(5)], options={'gtol': 1e-8, 'disp': disp},
-                           args=(self.input_V2.max(), self.input_V2, self.input_Ps2))
+                           args=(self.input_V2.max(), self.input_V2, self.input_Ps2)) #So it does indeed approximate optimal search, since the dependent variable is Ps2=p(v_hat(v))
             self.x     = res2.x[0:3]
             self.e_asy = self.input_V2.max() + np.exp(res2.x[3]) #Andrei: this is the asymptote, \bar{W}(x) in the paper. Note that, within curve_fit_search, this is equal to vb+exp(x[3])
         elif (type==1):
