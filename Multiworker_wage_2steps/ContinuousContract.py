@@ -208,6 +208,8 @@ class ContinuousContract:
             # Update worker value function
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
+            #plt.plot(W1i[self.p.z_0-1, :], pe_star[self.p.z_0-1, :], label='Probability of the worker leaving across submarkets')      
+            #plt.show()
             W1i = .4 * W1i + .6 * W1i2
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
@@ -227,6 +229,8 @@ class ContinuousContract:
                     # ------ or update search function parameter using relaxation ------
                     else:
                             P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
+                            #plt.plot(W1i[self.p.z_0-1, :], P_xv, label='Probability of finding a job across submarkets')      
+                            #plt.show()
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
                             error_js = self.js.update(W1i[self.p.z_0-1, :], P_xv, type=1, relax=relax)
                 else:
