@@ -592,7 +592,7 @@ class MultiworkerContract:
 
             _, ru, _ = self.getWorkerDecisions(EU, employed=False)
             U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
-            U = 0.4 * U + 0.6 * U2
+            U = 0.2 * U + 0.8 * U2
             # Update firm value function 
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EU+(1-sep_star)*(EW_star+re_star)))
             J= self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n0_star - \
@@ -606,8 +606,8 @@ class MultiworkerContract:
             W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
         
-            W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
-            J[J< 0] = 0
+            #W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
+            #J[J< 0] = 0
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
             Rho = .2 * Rho + .8 * Rho2
@@ -623,7 +623,7 @@ class MultiworkerContract:
             error_w1 = array_dist(W[...,1:], W2[...,1:])
 
             # update worker search decisions
-            if (ite_num % 25) == 0:
+            if (ite_num % 50) == 0:
                 if update_eq:
                     # -----  check for termination ------
 
@@ -635,6 +635,7 @@ class MultiworkerContract:
                     # ------ or update search function parameter using relaxation ------
                     else:
                             self.v_0 = U
+                            print("U",U)
                             #self.v_grid = np.linspace(W[self.p.z_0-1, 0, 1, :, :,1].min(),W[self.p.z_0-1, 0, 1, :, :,1].max(),self.p.num_v)
                             kappa, P = self.GE(EJ,W,J,n0_star,kappa)
                             #P_xv = self.matching_function(J1p.eval_at_W1(W)[self.p.z_0-1, 0, 1, :, 1])
