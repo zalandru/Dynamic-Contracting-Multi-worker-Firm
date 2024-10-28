@@ -532,14 +532,15 @@ class MultiworkerContract:
             #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
             #EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
-            
+            #EJinv[J<=0] = 0
+
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
             #Because of this, the values are modified with size according to the following formula:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
-            if ite_num<=100000000:
+
              #dim 0 is prod, dim 1 and 2 are size, dim 3 is future v, dim 4 is today's v, dim 5 is hmq
-             foc = rho_grid[ax, ax, ax, :, ax, ax] - (EJinv[:, :, :, ax, :, :] / pc[...,ax,:])* (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-             foc = foc*self.sum_size[..., ax, :] - N_grid1[self.grid[2][..., ax, :]]*rho_grid[ax, ax, ax, ax, :, ax] - N_grid[self.grid[1][..., ax, :]]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW[..., ax, :]+re[..., ax, :]))
+            foc = rho_grid[ax, ax, ax, :, ax, ax] - (EJinv[:, :, :, ax, :, :] / pc[...,ax,:]) * (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+            foc = foc * self.sum_size[..., ax, :] - size[..., ax, :, 1] * rho_grid[ax, ax, ax, ax, :, ax] - size[..., ax, :, 0] / self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW[..., ax, :]+re[..., ax, :]))
             
             assert (np.isnan(self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW+re)))).sum() == 0
             assert (np.isnan(foc) & (pc[..., ax, :] > 0)).sum() == 0, "foc has NaN values where p>0"
@@ -552,8 +553,8 @@ class MultiworkerContract:
             pc_trans = np.moveaxis(pc,3,0)
             rho_trans = np.moveaxis(rho_star,3,0)
 
-            n1_star = (size[...,0]*(1-sep_star)+size[...,1])*np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
-            q_star = (size[...,0]* np.minimum(self.p.q_0,1-sep_star)+q*size[...,1])/(size[...,0]*(1-sep_star)+size[...,1])
+            n1_star = (size[...,0] * (1-sep_star) + size[...,1]) * np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
+            q_star = (size[...,0] * np.minimum(self.p.q_0,1-sep_star) + q * size[...,1]) / (size[...,0] * (1-sep_star) + size[...,1])
             
             #Getting hiring decisions
             n0_star[...] = 0
@@ -563,7 +564,7 @@ class MultiworkerContract:
                     Rho_interpolator = RegularGridInterpolator((N_grid1, rho_grid, Q_grid), ERho[iz, in00, ...], bounds_error=False, fill_value=None)
                     Rhod0[iz, ..., in00] = Rho_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             if ite_num >= 0:
-                Ihire = ((Rhod0[...,1]-Rhod0[...,0]) / (N_grid[1]-N_grid[0]) > kappa/self.p.beta) & (size[...,0]+size[...,1] < self.p.n_bar)
+                Ihire = ((Rhod0[...,1] - Rhod0[...,0]) / (N_grid[1] - N_grid[0]) > kappa/self.p.beta) & (size[...,0] + size[...,1] < self.p.n_bar)
                 n0_star = n0(Rhod0, n0_star, N_grid, Ihire, kappa / self.p.beta)
 
 
@@ -593,6 +594,7 @@ class MultiworkerContract:
             _, ru, _ = self.getWorkerDecisions(EU, employed=False)
             U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
             U = 0.2 * U + 0.8 * U2
+            self.v_0 = U
             # Update firm value function 
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EU+(1-sep_star)*(EW_star+re_star)))
             J= self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n0_star - \
@@ -606,8 +608,9 @@ class MultiworkerContract:
             W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
         
-            #W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
-            #J[J< 0] = 0
+            #W[...,1] = W[...,1] * (J > 0) + U * (J <= 0)
+            #Rho= Rho * (J > 0) + 0 * (J <= 0)
+            #J[J <= 0] = 0
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
             Rho = .2 * Rho + .8 * Rho2
@@ -651,7 +654,7 @@ class MultiworkerContract:
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
-            if (ite_num % 100) == 0:   
+            if (ite_num % 400) == 0:   
                 #plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function')        
                 #plt.show() # this will load image to console before executing next line of code
                 plt.plot(W[self.p.z_0-1, 0, 1, :, 0, 1], 1-pc_star[self.p.z_0-1, 0, 1, :, 0], label='Probability of the worker leaving across submarkets')      
@@ -1072,7 +1075,6 @@ class MultiworkerContract:
         # The inv_util part is just unemp_bf, so we get signon = (inv_util(v*(1-beta)) - unemp_bf ) /(1-beta)
         #assert np.all((EW - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
         #signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0) * (1 - self.p.beta)) / (1 - self.p.beta) #This is the bonus firms have to pay right upon hiring
-        #signon_bonus = (self.pref.inv_utility(self.v_grid * (1-self.p.beta)) - self.unemp_bf ) / (1 - self.p.beta) 
         signon_bonus = self.pref.inv_utility(self.v_grid * (1 - self.p.beta)) - self.pref.inv_utility(self.v_0 * (1 - self.p.beta))
         signon_bonus[signon_bonus < 0] = 0
         #Another signon bonus alternative: just linear!!!
