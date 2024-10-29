@@ -608,9 +608,9 @@ class MultiworkerContract:
             W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
         
-            #W[...,1] = W[...,1] * (J > 0) + U * (J <= 0)
-            #Rho= Rho * (J > 0) + 0 * (J <= 0)
-            #J[J <= 0] = 0
+            W[...,1] = W[...,1] * (J > 0) + U * (J <= 0)
+            Rho= Rho * (J > 0) + 0 * (J <= 0)
+            J[J <= 0] = 0
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
             Rho = .2 * Rho + .8 * Rho2
@@ -1072,14 +1072,15 @@ class MultiworkerContract:
         # For now, try this still: u(w*(1-beta)) = (v_m - beta*v_0) * (1-beta), so w=u^{-1}[(v_m - beta*v_0) * (1-beta)] / (1-beta)
         # Okay, this didn't work lmao
         # Instead, augment v_0 somehow??? util( inv_util[v_0 * (1-beta)] + signon * (1-beta) ) / (1-beta) = v_m
-        # The inv_util part is just unemp_bf, so we get signon = (inv_util(v*(1-beta)) - unemp_bf ) /(1-beta)
         #assert np.all((EW - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
+        #signon_bonus = self.pref.inv_utility(self.v_grid - self.p.beta * self.v_0)
         #signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0) * (1 - self.p.beta)) / (1 - self.p.beta) #This is the bonus firms have to pay right upon hiring
-        signon_bonus = self.pref.inv_utility(self.v_grid * (1 - self.p.beta)) - self.pref.inv_utility(self.v_0 * (1 - self.p.beta))
+        signon_bonus = (self.pref.inv_utility(self.v_grid * (1 - self.p.beta)) - self.pref.inv_utility(self.v_0 * (1 - self.p.beta))) / (1 - self.p.beta)
         signon_bonus[signon_bonus < 0] = 0
         #Another signon bonus alternative: just linear!!!
         #signon_bonus = self.v_grid - self.p.beta * self.v_0
         print("signon", signon_bonus)
+
         # Given kappa, find the tightness
         q=np.minimum(self.p.hire_c/(kappa-signon_bonus),1)
         print("q",q)
