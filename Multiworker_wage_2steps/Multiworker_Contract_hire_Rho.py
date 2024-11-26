@@ -53,6 +53,10 @@ def impose_decreasing(M):
         nv = M.shape[1]
         for v in reversed(range(nv-1)):
             M[:,v] = np.maximum(M[:,v],M[:,v+1])
+    elif len(M.shape)==5:
+        nv = M.shape[3]
+        for v in reversed(range(nv-1)):
+            M[:, :, :, v, :] = np.maximum(M[:, :, :, v, :],M[:, :, :, v+1, :])        
     else:
         nv = M.shape[1]        
         for v in reversed(range(nv-1)):
@@ -161,19 +165,23 @@ def interp_multidim_extra_dim(points, x,y):
 
 #Okay new perspective: focus on the fact that most points are under the same axis.
 
-@nb.njit(cache=True)
-def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, num_v, num_q):
-    for in0 in range(num_n): #Not this: we don't do the case for max juniors. for some reason separations fail otherwise
+#@nb.njit(cache=True)
+def optimized_loop(pc, EW, ite_num,rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, num_v, num_q):
+    for in0 in range(num_n): 
         for in1 in range(num_n):
          if (N_grid1[in0] + N_grid1[in1] > n_bar):
           continue
          for iz in range(num_z):
-            for iv in range(num_v):
-             for iq in range(num_q):
-                
+            for iq in range(num_q):
+             #if ite_num>200:
+             #   assert np.all(EW[iz, in0, in1, 1:, iq] >= EW[iz, in0, in1, :-1, iq])
+             Isearch = (pc[iz, in0, in1, :, iq] <= 1.0)
+             #Imax = np.min(np.where(pc[iz, in0, in1, :, iq] >= 1.0-1e-3))
+             
+             for iv in range(num_v):
                 rho_star[iz,in0, in1, iv,iq] = interp(0,
-                                                    impose_increasing(foc[iz, in0, in1, :, iv,iq]),
-                                                    rho_grid[:])  
+                                                    impose_increasing(foc[iz, in0, in1, Isearch, iv,iq]),
+                                                    rho_grid[Isearch])  
                 #rho_min = np.min(rho_grid[pc[iz, in0, in1, :, iq] > 0])  # Lowest promised rho with continuation > 0
                 #Isearch = (pc[iz, in0, in1, :, iq] > 0)
                 
@@ -416,7 +424,7 @@ class MultiworkerContract:
 
         self.q = self.Q_grid[self.grid[4]]
 
-    def J(self,Jg=None,Wg=None,update_eq=0):    
+    def J(self,Jg=None,Wg=None,Ug=None,update_eq=0):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -438,13 +446,18 @@ class MultiworkerContract:
             W = np.copy(self.W)
         else:
             W = np.copy(Wg)
-        U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
+        if Ug is None:
+            U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
+        else:
+            U = np.copy(Ug)
+        #J = impose_decreasing(J)
         Rho = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]        
 
         print("Jshape", J.shape)
         print("W shape", W.shape)        
+        
         # create representation for J1p
-        #J1p = PowerFunctionGrid(W, J) #From valueFunction.py
+        J1p = PowerFunctionGrid(W, J) #From valueFunction.py
 
 
         EW_star = np.copy(J)
@@ -461,7 +474,7 @@ class MultiworkerContract:
 
         Rhoderiv = np.zeros_like(J)
         Wderiv = np.zeros_like(J)
-
+        Jpderiv = np.zeros_like(J)
         Rhod0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n)) #two extra size dimensions corresponding to future (arbitrary) sizes
         Wd0 = np.zeros_like(Rhod0)
 
@@ -473,8 +486,6 @@ class MultiworkerContract:
         ite_num = 0
         error_js = 1
         
-        # evaluate J1 tomorrow using our approximation
-        #Jpi = J1p.eval_at_W1(W[...,1])
         for ite_num in range(self.p.max_iter):
             J2 = np.copy(J)
             W2 = np.copy(W)
@@ -490,13 +501,19 @@ class MultiworkerContract:
              print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,s,:, 0]/pc_star[:,0,s,:, 0] - EJderiv[:,0,s,:, 0]) / EJderiv[:,0,s,:, 0])))
 
 
+            # evaluate J1 tomorrow using our approximation
+            Jp = J1p.eval_at_W1(W[...,1])
+            #UPDATING RHO VIA THIS APPROXIMATION
+            Rho = Jp+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
+
             # we compute the expected value next period by applying the transition rules
             EW = Ez(W[...,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
-            EJ = Ez(J, self.Z_trans_mat)
+            EJ = Ez(Jp, self.Z_trans_mat)
             ERho = Ez(Rho, self.Z_trans_mat)
-
             EU = U
+
+
             # get worker decisions
             _, re, pc = self.getWorkerDecisions(EW)
             # get worker decisions at EW + epsilon
@@ -510,16 +527,19 @@ class MultiworkerContract:
 
             # First boundary condition: forward difference            
             Rhoderiv[:, :, 0, ...] = (Rho[:, :, 1,  ...] - Rho[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
+            Jpderiv[:, :, 0, ...] = (Jp[:, :, 1,  ...] - Jp[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
             #Wderiv[:, :, 0, ...]     = (W[:, :, 1, :, :, 1] - W[:, :, 0, :, :, 1]) / (N_grid1[1] - N_grid1[0])
             # Last boundary condition: backward difference
             Rhoderiv[:, :, -1, ...] = Rho[:, :, -1,  ...] - Rho[:, :, -2,  ...]/ (N_grid1[-1] - N_grid1[-2])
+            Jpderiv[:, :, -1, ...] = Jp[:, :, -1,  ...] - Jp[:, :, -2,  ...]/ (N_grid1[-1] - N_grid1[-2])
             #Wderiv[:, :, -1, ...]     = W[:, :, -1, :, :, 1] - W[:, :, -2, :, :, 1]/ (N_grid1[-1] - N_grid1[-2])
             # Central differences: average of forward and backward differences
             Rhoderiv[:, :, 1:-1, ...] = (Rho[:, :, 2:,  ...] - Rho[:, :, :-2, ...]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
+            Jpderiv[:, :, 1:-1, ...] = (Jp[:, :, 2:,  ...] - Jp[:, :, :-2, ...]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
             #Wderiv[:, :, 1:-1, ...]     = (W[:, :, 2:, :, :, 1] - W[:, :, :-2, :, :, 1]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
 
             Jderiv = Rhoderiv-rho_grid[ax,ax,ax,:,ax]*W[...,1]
-            #Jderiv = Rhoderiv+N_grid1[self.grid[2]]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
+            #Jderiv = Rhoderiv+size[...,1]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
 
             #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
             EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
@@ -532,12 +552,28 @@ class MultiworkerContract:
             #dim 0 is prod, dim 1 and 2 are size, dim 3 is future v, dim 4 is today's v, dim 5 is hmq
             foc = rho_grid[ax, ax, ax, :, ax, ax] - (EJinv[:, :, :, ax, :, :] / pc[...,ax,:])* (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
             foc = foc*self.sum_size[..., ax, :] - size[..., ax, :,1]*rho_grid[ax, ax, ax, ax, :, ax] - size[..., ax, :,0]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW[..., ax, :]+re[..., ax, :]))
-            assert (np.isnan(foc) & (pc[..., ax, :] > 0)).sum() == 0, "foc has NaN values where p>0"
+
+            if ite_num>1000000:
+                floorn1=np.floor(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)
+                ceiln1=np.ceil(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)            
+                for iz in range(self.p.num_z):
+                    for in11 in range(self.p.num_n): 
+                    
+                        Rho_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), ERho[iz, :, in11, ...], bounds_error=False, fill_value=None)
+                        #W_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EW[iz, :, in11, ...], bounds_error=False, fill_value=None)
+                        Rhod0[iz, ..., in11] = Rho_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
+                        #Wd0[iz, ..., in11] = W_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
+                ERhoderiv = ERhoDerivative(Rhod0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
+                EJderiv = ERhoderiv - rho_star * EW_star
+                foc = rho_grid[ax, ax, ax, :, ax, ax] - EJderiv[:, :, :, ax, :, :]* (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+                foc = foc*self.sum_size[..., ax, :] - size[..., ax, :,1]*rho_grid[ax, ax, ax, ax, :, ax] - size[..., ax, :,0]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW[..., ax, :]+re[..., ax, :]))
+
+            #assert (np.isnan(foc) & (pc[..., ax, :] > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
             #Future senior wage
             rho_star = optimized_loop(
-                pc, rho_grid, N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q) 
+                pc, EW, ite_num, rho_grid, N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q) 
             
             #Future senior size
             pc_trans = np.moveaxis(pc,3,0)
@@ -595,6 +631,7 @@ class MultiworkerContract:
             # Update firm value function 
             J= self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - \
                 self.pref.inv_utility(self.v_0-self.p.beta*(EW_star+re_star))*size[...,0]  + self.p.beta * EJ_star
+            #J = impose_decreasing(J)
             #Update the dual value function rho
             Rho = self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - \
                 self.pref.inv_utility(self.v_0-self.p.beta*(EW_star+re_star))*size[...,0] + \
@@ -603,7 +640,7 @@ class MultiworkerContract:
             W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
             Rho_alt = J+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
-
+            #Rho = J+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
             # Updating Jrepresentation
             #J= Rho - size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
             #W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
@@ -615,10 +652,10 @@ class MultiworkerContract:
             Rho = .2 * Rho + .8 * Rho2
             J= .2 * J + .8 * J2
             W[...,1:] = .2 * W[...,1:] + .8 * W2[...,1:] #we're completely ignoring the 0th step
-            #Rho = J+ size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
 
 
-            #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W[:,:,:,:,1], J)
+
+            error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W[...,1], J)
 
             # Compute convergence criteria
             error_j1i = array_exp_dist(Rho,Rho2,100) #np.power(J- Ji2, 2).mean() / np.power(Ji2, 2).mean()  
@@ -649,8 +686,8 @@ class MultiworkerContract:
                             and ite_num > 50):
                         break
 
-
-        return J,W,Rho,EW_star,pc_star,n0_star, n1_star
+        self.J1p = J1p
+        return J,W,U,Rho,EW_star,pc_star,n0_star, n1_star, J1p
 
     def J_sep_dir(self,Jg=None,Wg=None,update_eq=0):    
         """
@@ -667,14 +704,17 @@ class MultiworkerContract:
         q = self.q
 
         if Jg is None:
-            J= np.copy(self.J_grid)
+            J = np.copy(self.J_grid)
         else:
-            J= np.copy(Jg)
+            J = np.copy(Jg)
         if Wg is None:
             W = np.copy(self.W)
         else:
             W = np.copy(Wg)
-        U = self.pref.utility_gross(self.unemp_bf)/(1-self.p.beta)
+        if Ug is None:
+            U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
+        else:
+            U = np.copy(Ug)
         Rho = J+ size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]        
 
         print("Jshape", J.shape)
@@ -802,7 +842,7 @@ class MultiworkerContract:
             #assert np.all(EW[iz, in0, in1, 1:] >= EW[iz, in0, in1, :-1]) #Andrei: check that worker value is increasing in v
             #if ite_num<=1:
             rho_star = optimized_loop(
-                pc, rho_grid, N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q) 
+                pc, EW, rho_grid, N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q) 
             
             #MINIMUM WAGE ADDITION! DON'T ALLOW RHO_GRID TO GO BELOW RELATED MIN WAGE
             #Would this work tho? I dunno if it's the correct way of doing this... anyway let's try
@@ -952,14 +992,14 @@ class MultiworkerContract:
 
         #self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
         #                             ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        self.append_results_to_pickle(J, W, EW_star, sep_star, n0_star, n1_star)
+        self.append_results_to_pickle(J, W, U, EW_star, sep_star, n0_star, n1_star)
 
-        return J,W,Rho,EW_star,sep_star, n0_star, n1_star
-
-
+        return J,W,U,Rho,EW_star,sep_star, n0_star, n1_star
 
 
-    def append_results_to_pickle(self, J, W, EW_star, sep_star, n0_star, n1_star, pickle_file="results_Rho_sep.pkl"):
+
+
+    def append_results_to_pickle(self, J, W, U, EW_star, sep_star, n0_star, n1_star, pickle_file="results_Rho_sep.pkl"):
         # Step 1: Load the existing data from the pickle file
         try:
             with open(pickle_file, "rb") as file:
@@ -969,7 +1009,7 @@ class MultiworkerContract:
             print("No existing file found. Creating a new one.")
 
         # Step 2: Create results for the multi-dimensional p
-        new_results = self.save_results_for_p(J, W, EW_star, sep_star, n0_star, n1_star)
+        new_results = self.save_results_for_p(J, W, U, EW_star, sep_star, n0_star, n1_star)
 
         # Step 3: Use a tuple (p.num_z, p.num_v, p.num_n) as the key
         key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt,self.p.u_bf_m)
