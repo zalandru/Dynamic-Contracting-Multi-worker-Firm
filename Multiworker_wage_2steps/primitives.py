@@ -35,7 +35,7 @@ class Parameters:
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
         # Vacancy cost
-        self.hire_c = 5.0
+        self.hire_c = 7.0
         #HMQ
         self.q_0 = 1.0 #Starting match q
         self.prod_q = 1.0 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
@@ -45,13 +45,14 @@ class Parameters:
         self.u_bf_m = 1.0        #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         #self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
-        self.k_entry = 100.0 # was 200
+        self.k_entry = 10.0 # was 200
         self.k_f = 0.0
 
         #Min wage
         self.min_wage = 0 * self.u_bf_m
 
-
+        #Utility shifter
+        self.util_shift = 1.0
 
         # Utility Function Parameters
         #self.u_rho = 1.5      # Risk aversion coefficient, was 1.5
@@ -63,7 +64,7 @@ class Parameters:
         self.s_job    = 1.0        # Relative Efficiency of Search on the Job #0.53 in BL, but this is a bit of a pain at lower values since worker value is then below then unemp
         self.alpha    = 1.0        # Parameter for probability of finding a job
         self.sigma    = 0.8         # Parameter for probability of finding a job #PRESET
-        #self.kappa    = 1.0         # Vacancy cost parameter
+        self.kappa    = 1.0         # Vacancy cost parameter
 
 
         # effort function that control separation
@@ -100,11 +101,11 @@ class Parameters:
 
         # Computational Parameters
         self.chain            = 1         # Chain id when running in parallel
-        self.max_iter         = 5000
+        self.max_iter         = 50000
         self.max_iter_fb      = 5000
         self.verbose          = 5
         self.iter_display     = 25
-        self.tol_simple_model = 1e-9
+        self.tol_simple_model = 1e-8
         self.tol_full_model   = 1e-8
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
@@ -192,7 +193,7 @@ class Preferences:
         #aa = self.p.u_a * np.power(self.p.tax_tau, 1 - self.p.u_rho) 
         #return np.divide(aa * np.power( wage, self.p.tax_lambda * (1.0 - self.p.u_rho)) - self.p.u_b,
         #                 1 - self.p.u_rho)
-        return np.log(wage)
+        return np.log(self.p.util_shift * wage)
 
     def utility_gross(self, wage): #Standard CRRA utility
         """
@@ -202,7 +203,7 @@ class Preferences:
         """
         #return np.divide(self.p.u_a * np.power(wage, 1 - self.p.u_rho) - self.p.u_b,
         #                 1 - self.p.u_rho)
-        return np.log(wage)
+        return np.log(self.p.util_shift * wage)
 
     def inv_utility(self, value):
         """
@@ -213,7 +214,7 @@ class Preferences:
         #aa = self.p.u_a * np.power(self.p.tax_tau, 1.0 - self.p.u_rho) 
         #return np.power(np.divide((1.0 - self.p.u_rho) * value + self.p.u_b, aa),
         #                (np.divide(1.0, self.p.tax_lambda * (1.0 - self.p.u_rho))))
-        return np.exp(value)
+        return np.exp(value) / self.p.util_shift
 
     def utility_1d(self, wage):
         """
@@ -235,7 +236,7 @@ class Preferences:
         #return np.power( pow_arg, 1.0/( self.p.tax_lambda * (1 - self.p.u_rho) ) - 1.0) / ( self.p.tax_lambda * aa )
         #return np.power( pow_arg, -self.p.u_rho / ( 1 - self.p.u_rho )) / ( self.p.tax_lambda * aa )
         # return self.utility_1d(self.inv_utility(value))
-        return 1 / np.exp(value)
+        return self.p.util_shift / np.exp(value)
 
 
     def log_consumption_eq(self, V):

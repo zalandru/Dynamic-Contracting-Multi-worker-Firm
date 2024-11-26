@@ -49,10 +49,10 @@ class PowerFunctionGrid:
     """
 
     def __init__(self,W1,J1,weight=0.01):
-        self.num_z, self.num_n, _ , _  = J1.shape #Calling num_z the shape of the 1st dimension, num_n the shape of the 2nd etc.
+        self.num_z, self.num_n, _ , _ , self.num_q = J1.shape #Calling num_z the shape of the 1st dimension, num_n the shape of the 2nd etc.
         #Need only the shapes that I'm looping over
-        self.gamma_all = np.zeros( (self.num_z,self.num_n, self.num_n, 5) )
-        self.rsqr  = np.zeros( (self.num_z, self.num_n, self.num_n))
+        self.gamma_all = np.zeros( (self.num_z,self.num_n, self.num_n, 5, self.num_q) )
+        self.rsqr  = np.zeros( (self.num_z, self.num_n, self.num_n, self.num_q))
         self.weight = weight
 
         # we fit for each (z,x). Andrei: So the only function inside is v? What should I do with size here?
@@ -64,27 +64,29 @@ class PowerFunctionGrid:
         for iz in range(self.num_z):
                 for in0 in range(self.num_n):
                     for in1 in range(self.num_n):#again num_n as the size grid si the same for the two steps
-                        p0[0] = J1[iz, in0, in1, 0] #The first guess is set to J1 at the lowest promise
+                     for iq in range(self.num_q):
+                        p0[0] = J1[iz, in0, in1, 0, iq] #The first guess is set to J1 at the lowest promise
                         res2 = minimize(curve_fit_search_and_grad, p0, jac=True,
                                         options={'gtol': 1e-8, 'disp': False, 'maxiter': 2000},
-                                        args=(W1[iz, in0, in1, :, 1], J1[iz, in0, in1, :], W1[iz, in0, in1, : , 1].max())) 
+                                        args=(W1[iz, in0, in1, :, iq, 1], J1[iz, in0, in1, :, iq], W1[iz, in0, in1, : , iq, 1].max())) 
                         p0 = res2.x
-                        self.gamma_all[iz, in0, in1, 0:4] = res2.x
-                        self.gamma_all[iz, in0, in1, 4]   = W1[iz, in0, in1, :, 1].max() #Andrei: I'm confused. Is this not part of the [0:4]?
-                        self.rsqr[iz, in0, in1] = res2.fun / np.power(J1[iz, in0, in1, :],2).mean()
+                        self.gamma_all[iz, in0, in1, 0:4, iq] = res2.x
+                        self.gamma_all[iz, in0, in1, 4, iq]   = W1[iz, in0, in1, :, iq, 1].max() #Andrei: I'm confused. Is this not part of the [0:4]?
+                        self.rsqr[iz, in0, in1, iq] = res2.fun / np.power(J1[iz, in0, in1, :, iq],2).mean()
 
-    def eval_at_zxv(self,z,n0,n1,v): #Andrei: for fixed z,x,v, give the exact prediction for J. this is after J has already been fitted
-        return curve_eval(self.gamma_all[z,n0,n1,0:4],v,self.gamma_all[z,n0,n1,4])
+    def eval_at_zxv(self,z,n0,n1,v, iq): #Andrei: for fixed z,x,v, give the exact prediction for J. this is after J has already been fitted
+        return curve_eval(self.gamma_all[z,n0,n1,0:4, iq],v,self.gamma_all[z,n0,n1,4, iq])
 
-    def get_vmax(self,z,n0,n1):
-        return self.gamma_all[z, n0, n1, 4] + np.exp(self.gamma_all[z, n0, n1, 3]) #Andrei: this is the Wbar from the appendix
+    def get_vmax(self,z,n0,n1, iq):
+        return self.gamma_all[z, n0, n1, 4, iq] + np.exp(self.gamma_all[z, n0, n1, 3, iq]) #Andrei: this is the Wbar from the appendix
 
     def eval_at_W1(self,W1): #Once J has been fitted, evaluate it at all the grid values
         J1_hat = np.zeros(W1.shape)
         for iz in range(self.num_z):
             for in0 in range(self.num_n):
              for in1 in range(self.num_n):
-                J1_hat[iz, in0, in1,:] = self.eval_at_zxv(iz,in0,in1,W1[iz, in0, in1, :])
+              for iq in range(self.num_q):
+                J1_hat[iz, in0, in1,:, iq] = self.eval_at_zxv(iz,in0,in1,W1[iz, in0, in1, :, iq], iq)
         # make a for loop on x,z
         return(J1_hat)
 
@@ -94,7 +96,8 @@ class PowerFunctionGrid:
         for iz in range(self.num_z):
          for in0 in range(self.num_n):
             for in1 in range(self.num_n):#again num_n as the size grid si the same for the two steps
-                val,_ = curve_fit_search_and_grad( self.gamma_all[iz, in0, in1, 0:4], W1[iz, in0, in1, :], J1[iz, in0, in1, :], self.gamma_all[iz, in0, in1, 4] )
+             for iq in range(self.num_q):
+                val,_ = curve_fit_search_and_grad( self.gamma_all[iz, in0, in1, 0:4, iq], W1[iz, in0, in1, :, iq], J1[iz, in0, in1, :, iq], self.gamma_all[iz, in0, in1, 4, iq] )
                 mse_val = mse_val + val
 
         return(mse_val)
@@ -114,9 +117,10 @@ class PowerFunctionGrid:
         for iz in range(self.num_z):
          for in0 in range(self.num_n):
             for in1 in range(self.num_n):#again num_n as the size grid si the same for the two steps
-                val,grad = curve_fit_search_and_grad( self.gamma_all[iz, in0, in1,0:4], W1[iz, in0, in1, :], J1[iz, in0, in1, :], W1[iz, in0, in1, :].max() )
-                self.gamma_all[iz, in0, in1, 0:4] = self.gamma_all[iz, in0, in1,0:4] - lr * grad
-                self.gamma_all[iz, in0, in1, 4]   = W1[iz, in0, in1, :].max()
+              for iq in range(self.num_q):                
+                val,grad = curve_fit_search_and_grad( self.gamma_all[iz, in0, in1,0:4, iq], W1[iz, in0, in1, :, iq], J1[iz, in0, in1, :, iq], W1[iz, in0, in1, :, iq].max() )
+                self.gamma_all[iz, in0, in1, 0:4, iq] = self.gamma_all[iz, in0, in1,0:4, iq] - lr * grad
+                self.gamma_all[iz, in0, in1, 4, iq]   = W1[iz, in0, in1, :, iq].max()
                 mean_update = mean_update + np.abs(lr * grad).mean()
 
         return(mean_update/(self.num_z))
@@ -162,7 +166,8 @@ class PowerFunctionGrid:
         for iz in range(self.num_z):
          for in0 in range(self.num_n):
             for in1 in range(self.num_n):
-                Xi,Yi = curve_fit_search_terms( self.gamma_all[iz, in0, in1, 0:4], W1[iz, in0, in1, :], J1[iz, in0, in1, :], W1[iz, in0, in1, :].max() )
+             for iq in range(self.num_q):
+                Xi,Yi = curve_fit_search_terms( self.gamma_all[iz, in0, in1, 0:4, iq], W1[iz, in0, in1, :, iq], J1[iz, in0, in1, :, iq], W1[iz, in0, in1, :, iq].max() )
                 # W = np.exp(- self.weight * np.power(Yi,2))
                 #print("Yi", Yi)
                 W = 1.0 * (Yi >= -500) #Andrei: why -50 here? what's the point? IS this why the thing is nan? Because W=1 for every value so gamma[0],gamma[1] end up divided by 0? THE OPPOSITE! It's because Yi was below -50 everywhere
@@ -170,10 +175,10 @@ class PowerFunctionGrid:
                 xbar       = ( Xi * W ).sum()
                 ybar       = ( Yi * W ).sum()
                 #print("in0, in1, xbar, ybar", in0, in1, xbar, ybar)
-                self.gamma_all[iz, in0, in1, 1] = ( (Xi-xbar) * (Yi-ybar) * W ).sum() / (  (Xi-xbar) * (Xi-ybar) * W ).sum()
+                self.gamma_all[iz, in0, in1, 1, iq] = ( (Xi-xbar) * (Yi-ybar) * W ).sum() / (  (Xi-xbar) * (Xi-ybar) * W ).sum()
                 #print("W and gamma_all[1]", W, self.gamma_all[iz, in0, in1, 1])
-                self.gamma_all[iz, in0, in1, 0] = ( (Yi - self.gamma_all[iz, in0, in1, 1]* Xi) * W ).sum()
-                self.gamma_all[iz, in0, in1, 4]   = W1[iz, in0, in1, :].max()
+                self.gamma_all[iz, in0, in1, 0, iq] = ( (Yi - self.gamma_all[iz, in0, in1, 1, iq]* Xi) * W ).sum()
+                self.gamma_all[iz, in0, in1, 4, iq]   = W1[iz, in0, in1, :, iq].max()
 
         rsq = 1 - self.mse(W1,J1)/ np.power(J1,2).sum()
         chg = (np.power(pj_last - self.gamma_all,2).mean(axis=(0,3)) / np.power(pj_last,2).mean(axis=(0,3))).mean()

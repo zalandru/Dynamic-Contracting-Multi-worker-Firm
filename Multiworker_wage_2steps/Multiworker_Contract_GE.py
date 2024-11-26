@@ -11,7 +11,7 @@ import shlex
 
 from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
-from search import JobSearchArray
+from search_GE import JobSearchArray
 from valuefunction_multi import PowerFunctionGrid
 from scipy.interpolate import RegularGridInterpolator
 from scipy.interpolate import interpn
@@ -55,6 +55,10 @@ def impose_decreasing(M):
         nv = M.shape[1]
         for v in reversed(range(nv-1)):
             M[:,v] = np.maximum(M[:,v],M[:,v+1])
+    elif len(M.shape)==5:
+        nv = M.shape[3]
+        for v in reversed(range(nv-1)):
+            M[:, :, :, v, :] = np.maximum(M[:, :, :, v, :],M[:, :, :, v+1, :])    
     else:
         nv = M.shape[1]        
         for v in reversed(range(nv-1)):
@@ -164,14 +168,16 @@ def interp_multidim_extra_dim(points, x,y):
 #Okay new perspective: focus on the fact that most points are under the same axis.
 
 @nb.njit(cache=True)
-def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, num_v, num_q):
-    for in0 in range(num_n): #Not this: we don't do the case for max juniors. for some reason separations fail otherwise
+def optimized_loop(pc, EW, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, num_v, num_q):
+    for in0 in range(num_n): 
         for in1 in range(num_n):
          if (N_grid1[in0] + N_grid1[in1] > n_bar):
           continue
          for iz in range(num_z):
-            for iv in range(num_v):
-             for iq in range(num_q):
+            for iq in range(num_q):
+             #assert np.all(EW[iz, in0, in1, 1:, iq] > EW[iz, in0, in1, :-1, iq])
+             for iv in range(num_v):
+
                 
                 rho_star[iz,in0, in1, iv,iq] = interp(0,
                                                     impose_increasing(foc[iz, in0, in1, :, iv,iq]),
@@ -186,9 +192,9 @@ def optimized_loop(pc, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, nu
                 #            0, impose_increasing(foc[iz, in0, in1, Isearch, iv, iq]), rho_grid[Isearch]
                 #        )
                 
-                #IqUt = ~(pc[iz, in0, in1, :, iq] > 0)
-                #if np.any(IqUt):
-                #    rho_star[iz, in0, in1, IqUt, iq] = rho_min
+                #Iquit = ~(pc[iz, in0, in1, :, iq] > 0)
+                #if np.any(Iquit):
+                #    rho_star[iz, in0, in1, Iquit, iq] = rho_min
 
     return rho_star
 
@@ -416,7 +422,7 @@ class MultiworkerContract:
 
         self.q = self.Q_grid[self.grid[4]]
 
-    def J(self,Jg=None,Wg=None,update_eq=1):    
+    def J(self,Jg=None,Wg=None,Ug=None,update_eq=1):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -437,7 +443,12 @@ class MultiworkerContract:
             W = np.copy(self.W)
         else:
             W = np.copy(Wg)
-        U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
+        if Ug is None:
+            U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
+        else:
+            U = np.copy(Ug)
+        
+        J = impose_decreasing(J)
         Rho = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]            
         print("J shape", J.shape)
         print("W shape", W.shape)        
@@ -471,7 +482,7 @@ class MultiworkerContract:
         ite_num = 0
         error_js = 1
         
-        # General eqUlibrium first time
+        # General equilibrium first time
         self.v_0 = U
         #self.v_grid = np.linspace(W[self.p.z_0-1,...,1].min(),W[self.p.z_0-1,...,1].max(),self.p.num_v)
         kappa, P = self.GE(Ez(J, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
@@ -547,7 +558,7 @@ class MultiworkerContract:
 
             #Future senior wage
             rho_star = optimized_loop(
-                pc, rho_grid, N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q) 
+                pc, EW, rho_grid, N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q) 
             
             #Future senior size
             pc_trans = np.moveaxis(pc,3,0)
@@ -599,6 +610,8 @@ class MultiworkerContract:
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EU+(1-sep_star)*(EW_star+re_star)))
             J= self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n0_star - \
                 wage_jun*size[...,0]  + self.p.beta * EJ_star
+            J = impose_decreasing(J)
+
             Rho = self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n0_star - \
                 wage_jun*size[...,0] + \
                 rho_grid[ax,ax,ax,:,ax]*size[...,1]*W[...,1] + self.p.beta * (ERho_star - rho_star*n1_star*EW_star)
@@ -608,16 +621,16 @@ class MultiworkerContract:
             W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
         
-            W[...,1] = W[...,1] * (J > 0) + U * (J <= 0)
-            Rho= Rho * (J > 0) + 0 * (J <= 0)
-            J[J <= 0] = 0
+            #W[...,1] = W[...,1] * (J > 0) + U * (J <= 0)
+            #Rho= Rho * (J > 0) + 0 * (J <= 0)
+            #J[J <= 0] = 0
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
             Rho = .2 * Rho + .8 * Rho2
             J= .2 * J + .8 * J2
             W[...,1:] = .2 * W[...,1:] + .8 * W2[...,1:] #we're completely ignoring the 0th step
 
-            
+
             # Updating J1 representation
             #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W[:,:,:,:,1], Ji)
 
@@ -632,7 +645,7 @@ class MultiworkerContract:
 
                     #error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W[...,1]), 100)
                     print("Errors:",  error_j1i, error_w1, error_js)                   
-                    if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
+                    if (np.array([error_w1, error_j1i, error_js]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
                     # ------ or update search function parameter using relaxation ------
@@ -640,10 +653,13 @@ class MultiworkerContract:
                             self.v_0 = U
                             print("U",U)
                             #self.v_grid = np.linspace(W[self.p.z_0-1, 0, 1, :, :,1].min(),W[self.p.z_0-1, 0, 1, :, :,1].max(),self.p.num_v)
-                            kappa, P = self.GE(EJ,W,J,n0_star,kappa)
+                            self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
+                            kappa, P = self.GE(EJ,W,kappa,J,n0_star)
                             #P_xv = self.matching_function(J1p.eval_at_W1(W)[self.p.z_0-1, 0, 1, :, 1])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
+                            #error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
+                            error_js = self.js.update(self.v_grid, P)
+                            #self.js.update(self.v_grid,P)
 
                 else:
                     # -----  check for termination ------
@@ -659,10 +675,10 @@ class MultiworkerContract:
                 #plt.show() # this will load image to console before executing next line of code
                 plt.plot(W[self.p.z_0-1, 0, 1, :, 0, 1], 1-pc_star[self.p.z_0-1, 0, 1, :, 0], label='Probability of the worker leaving across submarkets')      
                 plt.show()
+        self.P = P
+        return J,W,U,EW_star,pc_star,n0_star, n1_star
 
-        return J,W,EW_star,pc_star,n0_star, n1_star
-
-    def J_sep_dir(self,Jg=None,Wg=None,update_eq=1):    
+    def J_sep_dir(self,Jg=None,Wg=None,Ug=None,update_eq=1):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -684,7 +700,10 @@ class MultiworkerContract:
             W = np.copy(self.W)
         else:
             W = np.copy(Wg)
-        U = self.pref.utility_gross(self.unemp_bf)/(1-self.p.beta)
+        if Ug is None:
+            U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
+        else:
+            U = np.copy(Ug)
         print("J shape", J.shape)
         print("W shape", W.shape)        
         # create representation for J1p
@@ -1038,18 +1057,18 @@ class MultiworkerContract:
 
         #self.log.info('[{}][final]  W1= {:2.4e} J= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
         #                             ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        self.append_results_to_pickle(J, W, EW_star, sep_star, n0_star, n1_star)
+        self.append_results_to_pickle(J, W, U, EW_star, sep_star, n0_star, n1_star)
 
-        return J,W,EW_star,sep_star, n0_star, n1_star
-
-
+        return J,W,U,EW_star,sep_star, n0_star, n1_star
 
 
-    def GE(self,EJ,W,J=None,n0_star=None,kappa_old=None):
+
+
+    def GE(self,EJ,W,kappa_old=None,J=None,n0_star=None):
         #Find kappa, which is the hiring cost firms have to pay per worker unit
         #BIG NOTE: For now I'm assuming that all the firms start at the same productivity level, p.z_0-1, rather than the Schaal assumption of them drawing their productivity upon entering.
         #QUck method: Envelope Theorem
-        if (kappa_old is not None) and (n0_star[self.p.z_0-1,0,0,0,0] > 0) and (n0_star[self.p.z_0-1,0,0,0,0] == 0):
+        if (kappa_old is not None) and (n0_star[self.p.z_0-1,0,0,0,0] > 0):
             print("Fast kappa method")
             kappa = np.divide( -self.p.k_entry + J[self.p.z_0-1,0,0,0,0] + n0_star[self.p.z_0-1,0,0,0,0] * kappa_old, n0_star[self.p.z_0-1,0,0,0,0] )
         else:
@@ -1062,6 +1081,11 @@ class MultiworkerContract:
             n0_k[(EJ[self.p.z_0-1,1,0,0,0] - EJ[self.p.z_0-1,0,0,0,0]) / (self.N_grid[1] - self.N_grid[0]) - kappa_grid / self.p.beta <= 0] = 0
             entry = -n0_k * kappa_grid -self.p.k_f + self.p.beta * np.interp(n0_k,self.N_grid,EJ[self.p.z_0-1,:,0,0,0])
             kappa = np.interp(-self.p.k_entry,impose_increasing(-entry),kappa_grid)
+            #Smoothing the kappa
+            if kappa_old is not None:
+                smooth = 0.4
+                kappa = smooth * kappa + (1-smooth) * kappa_old
+
         print("kappa", kappa)
         #if kappa_old is not None:
         #    print("difference between the two methods")
@@ -1074,8 +1098,16 @@ class MultiworkerContract:
         # Instead, augment v_0 somehow??? util( inv_util[v_0 * (1-beta)] + signon * (1-beta) ) / (1-beta) = v_m
         #assert np.all((EW - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
         #signon_bonus = self.pref.inv_utility(self.v_grid - self.p.beta * self.v_0)
+        #So this guy isn't tooooooooooo bad... but it still blows up super quickly
+        #An alternative could be that, upon being signed, they get the bonus wage in addition to the unemp production
+        # u(w_bon+unemp.bf)+beta*v_0=v_m, so w_bon = u^{-1}(v_m-beta*v_0)-unemp.bf
+        signon_bonus = self.pref.inv_utility(self.v_grid - self.p.beta * self.v_0)-self.unemp_bf
+        #By the way, is the timing... working out? Because like this I'm very explicitly stating that, upon hiring, workers have 1 period of being useless.
+        #Moreover, that period is not part of the unemployment period, like this I would genuinely have a worker be useless for 1 period.
+
+
         #signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0) * (1 - self.p.beta)) / (1 - self.p.beta) #This is the bonus firms have to pay right upon hiring
-        signon_bonus = (self.pref.inv_utility(self.v_grid * (1 - self.p.beta)) - self.pref.inv_utility(self.v_0 * (1 - self.p.beta))) / (1 - self.p.beta)
+        #signon_bonus = (self.pref.inv_utility(self.v_grid * (1 - self.p.beta)) - self.pref.inv_utility(self.v_0 * (1 - self.p.beta))) / (1 - self.p.beta)
         signon_bonus[signon_bonus < 0] = 0
         #Another signon bonus alternative: just linear!!!
         #signon_bonus = self.v_grid - self.p.beta * self.v_0
@@ -1095,7 +1127,7 @@ class MultiworkerContract:
         #plt.show() # this will load image to console before executing next line of code
  
         return kappa, P
-    def append_results_to_pickle(self, J, W, EW_star, sep_star, n0_star, n1_star, pickle_file="results_hmq_sep.pkl"):
+    def append_results_to_pickle(self, J, W, U, EW_star, sep_star, n0_star, n1_star, pickle_file="results_hmq_sep.pkl"):
         # Step 1: Load the existing data from the pickle file
         try:
             with open(pickle_file, "rb") as file:
@@ -1105,7 +1137,7 @@ class MultiworkerContract:
             print("No existing file found. Creating a new one.")
 
         # Step 2: Create results for the multi-dimensional p
-        new_results = self.save_results_for_p(J, W, EW_star, sep_star, n0_star, n1_star)
+        new_results = self.save_results_for_p(J, W, U, EW_star, sep_star, n0_star, n1_star)
 
         # Step 3: Use a tuple (p.num_z, p.num_v, p.num_n) as the key
         key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.k_entry,self.p.k_f,self.p.prod_alpha,self.p.dt)
@@ -1183,5 +1215,7 @@ class MultiworkerContract:
 #from ContinuousContract import ContinuousContract
 #cc=ContinuousContract(p)
 
-#mwc_hmq=MultiworkerContract(p,cc.js)
-#(mwc_hmq_sd_J,mwc_hmq_sd_W,mwc_hmq_sd_Wstar,mwc_hmq_sd_sep,mwc_hmq_sd_n0,mwc_hmq_sd_n1)=mwc_hmq.J_sep_dir()
+#mwc_GE_J = objects['mwc_Rho_J']
+#mwc_GE_W = objects['mwc_Rho_W']
+#mwc_GE=MultiworkerContract(p)
+#(mwc_GE_J,mwc_GE_W,mwc_GE_Wstar,mwc_GE_sep,mwc_GE_n0,mwc_GE_n1)=mwc_GE.J(mwc_GE_J,mwc_GE_W,1)
