@@ -448,12 +448,12 @@ class MultiworkerContract:
         else:
             U = np.copy(Ug)
         
-        J = impose_decreasing(J)
+        #J = impose_decreasing(J)
         Rho = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]            
         print("J shape", J.shape)
         print("W shape", W.shape)        
         # create representation for J1p
-        #J1p = PowerFunctionGrid(W, Ji) #From valueFunction.py
+        J1p = PowerFunctionGrid(W, J) #From valueFunction.py
 
 
         EW_star = np.copy(J)
@@ -470,6 +470,7 @@ class MultiworkerContract:
 
         Rhoderiv = np.zeros_like(J)
         Wderiv = np.zeros_like(J)
+        Jpderiv = np.zeros_like(J)
 
         Rhod0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n)) #two extra size dimensions corresponding to future (arbitrary) sizes
         Wd0 = np.zeros_like(Rhod0)
@@ -484,7 +485,7 @@ class MultiworkerContract:
         
         # General equilibrium first time
         self.v_0 = U
-        #self.v_grid = np.linspace(W[self.p.z_0-1,...,1].min(),W[self.p.z_0-1,...,1].max(),self.p.num_v)
+        self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
         kappa, P = self.GE(Ez(J, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
         print("kappa", kappa)
         print("P", P)
@@ -506,11 +507,17 @@ class MultiworkerContract:
              print("EJinv diff 1 sen:", np.mean(np.abs((EJinv[:,0,1,:, 0]/pc_star[:,0,1,:, 0] - EJderiv[:,0,1,:, 0]) / EJderiv[:,0,1,:, 0])))
              print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,s,:, 0]/pc_star[:,0,s,:, 0] - EJderiv[:,0,s,:, 0]) / EJderiv[:,0,s,:, 0])))
 
-
+            # evaluate J1 tomorrow using our approximation
+            Jp = J1p.eval_at_W1(W[...,1])
+            #UPDATING RHO VIA THIS APPROXIMATION
+            if ite_num == 0:
+                Rho = Jp+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
+                Rho2 = np.copy(Rho)
+            
             # we compute the expected value next period by applying the transition rules
             EW = Ez(W[...,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
-            EJ = Ez(J, self.Z_trans_mat)
+            EJ = Ez(Jp, self.Z_trans_mat)
             ERho = Ez(Rho, self.Z_trans_mat)
             EU = U
 
@@ -529,19 +536,22 @@ class MultiworkerContract:
 
             # First boundary condition: forward difference            
             Rhoderiv[:, :, 0, ...] = (Rho[:, :, 1,  ...] - Rho[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
+            Jpderiv[:, :, 0, ...] = (Jp[:, :, 1,  ...] - Jp[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
             #Wderiv[:, :, 0, ...]     = (W[:, :, 1, :, :, 1] - W[:, :, 0, :, :, 1]) / (N_grid1[1] - N_grid1[0])
             # Last boundary condition: backward difference
             Rhoderiv[:, :, -1, ...] = Rho[:, :, -1,  ...] - Rho[:, :, -2,  ...]/ (N_grid1[-1] - N_grid1[-2])
+            Jpderiv[:, :, -1, ...] = Jp[:, :, -1,  ...] - Jp[:, :, -2,  ...]/ (N_grid1[-1] - N_grid1[-2])
             #Wderiv[:, :, -1, ...]     = W[:, :, -1, :, :, 1] - W[:, :, -2, :, :, 1]/ (N_grid1[-1] - N_grid1[-2])
             # Central differences: average of forward and backward differences
             Rhoderiv[:, :, 1:-1, ...] = (Rho[:, :, 2:,  ...] - Rho[:, :, :-2, ...]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
+            Jpderiv[:, :, 1:-1, ...] = (Jp[:, :, 2:,  ...] - Jp[:, :, :-2, ...]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
             #Wderiv[:, :, 1:-1, ...]     = (W[:, :, 2:, :, :, 1] - W[:, :, :-2, :, :, 1]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
 
             Jderiv = Rhoderiv-rho_grid[ax,ax,ax,:,ax]*W[...,1]
             #Jderiv = Rhoderiv+size[...,1]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
 
             #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
-            EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
+            EJinv=(Jpderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
             #EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
             #EJinv[J<=0] = 0
 
@@ -605,12 +615,12 @@ class MultiworkerContract:
             _, ru, _ = self.getWorkerDecisions(EU, employed=False)
             U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
             U = 0.2 * U + 0.8 * U2
-            self.v_0 = U
+            #self.v_0 = U
             # Update firm value function 
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EU+(1-sep_star)*(EW_star+re_star)))
             J= self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n0_star - \
                 wage_jun*size[...,0]  + self.p.beta * EJ_star
-            J = impose_decreasing(J)
+            #J = impose_decreasing(J)
 
             Rho = self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n0_star - \
                 wage_jun*size[...,0] + \
@@ -627,19 +637,19 @@ class MultiworkerContract:
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
             Rho = .2 * Rho + .8 * Rho2
-            J= .2 * J + .8 * J2
+            #J= .4 * J + .6 * J2
             W[...,1:] = .2 * W[...,1:] + .8 * W2[...,1:] #we're completely ignoring the 0th step
 
 
             # Updating J1 representation
-            #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W[:,:,:,:,1], Ji)
+            error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W[...,1], J)
 
             # Compute convergence criteria
             error_j1i = array_exp_dist(J,J2,100) #np.power(J - J2, 2).mean() / np.power(J2, 2).mean()  
             error_w1 = array_dist(W[...,1:], W2[...,1:])
 
             # update worker search decisions
-            if (ite_num % 50) == 0:
+            if (ite_num % 10) == 0:
                 if update_eq:
                     # -----  check for termination ------
 
@@ -657,8 +667,8 @@ class MultiworkerContract:
                             kappa, P = self.GE(EJ,W,kappa,J,n0_star)
                             #P_xv = self.matching_function(J1p.eval_at_W1(W)[self.p.z_0-1, 0, 1, :, 1])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            #error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
-                            error_js = self.js.update(self.v_grid, P)
+                            error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
+                            #error_js = self.js.update(self.v_grid, P)
                             #self.js.update(self.v_grid,P)
 
                 else:
@@ -671,9 +681,9 @@ class MultiworkerContract:
                             and ite_num > 50):
                         break
             if (ite_num % 400) == 0:   
-                #plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function')        
+                plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function')        
                 #plt.show() # this will load image to console before executing next line of code
-                plt.plot(W[self.p.z_0-1, 0, 1, :, 0, 1], 1-pc_star[self.p.z_0-1, 0, 1, :, 0], label='Probability of the worker leaving across submarkets')      
+                #plt.plot(W[self.p.z_0-1, 0, 1, :, 0, 1], 1-pc_star[self.p.z_0-1, 0, 1, :, 0], label='Probability of the worker leaving across submarkets')      
                 plt.show()
         self.P = P
         return J,W,U,EW_star,pc_star,n0_star, n1_star
@@ -1081,10 +1091,11 @@ class MultiworkerContract:
             n0_k[(EJ[self.p.z_0-1,1,0,0,0] - EJ[self.p.z_0-1,0,0,0,0]) / (self.N_grid[1] - self.N_grid[0]) - kappa_grid / self.p.beta <= 0] = 0
             entry = -n0_k * kappa_grid -self.p.k_f + self.p.beta * np.interp(n0_k,self.N_grid,EJ[self.p.z_0-1,:,0,0,0])
             kappa = np.interp(-self.p.k_entry,impose_increasing(-entry),kappa_grid)
-            #Smoothing the kappa
-            if kappa_old is not None:
-                smooth = 0.4
-                kappa = smooth * kappa + (1-smooth) * kappa_old
+
+        #Smoothing the kappa
+        if kappa_old is not None:
+            smooth = 0.8
+            kappa = smooth * kappa + (1-smooth) * kappa_old
 
         print("kappa", kappa)
         #if kappa_old is not None:
@@ -1097,7 +1108,7 @@ class MultiworkerContract:
         # Okay, this didn't work lmao
         # Instead, augment v_0 somehow??? util( inv_util[v_0 * (1-beta)] + signon * (1-beta) ) / (1-beta) = v_m
         #assert np.all((EW - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
-        #signon_bonus = self.pref.inv_utility(self.v_grid - self.p.beta * self.v_0)
+        signon_bonus = self.pref.inv_utility(self.v_grid - self.p.beta * self.v_0)
         #So this guy isn't tooooooooooo bad... but it still blows up super quickly
         #An alternative could be that, upon being signed, they get the bonus wage in addition to the unemp production
         # u(w_bon+unemp.bf)+beta*v_0=v_m, so w_bon = u^{-1}(v_m-beta*v_0)-unemp.bf
