@@ -35,7 +35,7 @@ class Parameters:
         self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
         # Vacancy cost
-        self.hire_c = 7.0
+        self.hire_c = 6.0
         #HMQ
         self.q_0 = 1.0 #Starting match q
         self.prod_q = 1.0 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
@@ -45,7 +45,7 @@ class Parameters:
         self.u_bf_m = 1.0        #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         #self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
-        self.k_entry = 10.0 # was 200
+        self.k_entry = 30.0 # was 200
         self.k_f = 0.0
 
         #Min wage

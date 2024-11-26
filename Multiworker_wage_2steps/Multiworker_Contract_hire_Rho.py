@@ -504,7 +504,9 @@ class MultiworkerContract:
             # evaluate J1 tomorrow using our approximation
             Jp = J1p.eval_at_W1(W[...,1])
             #UPDATING RHO VIA THIS APPROXIMATION
-            Rho = Jp+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
+            if ite_num == 0:
+                Rho = Jp+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
+                Rho2 = np.copy(Rho)
 
             # we compute the expected value next period by applying the transition rules
             EW = Ez(W[...,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
@@ -542,7 +544,7 @@ class MultiworkerContract:
             #Jderiv = Rhoderiv+size[...,1]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
 
             #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
-            EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
+            EJinv=(Jpderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
             #EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
             
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
