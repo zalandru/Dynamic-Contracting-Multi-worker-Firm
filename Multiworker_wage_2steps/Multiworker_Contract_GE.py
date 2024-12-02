@@ -422,7 +422,7 @@ class MultiworkerContract:
 
         self.q = self.Q_grid[self.grid[4]]
 
-    def J(self,Jg=None,Wg=None,Ug=None,update_eq=1):    
+    def J(self,Jg=None,Wg=None,Ug=None,Rhog=None,update_eq=1):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -447,9 +447,12 @@ class MultiworkerContract:
             U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
         else:
             U = np.copy(Ug)
+        if Rhog is None:
+            Rho = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]            
+        else:
+            Rho = np.copy(Rhog)        
         
         #J = impose_decreasing(J)
-        Rho = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]            
         print("J shape", J.shape)
         print("W shape", W.shape)        
         # create representation for J1p
@@ -482,35 +485,28 @@ class MultiworkerContract:
 
         ite_num = 0
         error_js = 1
-        
+
+        # evaluate J1 tomorrow using our approximation
+        Jp = J1p.eval_at_W1(W[...,1])        
         # General equilibrium first time
         self.v_0 = U
         self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
-        kappa, P = self.GE(Ez(J, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
+        kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
         print("kappa", kappa)
         print("P", P)
         self.js.update(self.v_grid,P)
         
-        # evaluate J1 tomorrow using our approximation
-        #Jpi = J1p.eval_at_W1(W[...,1])
+
         for ite_num in range(self.p.max_iter):
             J2 = J
             W2 = np.copy(W)
             Rho2 = Rho
             U2 = U
-            if ite_num>1:
-             print("EJinv", EJinv[self.p.z_0-1,1,2,50, 0]/pc_star[self.p.z_0-1,1,2,50, 0])
-             print("EJderiv", EJderiv[self.p.z_0-1,1,2,50, 0])
-             j = np.where(N_grid==1)
-             s = np.where(N_grid1==2)
-             print("EJinv diff 1j 2s:", np.mean(np.abs((EJinv[:,j,s,:, 0]/pc_star[:,j,s,:, 0] - EJderiv[:,j,s,:, 0]) / EJderiv[:,j,s,:, 0])))
-             print("EJinv diff 1 sen:", np.mean(np.abs((EJinv[:,0,1,:, 0]/pc_star[:,0,1,:, 0] - EJderiv[:,0,1,:, 0]) / EJderiv[:,0,1,:, 0])))
-             print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,s,:, 0]/pc_star[:,0,s,:, 0] - EJderiv[:,0,s,:, 0]) / EJderiv[:,0,s,:, 0])))
 
             # evaluate J1 tomorrow using our approximation
             Jp = J1p.eval_at_W1(W[...,1])
             #UPDATING RHO VIA THIS APPROXIMATION
-            if ite_num == 0:
+            if ite_num == 0 & Rhog is None:
                 Rho = Jp+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
                 Rho2 = np.copy(Rho)
             
@@ -596,17 +592,6 @@ class MultiworkerContract:
                 EJ_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EJ[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
                 EW_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EW[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
 
-
-            #Getting the derivative of the future job value wrt n1:
-            floorn1=np.floor(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)
-            ceiln1=np.ceil(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)            
-            for iz in range(self.p.num_z):
-                for in11 in range(self.p.num_n): 
-                    Rho_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), ERho[iz, :, in11, ...], bounds_error=False, fill_value=None)
-                    Rhod0[iz, ..., in11] = Rho_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
-            ERhoderiv = ERhoDerivative(Rhod0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
-            EJderiv = ERhoderiv - rho_star * EW_star
-
             
             assert np.isnan(EW_star).sum() == 0, "EW_star has NaN values"
 
@@ -637,7 +622,7 @@ class MultiworkerContract:
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
             Rho = .2 * Rho + .8 * Rho2
-            #J= .4 * J + .6 * J2
+            J= .2 * J + .8 * J2
             W[...,1:] = .2 * W[...,1:] + .8 * W2[...,1:] #we're completely ignoring the 0th step
 
 
@@ -680,6 +665,28 @@ class MultiworkerContract:
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
+            #Comparing Ejinv to the future deriv
+            if (ite_num % 50) == 0:
+             #Getting the derivative of the future job value wrt n1:
+             floorn1=np.floor(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)
+             ceiln1=np.ceil(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)            
+             for iz in range(self.p.num_z):
+                for in11 in range(self.p.num_n): 
+                    
+                    Rho_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), ERho[iz, :, in11, ...], bounds_error=False, fill_value=None)
+                    #W_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EW[iz, :, in11, ...], bounds_error=False, fill_value=None)
+                    Rhod0[iz, ..., in11] = Rho_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
+                    #Wd0[iz, ..., in11] = W_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
+             ERhoderiv = ERhoDerivative(Rhod0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
+             EJderiv = ERhoderiv - rho_star * EW_star
+             print("EJinv", EJinv[self.p.z_0-1,1,2,50, 0]/pc_star[self.p.z_0-1,1,2,50, 0])
+             print("EJderiv", EJderiv[self.p.z_0-1,1,2,50, 0])
+             j = np.where(N_grid==1)
+             s = np.where(N_grid1==2)
+             print("EJinv diff 1j 2s:", np.mean(np.abs((EJinv[:,j,s,:, 0]/pc_star[:,j,s,:, 0] - EJderiv[:,j,s,:, 0]) / EJderiv[:,j,s,:, 0])))
+             print("EJinv diff 1 sen:", np.mean(np.abs((EJinv[:,0,1,:, 0]/pc_star[:,0,1,:, 0] - EJderiv[:,0,1,:, 0]) / EJderiv[:,0,1,:, 0])))
+             print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,s,:, 0]/pc_star[:,0,s,:, 0] - EJderiv[:,0,s,:, 0]) / EJderiv[:,0,s,:, 0])))
+
             if (ite_num % 400) == 0:   
                 plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function')        
                 #plt.show() # this will load image to console before executing next line of code

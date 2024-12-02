@@ -89,6 +89,21 @@ class PowerFunctionGrid:
                 J1_hat[iz, in0, in1,:, iq] = self.eval_at_zxv(iz,in0,in1,W1[iz, in0, in1, :, iq], iq)
         # make a for loop on x,z
         return(J1_hat)
+    
+    #Or evaluate as size up/down
+    def eval_at_diff_size(self,W1,size_d):
+        J1_up = np.zeros(W1.shape)        
+        for iz in range(self.num_z):
+            for in0 in range(self.num_n):
+             for iq in range(self.num_q): 
+              if size_d>=0:  
+                for in1 in range(self.num_n-size_d):     
+                    J1_up[iz, in0, in1,:, iq] = self.eval_at_zxv(iz,in0,in1+size_d,W1[iz, in0, in1, :, iq], iq)
+              else:
+                for in1 in range(-size_d, self.num_n): #Negative shift    
+                    J1_up[iz, in0, in1,:, iq] = self.eval_at_zxv(iz,in0,in1+size_d,W1[iz, in0, in1, :, iq], iq)                  
+        return(J1_up)
+
 
     def mse(self,W1,J1):
         mse_val = 0

@@ -45,7 +45,7 @@ class Parameters:
         self.u_bf_m = 1.0        #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         #self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
-        self.k_entry = 30.0 # was 200
+        self.k_entry = 20.0 # was 200
         self.k_f = 0.0
 
         #Min wage
@@ -106,7 +106,7 @@ class Parameters:
         self.verbose          = 5
         self.iter_display     = 25
         self.tol_simple_model = 1e-8
-        self.tol_full_model   = 1e-8
+        self.tol_full_model   = 1e-7
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
         self.eq_weighting_at0 = 0.01      # fitting J function with weight around 0
