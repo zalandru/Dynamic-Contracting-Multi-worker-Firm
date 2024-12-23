@@ -4,9 +4,9 @@
 """
 
 import numpy as np
-from scipy.optimize import minimize,nnls
+from scipy.optimize import minimize,nnls, differential_evolution
 import matplotlib.pyplot as plt
-
+import warnings
 def curve_fit_search_and_grad(gamma, Xi, Yi, Xmax): #Andrei: Xi is worker's value, Yi is job's value
     Xi_arg = (Xmax + np.exp(gamma[3]) - Xi)/ 100.0
     Xi_pow = np.power( Xi_arg , gamma[2])
@@ -66,10 +66,18 @@ class PowerFunctionGrid:
                     for in1 in range(self.num_n):#again num_n as the size grid si the same for the two steps
                      for iq in range(self.num_q):
                         p0[0] = J1[iz, in0, in1, 0, iq] #The first guess is set to J1 at the lowest promise
-                        res2 = minimize(curve_fit_search_and_grad, p0, jac=True,
-                                        options={'gtol': 1e-8, 'disp': False, 'maxiter': 2000},
-                                        args=(W1[iz, in0, in1, :, iq, 1], J1[iz, in0, in1, :, iq], W1[iz, in0, in1, : , iq, 1].max())) 
+                        #res2 = minimize(curve_fit_search_and_grad, p0, jac=True,
+                        #                options={'gtol': 1e-10, 'disp': False, 'maxiter': 10000},
+                        #                args=(W1[iz, in0, in1, :, iq, 1], J1[iz, in0, in1, :, iq], W1[iz, in0, in1, : , iq, 1].max())) 
+                        bounds = [(p0[0] - 100, p0[0] + 100), (-100000, 0), (-100, 0), (np.log(0.001), np.log(100.0))]  # Example bounds for gamma[0], gamma[1], etc.
+                        res2 = differential_evolution(
+                                lambda g: curve_fit_search_and_grad(g, W1[iz, in0, in1, :, iq, 1], J1[iz, in0, in1, :, iq], W1[iz, in0, in1, : , iq, 1].max())[0],
+                                bounds=bounds,
+                                strategy='best1bin',
+                                maxiter=1000,
+                                tol=1e-7)
                         p0 = res2.x
+                        print("Gammas after init", iz, in0, in1, iq, res2.x)
                         self.gamma_all[iz, in0, in1, 0:4, iq] = res2.x
                         self.gamma_all[iz, in0, in1, 4, iq]   = W1[iz, in0, in1, :, iq, 1].max() #Andrei: I'm confused. Is this not part of the [0:4]?
                         self.rsqr[iz, in0, in1, iq] = res2.fun / np.power(J1[iz, in0, in1, :, iq],2).mean()
@@ -86,7 +94,7 @@ class PowerFunctionGrid:
             for in0 in range(self.num_n):
              for in1 in range(self.num_n):
               for iq in range(self.num_q):
-                J1_hat[iz, in0, in1,:, iq] = self.eval_at_zxv(iz,in0,in1,W1[iz, in0, in1, :, iq], iq)
+                J1_hat[iz, in0, in1, :, iq] = self.eval_at_zxv(iz,in0,in1,W1[iz, in0, in1, :, iq], iq)
         # make a for loop on x,z
         return(J1_hat)
     
@@ -117,7 +125,7 @@ class PowerFunctionGrid:
 
         return(mse_val)
 
-    def update(self,W1,J1,lr,nsteps):
+    def update(self,W1,J1,lr):
         """
         Updates the parameters gamma using nsteps newton steps and lr as the learning rate
         :param W1: W1 input values to fit
@@ -140,7 +148,7 @@ class PowerFunctionGrid:
 
         return(mean_update/(self.num_z))
 
-    def update_cst(self,W1,J1,lr,nsteps):
+    def update_cst(self,W1,J1,lr):
         """
         Updates the parameters gamma using nsteps newton steps and lr as the learning rate
         :param W1: W1 input values to fit
@@ -155,10 +163,10 @@ class PowerFunctionGrid:
         for iz in range(self.num_z):
          for in0 in range(self.num_n):
             for in1 in range(self.num_n):#again num_n as the size grid si the same for the two steps
-            
-                val,grad = curve_fit_search_and_grad( self.gamma_all[iz, in0, in1,0:4], W1[iz, in0, in1, :], J1[iz, in0, in1, :], W1[iz, in0, in1, :].max() )
-                self.gamma_all[iz, in0, in1, 0:2] = self.gamma_all[iz, in0, in1,0:2] - lr * grad[0:2]
-                self.gamma_all[iz, in0, in1, 4]   = W1[iz, in0, in1, :].max()
+             for iq in range(self.num_q):
+                val,grad = curve_fit_search_and_grad( self.gamma_all[iz, in0, in1,0:4, iq], W1[iz, in0, in1, :, iq], J1[iz, in0, in1, :, iq], W1[iz, in0, in1, :, iq].max() )
+                self.gamma_all[iz, in0, in1, 0:2, iq] = self.gamma_all[iz, in0, in1,0:2, iq] - lr * grad[0:2]
+                self.gamma_all[iz, in0, in1, 4, iq]   = W1[iz, in0, in1, :, iq].max()
                 tot_update_chg += np.abs(lr * grad[0:2]).mean()
 
         return(tot_update_chg/(self.num_z))
@@ -185,19 +193,39 @@ class PowerFunctionGrid:
                 Xi,Yi = curve_fit_search_terms( self.gamma_all[iz, in0, in1, 0:4, iq], W1[iz, in0, in1, :, iq], J1[iz, in0, in1, :, iq], W1[iz, in0, in1, :, iq].max() )
                 # W = np.exp(- self.weight * np.power(Yi,2))
                 #print("Yi", Yi)
-                W = 1.0 * (Yi >= -500) #Andrei: why -50 here? what's the point? IS this why the thing is nan? Because W=1 for every value so gamma[0],gamma[1] end up divided by 0? THE OPPOSITE! It's because Yi was below -50 everywhere
-                W = W / W.sum()
-                xbar       = ( Xi * W ).sum()
-                ybar       = ( Yi * W ).sum()
+                W = 1.0 * (Yi >= -50) #Andrei: why -50 here? what's the point? IS this why the thing is nan? Because W=1 for every value so gamma[0],gamma[1] end up divided by 0? THE OPPOSITE! It's because Yi was below -50 everywhere
+                with warnings.catch_warnings(record=True) as w:
+                    warnings.simplefilter("always", RuntimeWarning)  # Catch RuntimeWarnings
+                    W = W / W.sum()
+                    xbar       = ( Xi * W ).sum()
+                    ybar       = ( Yi * W ).sum()
+                    check = ( (Xi-xbar) * (Yi-ybar) * W ).sum() / (  (Xi-xbar) * (Xi-ybar) * W ).sum()
                 #print("in0, in1, xbar, ybar", in0, in1, xbar, ybar)
-                self.gamma_all[iz, in0, in1, 1, iq] = ( (Xi-xbar) * (Yi-ybar) * W ).sum() / (  (Xi-xbar) * (Xi-ybar) * W ).sum()
-                #print("W and gamma_all[1]", W, self.gamma_all[iz, in0, in1, 1])
-                self.gamma_all[iz, in0, in1, 0, iq] = ( (Yi - self.gamma_all[iz, in0, in1, 1, iq]* Xi) * W ).sum()
-                self.gamma_all[iz, in0, in1, 4, iq]   = W1[iz, in0, in1, :, iq].max()
+                    if any(issubclass(warning.category, RuntimeWarning) for warning in w):
+                        print("Warning encountered, function will not return a valid result.")
+                        continue  # Or handle appropriately
+                    else:
+                        self.gamma_all[iz, in0, in1, 1, iq] = check
+                        #print("W and gamma_all[1]", W, self.gamma_all[iz, in0, in1, 1])
+                        self.gamma_all[iz, in0, in1, 0, iq] = ( (Yi - self.gamma_all[iz, in0, in1, 1, iq]* Xi) * W ).sum()
+                        self.gamma_all[iz, in0, in1, 4, iq]   = W1[iz, in0, in1, :, iq].max()
 
         rsq = 1 - self.mse(W1,J1)/ np.power(J1,2).sum()
         chg = (np.power(pj_last - self.gamma_all,2).mean(axis=(0,3)) / np.power(pj_last,2).mean(axis=(0,3))).mean()
         return(chg,rsq)
+
+    def update_local_min(self, W1, J1):
+        for iz in range(self.num_z):
+                for in0 in range(self.num_n):
+                    for in1 in range(self.num_n):#again num_n as the size grid si the same for the two steps
+                     for iq in range(self.num_q):       
+                        p0 = self.gamma_all[iz,in0,in1,:-1,iq]
+                        res2 = minimize(curve_fit_search_and_grad, p0, jac=True,
+                                        options={'gtol': 1e-5, 'disp': False, 'maxiter': 300},
+                                        args=( W1[iz, in0, in1, :, iq, 1], J1[iz, in0, in1, :, iq], W1[iz, in0, in1, : , iq, 1].max())) 
+                        self.gamma_all[iz, in0, in1, 0:4, iq] = res2.x
+                        self.gamma_all[iz, in0, in1, 4, iq]   = W1[iz, in0, in1, :, iq, 1].max()
+
 
 class PowerFunctionGrid2:
     """ Class that represents the value function using a power function representation.
