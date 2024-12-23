@@ -119,8 +119,11 @@ class ContinuousContract:
         Ji= self.simple_J
         W1i=np.zeros((self.p.num_z, self.p.num_v))
         W1i=W1i+self.v_grid[ax,:]
-
+        U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
         J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
+
+        W1i[ Ji < 0 ] = U
+        Ji[ Ji < 0 ] = 0  
 
         EW1_star = np.copy(Ji)
         EJ1_star = np.copy(Ji)
@@ -138,6 +141,7 @@ class ContinuousContract:
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = W1i
+            U2 = np.copy(U)
 
             # evaluate J1 tomorrow using our approximation
             Jpi = J1p.eval_at_W1(W1i)
@@ -145,6 +149,8 @@ class ContinuousContract:
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
             EJpi = Exz(Jpi, self.Z_trans_mat)
+            EU = U
+
             #EW1i = W1i
             #EJpi = Jpi
             # get worker decisions
@@ -163,7 +169,7 @@ class ContinuousContract:
 
             for iz in range(self.p.num_z):
 
-                assert np.all(EW1i[iz, 1:] >= EW1i[iz, :-1]) #Andrei: check that worker value is increasing in v
+                #assert np.all(EW1i[iz, 1:] >= EW1i[iz, :-1]) #Andrei: check that worker value is increasing in v
                     # find highest V with J2J search
                 rho_bar[iz] = np.interp(self.js.jsa.e0, EW1i[iz, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
                 rho_min = rho_grid[pc[iz, :] > 0].min()  # lowest promised rho with continuation > 0
@@ -199,6 +205,10 @@ class ContinuousContract:
             # get pstar, qstar
             pe_star, re_star, pc_star = self.getWorkerDecisions(EW1_star)
 
+            _, ru, _ = self.getWorkerDecisions(EU, employed=False)
+            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
+            U = 0.4 * U + 0.6 * U2
+
             # Update firm value function 
             #Andrei: why is the w_grid still preset? Doesn't it depend on what you promised to the worker?
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
@@ -211,6 +221,10 @@ class ContinuousContract:
             #plt.plot(W1i[self.p.z_0-1, :], pe_star[self.p.z_0-1, :], label='Probability of the worker leaving across submarkets')      
             #plt.show()
             W1i = .4 * W1i + .6 * W1i2
+
+            #Firm exit:
+            #W1i[ Ji < 0 ] = U
+            #Ji[ Ji < 0 ] = 0
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
 
