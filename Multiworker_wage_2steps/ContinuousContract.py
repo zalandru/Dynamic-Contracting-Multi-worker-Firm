@@ -81,6 +81,7 @@ class ContinuousContract:
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
         self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
         self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+        print(self.js.jsa.e0)
         #self.re=self.js.re
         #self.pc = self.getWorkerDecisions(self.simple_v_grid[ax, :,ax]) #shit, re is an array, not a function!! why???
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
@@ -122,8 +123,8 @@ class ContinuousContract:
         U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
         J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
 
-        W1i[ Ji < 0 ] = U
-        Ji[ Ji < 0 ] = 0  
+        #W1i[ Ji < 0 ] = U
+        #Ji[ Ji < 0 ] = 0  
 
         EW1_star = np.copy(Ji)
         EJ1_star = np.copy(Ji)
@@ -148,7 +149,7 @@ class ContinuousContract:
             #print("Jpi-Ji max:", np.max(np.abs(Jpi-Ji)))
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
-            EJpi = Exz(Jpi, self.Z_trans_mat)
+            EJpi = Exz(Ji, self.Z_trans_mat)
             EU = U
 
             #EW1i = W1i
@@ -237,20 +238,21 @@ class ContinuousContract:
             if (ite_num % 10) == 0:
                 if update_eq:
                     # -----  check for termination ------
-                    if (np.array([error_w1, error_js, error_j1p_chg]).max() < self.p.tol_full_model
+                    if (np.array([error_j1i,error_w1, error_js, error_j1p_chg]).max() < self.p.tol_full_model
                             and ite_num > 50):
+                        P_xv = self.matching_function(Ji[self.p.z_0-1, :])
                         plt.plot(W1i[self.p.z_0-1, :], P_xv, label='Probability of finding a job across submarkets')      
                         plt.show()
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
-
+                            #P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
+                            P_xv = self.matching_function(Ji[self.p.z_0-1, :])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
                             error_js = self.js.update(W1i[self.p.z_0-1, :], P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
-                    if (np.array([error_w1, error_j1g]).max() < self.p.tol_full_model
+                    if (np.array([error_j1i,error_w1, error_j1g]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
 

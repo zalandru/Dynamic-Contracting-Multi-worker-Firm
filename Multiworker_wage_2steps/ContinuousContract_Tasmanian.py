@@ -71,27 +71,40 @@ class ContinuousContract:
         # Transition matrices
         self.Z_trans_mat = createPoissonTransitionMatrix(self.p.num_z, self.p.z_corr)
         
-        self.w_grid = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v )
-        self.rho_grid=1/self.pref.utility_1d(self.w_grid)
-        a = (self.rho_grid[0])
-        b = (self.rho_grid[-1])
+        self.w_grid_bas = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v )
+        self.rho_grid_bas=1/self.pref.utility_1d(self.w_grid_bas)
+        a = (self.rho_grid_bas[0])
+        b = (self.rho_grid_bas[-1])
         #Tasmanian Setup
         # Create a global sparse grid
         dim = 1
         outputs = 1
-        depth = 30
+        depth = 4
+        type = "level"
+        rule = "rleja"
         self.grid = {}
-        for iz in range(self.p.num_z):
-            self.grid[iz] = Tasmanian.TasmanianSparseGrid()
+        self.gridE = {}
+
+        self.grid[self.p.z_0-1] = Tasmanian.TasmanianSparseGrid()
             # Using a global polynomial rule for demonstration:
-            self.grid[iz].makeGlobalGrid(dim, outputs, depth, "level", "rleja")
+            #self.grid[iz].makeGlobalGrid(dim, outputs, depth, type, rule)
+        self.grid[self.p.z_0-1].makeLocalPolynomialGrid(dim, outputs, depth)
+            #Can also consider trying different depth options rather than "level", see https://ornl.github.io/TASMANIAN/stable/group__SGEnumerates.html#ga145e27d5ae92acdd5f74149c6d4f2ca2
             #Good methods: "clenshaw-curtis", rleja" maybe?, "gauss-patterson" kinda overdoes it, "leja" is good but requires higher depth (like 10)... still not many points though!
-            self.grid[iz].setDomainTransform(np.column_stack((a, b)))
+        self.grid[self.p.z_0-1].setDomainTransform(np.column_stack((a, b)))
+        #Tring out just a single grid for the expectation
+        for iz in range(self.p.num_z):
+            self.gridE[iz] = Tasmanian.TasmanianSparseGrid()
+        # Using a global polynomial rule for demonstration:
+            #self.gridE[iz].makeGlobalGrid(dim, outputs, depth, type, rule)
+            self.gridE[iz].makeLocalPolynomialGrid(dim, outputs, depth)
+            self.gridE[iz].setDomainTransform(np.column_stack((a, b)))
         # Get the points where Tasmanian wants J evaluated
-        self.points = self.grid[0].getPoints()  # shape = (N,4)
+        self.points = self.grid[self.p.z_0-1].getPoints()  # shape = (N,4)
+        print(self.points.shape)
         self.sorted_indices = np.argsort(self.points[:,0])
-        inverse_indices = np.zeros_like(self.sorted_indices)
-        inverse_indices[self.sorted_indices] = np.arange(len(self.sorted_indices))
+        self.inverse_indices = np.zeros_like(self.sorted_indices)
+        self.inverse_indices[self.sorted_indices] = np.arange(len(self.sorted_indices))
         self.points_sorted = self.points[self.sorted_indices]
         #So now, we already have the values rho_grid at each of these points! They're points[:,0]
         #But should I work with Rho instead of J? Since the Tasmanian should operate on a constant grid, defining it through J may be bad... but let's try it! lol
@@ -99,25 +112,28 @@ class ContinuousContract:
         # Value Function Setup
         self.J_grid   = -10 * np.ones((self.p.num_z, self.points.shape[0])) #grid of job values, first productivity, then starting value, then tenure level
 
-        self.rho_grid = self.points[:,0]
-        print(self.rho_grid.shape)
+        self.rho_grid = self.points_sorted[:,0]
         self.w_grid = self.rho_grid #Due to log utlity!
+
         #Gotta fix the tightness+re functions somehow. Ultra simple J maybe?
         #self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
         self.v_grid = np.divide(self.pref.utility(self.w_grid),1-self.p.beta)
         self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
 
+        self.v_grid_bas = np.divide(self.pref.utility(self.w_grid_bas),1-self.p.beta)
+        self.simple_J_bas=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid_bas[ax,:]*(1-self.p.beta)),1-self.p.beta)    
         #Loading the grid
         # Load these values into the Tasmanian grid
-        for iz in range(self.p.num_z):        
-            self.grid[iz].loadNeededPoints(self.simple_J[iz,:,ax])
+        #for iz in range(self.p.num_z):        
+        self.grid[self.p.z_0-1].loadNeededPoints(self.simple_J[self.p.z_0-1,self.inverse_indices,ax])
         
         #Apply the matching function: take the simple function and consider its different values across v.
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
-            np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
+            np.divide(self.p.kappa, np.maximum(self.simple_J_bas[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
         self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
-        self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+        self.js.update(self.v_grid_bas[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+        print(self.js.jsa.e0)
         #self.re=self.js.re
         #self.pc = self.getWorkerDecisions(self.simple_v_grid[ax, :,ax]) #shit, re is an array, not a function!! why???
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
@@ -169,7 +185,7 @@ class ContinuousContract:
 
 
         rho_bar = np.zeros((self.p.num_z))
-        rho_star = np.zeros((self.p.num_z, self.p.num_v))
+        rho_star = np.zeros((self.p.num_z, self.rho_grid.shape[0]))
 
         # prepare expectation call
         Exz = oe.contract_expression('av,az->zv', W1i.shape, self.Z_trans_mat.shape)
@@ -184,15 +200,24 @@ class ContinuousContract:
             U2 = np.copy(U)
 
             # evaluate J1 tomorrow using our approximation
-            #for iz in range(self.p.num_z):
-            #    Jpi[iz,:] = self.grid[iz].evaluateBatch(self.points)[:,0]
+            if ite_num>=0:
+                #for iz in range(self.p.num_z):
+                    #Jpi[iz,:] = self.grid[iz].evaluateBatch(self.points_sorted)[:,0]
+                #    Jpi[iz,:] = self.grid[iz].getLoadedValues()[self.sorted_indices,0]
+                if ite_num==0:
+                    print("Jpi simple J diff 0 ", (Jpi[0,:]-self.simple_J[0,:]).max())
+                    print("Jpi simple J diff 1 ", (Jpi[1,:]-self.simple_J[1,:]).max())
+                    print("Jpi simple J diff 2 ", (Jpi[2,:]-self.simple_J[2,:]).max())
             #    Jpi[iz,:] = self.grid[iz].getValues()
             #Jpi = J1p.eval_at_W1(W1i)
             #print("Jpi-Ji max:", np.max(np.abs(Jpi-Ji)))
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
-            EJpi = Exz(Jpi, self.Z_trans_mat)
+            EJpi = Exz(Ji, self.Z_trans_mat)
             EU = U
+
+            for iz in range(self.p.num_z):
+                self.gridE[iz].loadNeededPoints(EJpi[iz, self.inverse_indices, ax])
 
             #EW1i = W1i
             #EJpi = Jpi
@@ -212,9 +237,10 @@ class ContinuousContract:
 
             for iz in range(self.p.num_z):
 
-                #assert np.all(EW1i[iz, 1:] >= EW1i[iz, :-1]) #Andrei: check that worker value is increasing in v
+                assert np.all(EW1i[iz, 1:] >= EW1i[iz, :-1]) #Andrei: check that worker value is increasing in v
                     # find highest V with J2J search
                 rho_bar[iz] = np.interp(self.js.jsa.e0, EW1i[iz, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
+                #print("e0", self.js.jsa.e0)
                 rho_min = rho_grid[pc[iz, :] > 0].min()  # lowest promised rho with continuation > 0
                     #Andrei: so we look for the shadow cost that will satisfy the foc? Yes, look for u'(w'), with u'(w) given, so that the foc is satisfied
                     # look for FOC below  rho_0
@@ -239,10 +265,21 @@ class ContinuousContract:
 
                     # get EW1_Star and EJ1_star
                 EW1_star[iz, :] = np.interp(rho_star[iz, :], rho_grid, EW1i[iz, :])
-                EJ1_star[iz, :] = np.interp(rho_star[iz, :], rho_grid, EJpi[iz, :]) #Andrei: how does interpolating the shadow cost give us the future Value?
-                    #Andrei: rather, we're interpolating the Job value at the point of the optimal shadow cost. still confused as to why its a shadow cost rather than lambda
-                    #Or, more like, we're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
-                    #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
+                #EJ1_star[iz, :] = np.interp(rho_star[iz, :], rho_grid, EJpi[iz, :]) #Andrei: how does interpolating the shadow cost give us the future Value?
+                #Trying evaluate instead! AHHHHHHHHHH shit! Only works with EJ! Okay, then for now let's just do EJ.
+                #J_d = np.zeros_like(Ji)
+                #J_int = np.zeros_like(Ji)
+                #for izz in range(self.p.num_z):
+                #    J_d[izz,:] = self.grid[izz].evaluateBatch(rho_star[iz,:,ax])[:,0]
+                #    J_int[izz,:] = np.interp(rho_star[iz, :], rho_grid, Ji[izz, :])
+                #print("Difference btw batch eval and interpolation", np.abs(J_d-J_int).max())
+                #EJ1_star_d = Exz(J_d, self.Z_trans_mat)
+                #print("Expectation diff", np.abs((self.gridE[iz].evaluateBatch(rho_star[iz,:,ax])[:,0]-EJ1_star[iz,:])).max())
+                #print("Expectation diff of interpolation order", np.abs((Exz(J_int, self.Z_trans_mat)[iz,:]-EJ1_star[iz,:])).max())
+
+                EJ1_star[iz, :] = self.gridE[iz].evaluateBatch(rho_star[iz,:,ax])[:,0]
+                
+
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
             # get pstar, qstar
@@ -269,8 +306,9 @@ class ContinuousContract:
             #W1i[ Ji < 0 ] = U
             #Ji[ Ji < 0 ] = 0
             # Updating J1 representation
-            for iz in range(self.p.num_z):        
-                self.grid[iz].loadNeededPoints(self.Ji[iz,...])
+  
+            J_inverted = Ji[self.p.z_0-1, self.inverse_indices, ax]
+            self.grid[self.p.z_0-1].loadNeededPoints(J_inverted)
             #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
 
             # Compute convergence criteria
@@ -282,20 +320,25 @@ class ContinuousContract:
             if (ite_num % 10) == 0:
                 if update_eq:
                     # -----  check for termination ------
-                    if (np.array([error_w1, error_js]).max() < self.p.tol_full_model
+                    if (np.array([error_j1i,error_w1, error_js]).max() < self.p.tol_full_model
                             and ite_num > 50):
-                        plt.plot(W1i[self.p.z_0-1, :], P_xv, label='Probability of finding a job across submarkets')      
+                        Wrange = np.interp(self.rho_grid_bas,rho_grid,W1i[self.p.z_0-1,:])
+                        P_xv = self.matching_function(self.grid[self.p.z_0-1].evaluateBatch(self.rho_grid_bas[:,ax])[:,0]) #This currently isn't evaluating outside the original points!
+                        plt.plot(Wrange, P_xv, label='Probability of finding a job across submarkets')      
                         plt.show()
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            P_xv = self.matching_function(self.grid[self.p.z_0-1].evaluateBatch(self.points)[:,0])
+                            Wrange = np.interp(self.rho_grid_bas,rho_grid,W1i[self.p.z_0-1,:])
+                            P_xv = self.matching_function(self.grid[self.p.z_0-1].evaluateBatch(self.rho_grid_bas[:,ax])[:,0]) #This currently isn't evaluating outside the original points!
 
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            error_js = self.js.update(W1i[self.p.z_0-1, :], P_xv, type=1, relax=relax)
+                            error_js = self.js.update(Wrange, P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
-                    if (np.array([error_w1]).max() < self.p.tol_full_model
+                    #plt.plot(W1i[self.p.z_0-1, :],Ji[self.p.z_0-1,:], label='Value function')      
+                    #plt.show()
+                    if (np.array([error_j1i,error_w1]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
 
@@ -305,7 +348,7 @@ class ContinuousContract:
 
         #self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
         #                             ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        return Ji,W1i,EW1_star,Jpi,pc_star
+        return Ji,W1i,EW1_star, rho_star, Jpi,pc_star
 
 
     def construct_z_grid(self):
