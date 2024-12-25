@@ -73,13 +73,14 @@ class ContinuousContract:
         
         self.w_grid_bas = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v )
         self.rho_grid_bas=1/self.pref.utility_1d(self.w_grid_bas)
+
+        #Tasmanian Setup
         a = (self.rho_grid_bas[0])
         b = (self.rho_grid_bas[-1])
-        #Tasmanian Setup
         # Create a global sparse grid
         dim = 1
         outputs = 1
-        depth = 4
+        depth = 6
         type = "level"
         rule = "rleja"
         self.grid = {}
@@ -87,7 +88,7 @@ class ContinuousContract:
 
         self.grid[self.p.z_0-1] = Tasmanian.TasmanianSparseGrid()
             # Using a global polynomial rule for demonstration:
-            #self.grid[iz].makeGlobalGrid(dim, outputs, depth, type, rule)
+        #self.grid[self.p.z_0-1].makeGlobalGrid(dim, outputs, depth, type, rule)
         self.grid[self.p.z_0-1].makeLocalPolynomialGrid(dim, outputs, depth)
             #Can also consider trying different depth options rather than "level", see https://ornl.github.io/TASMANIAN/stable/group__SGEnumerates.html#ga145e27d5ae92acdd5f74149c6d4f2ca2
             #Good methods: "clenshaw-curtis", rleja" maybe?, "gauss-patterson" kinda overdoes it, "leja" is good but requires higher depth (like 10)... still not many points though!
@@ -200,14 +201,10 @@ class ContinuousContract:
             U2 = np.copy(U)
 
             # evaluate J1 tomorrow using our approximation
-            if ite_num>=0:
+            #if ite_num>=0:
                 #for iz in range(self.p.num_z):
                     #Jpi[iz,:] = self.grid[iz].evaluateBatch(self.points_sorted)[:,0]
                 #    Jpi[iz,:] = self.grid[iz].getLoadedValues()[self.sorted_indices,0]
-                if ite_num==0:
-                    print("Jpi simple J diff 0 ", (Jpi[0,:]-self.simple_J[0,:]).max())
-                    print("Jpi simple J diff 1 ", (Jpi[1,:]-self.simple_J[1,:]).max())
-                    print("Jpi simple J diff 2 ", (Jpi[2,:]-self.simple_J[2,:]).max())
             #    Jpi[iz,:] = self.grid[iz].getValues()
             #Jpi = J1p.eval_at_W1(W1i)
             #print("Jpi-Ji max:", np.max(np.abs(Jpi-Ji)))
@@ -311,6 +308,8 @@ class ContinuousContract:
             self.grid[self.p.z_0-1].loadNeededPoints(J_inverted)
             #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
 
+            #Surplus refinement: could be useful, but because here I'm working with both J and EJ, this may become a mess.
+            #self.grid[self.p.z_0-1].setSurplusRefinement(1e-20,-1,'classic')
             # Compute convergence criteria
             error_j1i = array_exp_dist(Ji,Ji2,100) #np.power(Ji - Ji2, 2).mean() / np.power(Ji2, 2).mean()  
             #error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i), 100)
