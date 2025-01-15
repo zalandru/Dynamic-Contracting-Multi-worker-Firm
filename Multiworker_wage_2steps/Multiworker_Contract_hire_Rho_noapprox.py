@@ -732,8 +732,8 @@ class MultiworkerContract:
             U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
         else:
             U = np.copy(Ug)
-        W[J<0] = U
-        J[J<0] = 0
+        #W[J<0] = U
+        #J[J<0] = 0
         Rho = J+ size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]        
 
         print("Jshape", J.shape)
@@ -929,9 +929,9 @@ class MultiworkerContract:
             W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
         
-            W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
-            Rho[J <= 0] = 0
-            J[J < 0] = 0
+            #W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
+            #Rho[J <= 0] = 0
+            #J[J < 0] = 0
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
 
