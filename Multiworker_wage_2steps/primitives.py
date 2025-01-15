@@ -22,7 +22,7 @@ class Parameters:
 
         # Points in the Model
         self.num_l  = 101     # Number of points of evaluation
-        self.num_v  = 200     # Number of points in the grid for V
+        self.num_v  = 100     # Number of points in the grid for V
         self.num_x  = 15      # Number of points of support for worker productivity
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
         self.num_np = 5       # Number of non-permanent levels
@@ -46,7 +46,7 @@ class Parameters:
         #self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
         self.k_entry = 60.0 # was 200
-        self.k_f = 2.0
+        self.k_f = 1.0
 
         #Min wage
         self.min_wage = 0 * self.u_bf_m

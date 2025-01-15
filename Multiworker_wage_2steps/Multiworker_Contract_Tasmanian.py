@@ -168,39 +168,15 @@ def interp_multidim_extra_dim(points, x,y):
 #Okay new perspective: focus on the fact that most points are under the same axis.
 
 @nb.njit(cache=True)
-def optimized_loop(pc, EW, rho_grid, N_grid1, foc, rho_star, num_z, num_n, n_bar, num_v, num_q):
-    for in0 in range(num_n): 
-        for in1 in range(num_n):
-         if (N_grid1[in0] + N_grid1[in1] > n_bar):
+def optimized_loop(pc, size, rho_grid_bas, foc, rho_star, num_z, n_bar):
+    for ip in range(size.shape[0]): 
+         if (size[ip,0] + size[ip,1] > n_bar):
           continue
          for iz in range(num_z):
-            for iq in range(num_q):
-             #if ite_num>200:
-             #   assert np.all(EW[iz, in0, in1, 1:, iq] >= EW[iz, in0, in1, :-1, iq])
-             Isearch = (pc[iz, in0, in1, :, iq] <= 1.0)
-             #Imax = np.min(np.where(pc[iz, in0, in1, :, iq] >= 1.0-1e-3))
-             #rho_star[iz,in0, in1, 0, iq] = interp(0,
-             #                                       impose_increasing(foc[iz, in0, in1, Isearch, 0, iq]),
-             #                                       rho_grid[Isearch])               
-             for iv in range(num_v):
-                #Isearch = (rho_grid >= rho_star[iz,in0,in1,iv-1,iq])#?? Would that be faster? Would allow me to interpolate less and less, esp for large enough v
-                rho_star[iz,in0, in1, iv, iq] = interp(0,
-                                                    impose_increasing(foc[iz, in0, in1, Isearch, iv, iq]),
-                                                    rho_grid[Isearch])  
-                #rho_min = np.min(rho_grid[pc[iz, in0, in1, :, iq] > 0])  # Lowest promised rho with continuation > 0
-                #Isearch = (pc[iz, in0, in1, :, iq] > 0)
-                
-                #if np.any(Isearch):
-                #    Isearch_indices = np.where(Isearch)[0]
-                #    for iv in Isearch_indices:
-                 #       rho_star[iz, in0, in1, iv,iq] = interp(
-                #            0, impose_increasing(foc[iz, in0, in1, Isearch, iv, iq]), rho_grid[Isearch]
-                #        )
-                
-                #IqUt = ~(pc[iz, in0, in1, :, iq] > 0)
-                #if np.any(IqUt):
-                #    rho_star[iz, in0, in1, IqUt, iq] = rho_min
-
+            #Isearch = (rho_grid >= rho_star[iz,in0,in1,iv-1,iq])#?? Would that be faster? Would allow me to interpolate less and less, esp for large enough v
+            rho_star[iz, ip] = interp(0,
+                                    impose_increasing(foc[iz, ip, :]),
+                                    rho_grid_bas)  
     return rho_star
 
 @nb.njit(cache=True,parallel=True)
@@ -302,7 +278,7 @@ class MultiworkerContract:
     """
         This solves a contract model with DRS production, hirings, and heterogeneous match quality.
     """
-    def __init__(self, input_param=None, js=None):
+    def __init__(self, depth, input_param=None, js=None):
         """
             Initialize with a parameter object.
             :param input_param: Input parameter object, can be None
@@ -343,11 +319,11 @@ class MultiworkerContract:
         #Tasmanian Setup
         a = (self.N_grid_bas[0],self.N_grid1_bas[0],self.rho_grid_bas[0],self.p.q_0)
         b = (self.N_grid_bas[-1],self.N_grid1_bas[-1],self.rho_grid_bas[-1],1)
+        anisotropic_weights = [1, 1, 2, 1] #More weight on v_grid
         # Create a global sparse grid
         dim = 4
         outputs = 1
-        depth = 5
-        type = "level"
+        type = "iptotal"
         rule = "rleja"
         #self.grid = {}
         self.gridE = {}
@@ -363,25 +339,25 @@ class MultiworkerContract:
         for iz in range(self.p.num_z):
             self.gridE[iz] = Tasmanian.TasmanianSparseGrid()
         # Using a global polynomial rule for demonstration:
-            #self.gridE[iz].makeGlobalGrid(dim, outputs, depth, type, rule)
-            self.gridE[iz].makeLocalPolynomialGrid(dim, outputs, depth)
+            self.gridE[iz].makeGlobalGrid(dim, outputs, depth, type, rule)
+            #self.gridE[iz].makeLocalPolynomialGrid(dim, outputs, depth)
             self.gridE[iz].setDomainTransform(np.column_stack((a, b)))
         # Get the points where Tasmanian wants J evaluated
         self.points = self.gridE[self.p.z_0-1].getPoints()  # shape = (N,4)
         print(self.points.shape)
-        self.sorted_indices = np.argsort(self.points[:,2])
-        self.inverse_indices = np.zeros_like(self.sorted_indices)
-        self.inverse_indices[self.sorted_indices] = np.arange(len(self.sorted_indices))
-        self.points_sorted = self.points[self.sorted_indices]
+        #self.sorted_indices = np.argsort(self.points[:,2])
+        #self.inverse_indices = np.zeros_like(self.sorted_indices)
+        #self.inverse_indices[self.sorted_indices] = np.arange(len(self.sorted_indices))
+        #self.points_sorted = self.points[self.sorted_indices]
 
-        self.size = self.points_sorted[:,:2]
-        self.rho_grid = self.points_sorted[:,2]
+        self.size = self.points[:,:2]
+        self.rho_grid = self.points[:,2]
         self.w_grid = self.rho_grid
         #Setting up q. A bit more costly since I'm adding an extra dimension in advance (not needed in the 2 tenure case) and setting its value at the jun level as well.
         #BUT the code will look much more clear like this
         self.q = np.zeros_like(self.size)
         self.q[:,0] = self.p.q_0
-        self.q[:,1] = self.points_sorted[:,-1]
+        self.q[:,1] = self.points[:,-1]
         
         
         # Transition matrices
@@ -397,7 +373,7 @@ class MultiworkerContract:
             self.sum_size += self.size[:,k]
             self.sum_sizeadj += self.size[:,k] * (self.p.prod_q +self.q[:,k]*(1.0-self.p.prod_q))
         for k in range(1,self.size.shape[1]):
-            self.sum_wage += self.w_grid[:,k]*self.size[:,k] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
+            self.sum_wage += self.w_grid*self.size[:,k] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
 
                 
 
@@ -452,10 +428,6 @@ class MultiworkerContract:
         """
         sum_wage = self.sum_wage
         rho_grid = self.rho_grid
-        N_grid = self.N_grid
-        N_grid1 = self.N_grid1
-        Q_grid = self.Q_grid
-        grid = self.grid
         size = self.size
         q = self.q
 
@@ -472,9 +444,9 @@ class MultiworkerContract:
         else:
             U = np.copy(Ug)
         #J = impose_decreasing(J)
-        W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
-        J[J < 0] = 0
-        Rho = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]        
+        #W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
+        #J[J < 0] = 0
+        Rho = J + size[...,1]*rho_grid[ax,:]*W[...,1]        
 
         print("Jshape", J.shape)
         print("W shape", W.shape)        
@@ -485,22 +457,30 @@ class MultiworkerContract:
 
         EW_star = np.copy(J)
         EJ_star = np.copy(J)
+        ERho_star = np.copy(J)
         EJderiv = np.zeros_like(J)
         Jderiv = np.zeros_like(J)
         rho_star = np.zeros_like(J)
+        rho_star = rho_star + rho_grid[ax,:]
         sep_star = np.zeros_like(J)
-        
-        n0_star = np.zeros_like(J)      
-        n1_star = np.zeros_like(J)   
+        #Setting up the initial guesses since they need to be used in the foc
+        n0_star = np.zeros_like(J)
+        n0_star = n0_star + size[ax,:,0]    
+        n1_star = np.zeros_like(J) 
+        n1_star = n1_star + size[ax,:,1]  #Can make them one??? Do that later!
+        q_star = np.zeros_like(J)         
+        q_star = q_star + q[ax,:, 1]
+        print("q star shape init", q_star.shape)
 
         Rhoderiv = np.zeros_like(J)
         Wderiv = np.zeros_like(J)
         Rhod0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q, self.p.num_n)) #two extra size dimensions corresponding to future (arbitrary) sizes
         Wd0 = np.zeros_like(Rhod0)
-
-
+        #Der
+        Rhodn1 = np.zeros((self.p.num_z,self.points.shape[0],self.p.num_v))
+        EW_prime = np.zeros_like(Rhodn1) #EW' = [d ERho' / d rho'] / n'_1
         # prepare expectation call
-        Ez = oe.contract_expression('anmvq,az->znmvq', J.shape, self.Z_trans_mat.shape)
+        Ez = oe.contract_expression('ap,az->zp', J.shape, self.Z_trans_mat.shape)
         log_diff = np.zeros_like(EW_star)
 
         ite_num = 0
@@ -513,13 +493,6 @@ class MultiworkerContract:
             Rho2 = np.copy(Rho)
 
 
-            # evaluate J1 tomorrow using our approximation
-            #Jp = J1p.eval_at_W1(W[...,1])
-            #UPDATING RHO VIA THIS APPROXIMATION
-            #if ite_num == 0:
-            #    Rho = Jp+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
-            #    Rho2 = np.copy(Rho)
-
             # we compute the expected value next period by applying the transition rules
             EW = Ez(W[...,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
@@ -527,99 +500,80 @@ class MultiworkerContract:
             ERho = Ez(Rho, self.Z_trans_mat)
             EU = U
 
+            for iz in range(self.p.num_z):
+                self.gridE[iz].loadNeededPoints(ERho[iz, :, ax])            
 
+            #Getting necessary derivatives: wrt n'1 and rho'. This may end up very costly. A potential cut could be current rho, hidden inside the ip.
+            #An alternative would be going back to inverting the value, but that would still require differentiating (current) Rho at all the iz*pt
+            # , and at the cost of approximating Rho. That would also bring up the question of getting EW' at a whole bunch of points where it's unidentified
+            for iz in range(self.p.num_z):
+                for ip in range(self.points.shape[0]):
+                    for iv in range(self.p.num_v):
+                        jac = self.gridE[iz].differentiate(np.array([n0_star[iz, ip], n1_star[iz, ip], self.rho_grid_bas[iv], q_star[iz, ip]]))
+                        Rhodn1[iz,ip,iv] = jac[1]
+                        EW_prime[iz,ip,iv] = jac[2] / n1_star[iz,ip] #Follows the foc of Rho wrt omega (theory)/ rho' (code)
+            assert np.isnan(EW_prime).sum() == 0
+            print("EWprime range", EW_prime.min(),EW_prime.max())
+            EW_prime = np.maximum(EW_prime, -1000)
             # get worker decisions
-            _, re, pc = self.getWorkerDecisions(EW)
+            _, re, pc = self.getWorkerDecisions(EW_prime)
             # get worker decisions at EW + epsilon
-            _, _, pc_d = self.getWorkerDecisions(EW + self.deriv_eps) 
-           
+            _, _, pc_d = self.getWorkerDecisions(EW_prime + self.deriv_eps) 
+            assert np.all( pc <= 1.0)
             # compute derivative where continuation probability is >0
             #Andrei: continuation probability is pc, that the worker isn't fired and doesn't leave
             log_diff = np.zeros_like(pc)
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
 
-            # First boundary condition: forward difference            
-            Rhoderiv[:, :, 0, ...] = (Rho[:, :, 1,  ...] - Rho[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
-            Jderiv[:, :, 0, ...] = (J[:, :, 1,  ...] - J[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
-            Wderiv[:, :, 0, ...]     = (W[:, :, 1, :, :, 1] - W[:, :, 0, :, :, 1]) / (N_grid1[1] - N_grid1[0])
-            # Last boundary condition: backward difference
-            Rhoderiv[:, :, -1, ...] = Rho[:, :, -1,  ...] - Rho[:, :, -2,  ...]/ (N_grid1[-1] - N_grid1[-2])
-            Jderiv[:, :, -1, ...] = J[:, :, -1,  ...] - J[:, :, -2,  ...]/ (N_grid1[-1] - N_grid1[-2])
-            Wderiv[:, :, -1, ...]     = W[:, :, -1, :, :, 1] - W[:, :, -2, :, :, 1]/ (N_grid1[-1] - N_grid1[-2])
-            # Central differences: average of forward and backward differences
-            Rhoderiv[:, :, 1:-1, ...] = (Rho[:, :, 2:,  ...] - Rho[:, :, :-2, ...]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
-            Jderiv[:, :, 1:-1, ...] = (J[:, :, 2:,  ...] - J[:, :, :-2, ...]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
-            Wderiv[:, :, 1:-1, ...]     = (W[:, :, 2:, :, :, 1] - W[:, :, :-2, :, :, 1]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])
-
-            Jderiv = Rhoderiv-rho_grid[ax,ax,ax,:,ax]*W[...,1]
-            #Jderiv = Jderiv+size[...,1]*rho_grid[ax,ax,ax,:, ax]*Wderiv #accounting for the fact that size change also impacts W
-
-            #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:]-self.fun_prod*self.prod_diff)/self.p.beta #creating expected job value as a function of today's value
-            EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
-            #EJinv[:,0,0,:] = (Jderiv[:,0,0,:]+self.w_grid[ax,:]-self.fun_prod[:,0,0,:]*self.prod_diff[:,0,0,:])/self.p.beta
             
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
             #Because of this, the values are modified with size according to the following formula:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
 
             #dim 0 is prod, dim 1 and 2 are size, dim 3 is future v, dim 4 is today's v, dim 5 is hmq
-            foc = rho_grid[ax, ax, ax, :, ax, ax] - (EJinv[:, :, :, ax, :, :] / pc[...,ax,:])* (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-            foc = foc*self.sum_size[..., ax, :] - size[..., ax, :,1]*rho_grid[ax, ax, ax, ax, :, ax] - size[..., ax, :,0]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW[..., ax, :]+re[..., ax, :]))
+            #dim 0 is prod, dim 1 is points (includes size, current rho and q), dim 2 is future rho
+            jun_wage = self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW_prime+re))
+            foc = self.rho_grid_bas[ax, ax, :] - Rhodn1 * (log_diff / self.deriv_eps)
+            foc = foc*self.sum_size[ax, :, ax] - size[ax, :, ax, 1]*rho_grid[ax, :, ax] - size[ax, :, ax, 0] / jun_wage
 
-            if ite_num>10000000000000:
-                floorn1=np.floor(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)
-                ceiln1=np.ceil(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)            
-                for iz in range(self.p.num_z):
-                    for in11 in range(self.p.num_n): 
-                    
-                        Rho_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), ERho[iz, :, in11, ...], bounds_error=False, fill_value=None)
-                        #W_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EW[iz, :, in11, ...], bounds_error=False, fill_value=None)
-                        Rhod0[iz, ..., in11] = Rho_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
-                        #Wd0[iz, ..., in11] = W_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
-                ERhoderiv = ERhoDerivative(Rhod0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
-                EJderiv = ERhoderiv - rho_star * EW_star
-                foc = rho_grid[ax, ax, ax, :, ax, ax] - EJderiv[:, :, :, ax, :, :]* (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-                foc = foc*self.sum_size[..., ax, :] - size[..., ax, :,1]*rho_grid[ax, ax, ax, ax, :, ax] - size[..., ax, :,0]/self.pref.inv_utility_1d(self.v_0-self.p.beta*(EW[..., ax, :]+re[..., ax, :]))
-
+ 
             #assert (np.isnan(foc) & (pc[..., ax, :] > 0)).sum() == 0, "foc has NaN values where p>0"
-
-
             #Future senior wage
             rho_star = optimized_loop(
-                pc, EW, rho_grid, N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q) 
-            
+                pc, size, self.rho_grid_bas, foc, rho_star, self.p.num_z, self.p.n_bar)
+
             #Future senior size
-            pc_trans = np.moveaxis(pc,3,0)
-            rho_trans = np.moveaxis(rho_star,3,0)
-            
-            n1_star = (size[...,0]*(1-sep_star)+size[...,1])*np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
-            q_star = (size[...,0]* np.minimum(self.p.q_0,1-sep_star)+q*size[...,1])/(size[...,0]*(1-sep_star)+size[...,1])
+            pc_trans = np.moveaxis(pc,2,0)
+            rho_trans = np.moveaxis(rho_star,1,0)
+            xx = interp_multidim(rho_trans,self.rho_grid_bas,pc_trans)
+            n1_star = (size[ax, :, 0] * (1-sep_star) + size[ax, :, 1]) * np.moveaxis(xx,0,1)
+            #n1_star = (size[ax, :, 0] * (1-sep_star) + size[ax, :, 1]) * np.interp (rho_star, self.rho_grid_bas, pc[])
+            q_star = (size[ax, :, 0] * np.minimum(self.p.q_0,1-sep_star)+q[ax, :, 1] * size[ax, :, 1]) / (size[ax, :, 0] * (1-sep_star) + size[ax, :, 1])
             
             #Getting hiring decisions
             n0_star[...] = 0
-            for iz in range(self.p.num_z):
-                for in00 in range(self.p.num_n):
+            #for iz in range(self.p.num_z):
+            #    for in00 in range(self.p.num_n):
 
-                    Rho_interpolator = RegularGridInterpolator((N_grid1, rho_grid, Q_grid), ERho[iz, in00, ...], bounds_error=False, fill_value=None)
+            #        Rho_interpolator = RegularGridInterpolator((N_grid1, rho_grid, Q_grid), ERho[iz, in00, ...], bounds_error=False, fill_value=None)
                     #W_interpolator = RegularGridInterpolator((N_grid1, rho_grid, Q_grid), EW[iz, in00, ...], bounds_error=False, fill_value=None)
-                    Rhod0[iz, ..., in00] = Rho_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
+            #        Rhod0[iz, ..., in00] = Rho_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
                     #Wd0[iz, ..., in00] = W_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
-            if ite_num >= 10:
+            #if ite_num >= 10:
                 #Ihire = ((Jd0[...,1]-Jd0[...,0]+rho_star*n1_star*(Wd0[...,1]-Wd0[...,0])) > self.p.hire_c/self.p.beta) & (N_grid[self.grid[1]]+N_grid1[self.grid[2]] < self.p.n_bar )
-                Ihire = ((Rhod0[...,1]-Rhod0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (size[...,0]+size[...,1] < self.p.n_bar)
-                n0_star = n0(Rhod0, n0_star, N_grid, Ihire, self.p.hire_c / self.p.beta)
+            #    Ihire = ((Rhod0[...,1]-Rhod0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (size[...,0]+size[...,1] < self.p.n_bar)
+            #    n0_star = n0(Rhod0, n0_star, N_grid, Ihire, self.p.hire_c / self.p.beta)
 
 
 
             #Future optimal expectations
-            ERho_star = interp_multidim(n0_star,N_grid,np.moveaxis(Rhod0,-1,0))
-            #EW_star = interp_multidim(n0_star,N_grid,np.moveaxis(Wd0,-1,0))
-            for iz in range(self.p.num_z):  
-                #ERho_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), ERho[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
+            #ERho_star = interp_multidim(n0_star,N_grid,np.moveaxis(Rhod0,-1,0))
+            for iz in range(self.p.num_z):
+                ERho_star[iz,:] = self.gridE[iz].evaluateBatch(np.array([n0_star[iz,:],n1_star[iz,:],rho_star[iz,:],q_star[iz,:]]).T)[:,0]
+                for ip in range(self.points.shape[0]):
+                    EW_star = self.gridE[iz].differentiate(np.array([n0_star[iz,ip],n1_star[iz,ip],rho_star[iz,ip],q_star[iz,ip]]))[2] / n1_star[iz,ip]
 
-                EJ_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EJ[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
-                EW_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EW[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             #EJ_star = ERho_star - rho_star * n1_star * EW_star
             assert np.isnan(EW_star).sum() == 0, "EW_star has NaN values"
 
@@ -631,40 +585,41 @@ class MultiworkerContract:
             U = 0.2 * U + 0.8 * U2
 
             # Update firm value function 
-            J= self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - self.p.k_f - \
-                self.pref.inv_utility(self.v_0-self.p.beta*(EW_star+re_star))*size[...,0]  + self.p.beta * EJ_star
+            #J= self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - self.p.k_f - \
+            #    self.pref.inv_utility(self.v_0-self.p.beta*(EW_star+re_star))*size[...,0]  + self.p.beta * EJ_star
             #J = impose_decreasing(J)
-            #Update the dual value function rho
-            Rho = self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - self.p.k_f - \
-                self.pref.inv_utility(self.v_0-self.p.beta*(EW_star+re_star))*size[...,0] + \
-                rho_grid[ax,ax,ax,:,ax]*size[...,1]*W[...,1] + self.p.beta * (ERho_star - rho_star*n1_star*EW_star)
+
             # Update worker value function
-            W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
+            W[...,1] = self.pref.utility(self.w_grid[ax, :]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
+
+            #Update the dual value function rho
+            Rho = self.fun_prod[:, ax]*self.prod[ax, :] - sum_wage[ax, :] - self.p.hire_c * n0_star - self.p.k_f - \
+                self.pref.inv_utility(self.v_0-self.p.beta*(EW_star+re_star))*size[ax, :,0] + \
+                rho_grid[ax,:]*size[ax, :, 1]*W[...,1] + self.p.beta * (ERho_star - rho_star*n1_star*EW_star)
             #Rho = J+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
 
             #J= Rho - size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
 
-            W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
-            Rho[J <= 0] = 0
-            J [J < 0] = 0
+            #W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
+            #Rho[J <= 0] = 0
+            #J [J < 0] = 0
 
 
-            Rho_alt = J+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
-            comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[0]) & ( J > 0)
-            print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
+            #Rho_alt = J+size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
+            #comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[0]) & ( J > 0)
+            #print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
             #print("Max diff point", np.where(np.abs((Rho_alt-Rho)/Rho)==np.max(np.abs((Rho_alt-Rho)/Rho))))
 
             Rho = .2 * Rho + .8 * Rho2
-            J= .2 * J + .8 * J2
+            #J= .2 * J + .8 * J2
             W[...,1:] = .2 * W[...,1:] + .8 * W2[...,1:] #we're completely ignoring the 0th step
 
 
-            # Updating J representation
-            #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W[...,1], J)
+
 
             # Compute convergence criteria
-            error_j1i = array_exp_dist(J,J2,100) #np.power(J- Ji2, 2).mean() / np.power(Ji2, 2).mean()  
+            error_j1i = array_exp_dist(Rho,Rho2,100) #np.power(J- Ji2, 2).mean() / np.power(Ji2, 2).mean()  
             error_w1 = array_dist(W[...,1:], W2[...,1:])
 
             # update worker search decisions
@@ -691,29 +646,9 @@ class MultiworkerContract:
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
-            #Comparing Ejinv to the future deriv
-            if (ite_num % 50) == 0:
-             #Getting the derivative of the future job value wrt n1:
-             floorn1=np.floor(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)
-             ceiln1=np.ceil(np.interp( n1_star, N_grid1, range(self.p.num_n))).astype(int)            
-             for iz in range(self.p.num_z):
-                for in11 in range(self.p.num_n): 
-                    
-                    Rho_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), ERho[iz, :, in11, ...], bounds_error=False, fill_value=None)
-                    #W_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EW[iz, :, in11, ...], bounds_error=False, fill_value=None)
-                    Rhod0[iz, ..., in11] = Rho_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
-                    #Wd0[iz, ..., in11] = W_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
-             ERhoderiv = ERhoDerivative(Rhod0,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
-             EJderiv = ERhoderiv - rho_star * EW_star
-             print("EJinv", EJinv[self.p.z_0-1,1,2,50, 0]/pc_star[self.p.z_0-1,1,2,50, 0])
-             print("EJderiv", EJderiv[self.p.z_0-1,1,2,50, 0])
-             j = np.where(N_grid==1)
-             s = np.where(N_grid1==2)
-             print("EJinv diff 1j 2s:", np.mean(np.abs((EJinv[:,j,s,:, 0]/pc_star[:,j,s,:, 0] - EJderiv[:,j,s,:, 0]) / EJderiv[:,j,s,:, 0])))
-             print("EJinv diff 1 sen:", np.mean(np.abs((EJinv[:,0,1,:, 0]/pc_star[:,0,1,:, 0] - EJderiv[:,0,1,:, 0]) / EJderiv[:,0,1,:, 0])))
-             print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,s,:, 0]/pc_star[:,0,s,:, 0] - EJderiv[:,0,s,:, 0]) / EJderiv[:,0,s,:, 0])))
+
             if (ite_num % 1000) == 0:   
-                plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function') 
+                plt.plot(W[self.p.z_0-1, 20 ,1], Rho[self.p.z_0-1, 20], label='1 senior value function') 
                 #plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], Jderiv[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function') 
                        
                 #plt.show() # this will load image to console before executing next line of code
