@@ -10,7 +10,7 @@ from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransi
 from search import JobSearchArray
 from valuefunction_multi import PowerFunctionGrid
 from scipy.interpolate import RegularGridInterpolator
-from scipy.interpolate import interpn
+from scipy.interpolate import make_splrep
 from regulargrid.cartesiangrid import CartesianGrid
 import numba as nb
 import Tasmanian
@@ -438,7 +438,7 @@ class MultiworkerContract:
         #depth = 20
         outputs = 1
         type = "iptotal"
-        rule = "rleja"
+        rule = "gauss-patterson"
         #self.grid = {}
         self.gridE = {}
 
@@ -828,17 +828,17 @@ class MultiworkerContract:
             EU = U
 
             for iz in range(self.p.num_z):
-                if ite_num > 0:
-                    self.gridE[iz].setSurplusRefinement(8e-1,-1)
-                    self.gridE[iz].mergeRefinement()
+                #if ite_num > 0 & (ite_num % 10) == 0:
+                #    self.gridE[iz].setSurplusRefinement(1.5,-1)
+                #    self.gridE[iz].mergeRefinement()
                 points = self.gridE[iz].getPoints()
                 print("Points number", iz, points.shape)
                 interpolator = RegularGridInterpolator(
                 (N_grid, N_grid1, rho_grid, Q_grid),  # Grids defining your function
                 ERho[iz,...],  # The function values on the grid
                 bounds_error=False,  # Allow extrapolation outside the grid
-                fill_value=None      # Use NaN for out-of-bounds points if extrapolation occurs
-                )
+                fill_value=None)      # Use NaN for out-of-bounds points if extrapolation occurs
+                
                 neededpoints = interpolator(points)
                 self.gridE[iz].loadNeededPoints(neededpoints[:,ax])
 
@@ -944,11 +944,13 @@ class MultiworkerContract:
             
             #Getting hiring decisions
             n0_star[...] = 0
+            start= time.time()            
             for iz in range(self.p.num_z):
                 for in00 in range(self.p.num_n):
 
                     Rho_interpolator = RegularGridInterpolator((N_grid1, rho_grid, Q_grid), ERho[iz, in00, ...], bounds_error=False, fill_value=None)
                     Rhod0[iz, ..., in00] = Rho_interpolator((n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
+            end= time.time()
             if ite_num >= 10:
                 Ihire = ((Rhod0[...,1]-Rhod0[...,0]) / (N_grid[1]-N_grid[0]) > self.p.hire_c/self.p.beta) & (size[...,0]+size[...,1] < self.p.n_bar)
                 n0_star = n0(Rhod0, n0_star, N_grid, Ihire, self.p.hire_c / self.p.beta)
@@ -968,7 +970,7 @@ class MultiworkerContract:
             print("Diff between ERho_star methods", np.mean(np.abs((ERho_star - ERho_star_diff)/ERho_star)))
 
             for iz in range(self.p.num_z):            
-                EJ_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EJ[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
+                #EJ_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EJ[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
                 EW_star[iz,...] = RegularGridInterpolator((N_grid,N_grid1, rho_grid, Q_grid), EW[iz, ...], bounds_error=False, fill_value=None) ((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))
             assert np.isnan(EW_star).sum() == 0, "EW_star has NaN values"
 
@@ -978,6 +980,9 @@ class MultiworkerContract:
             _, ru, _ = self.getWorkerDecisions(EU, employed=False)
             U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
             U = 0.2 * U + 0.8 * U2
+            # Update worker value function
+            W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
+                self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
 
             # Update firm value function 
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EU+(1-sep_star)*(EW_star+re_star)))
@@ -986,11 +991,8 @@ class MultiworkerContract:
             Rho = self.fun_prod*self.prod - sum_wage - self.p.hire_c * n0_star - self.p.k_f - \
                 wage_jun*size[...,0] + \
                 rho_grid[ax,ax,ax,:,ax] * size[...,1] * W[...,1] + self.p.beta * (ERho_star - rho_star*n1_star*EW_star)
-            Rho_alt = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]                    
+            #Rho_alt = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]                    
             J = Rho - size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]
-            # Update worker value function
-            W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
-                self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
         
             #W[...,1] = W[...,1] * (J>= 0) + U * (J< 0)
             #Rho[J <= 0] = 0
@@ -1054,8 +1056,8 @@ class MultiworkerContract:
              print("EJinv diff 1j 2s:", np.mean(np.abs((EJinv[:,j,s,:, 0]/pc_star[:,j,s,:, 0] - EJderiv[:,j,s,:, 0]) / EJderiv[:,j,s,:, 0])))
              print("EJinv diff 1 sen:", np.mean(np.abs((EJinv[:,0,1,:, 0]/pc_star[:,0,1,:, 0] - EJderiv[:,0,1,:, 0]) / EJderiv[:,0,1,:, 0])))
              print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,s,:, 0]/pc_star[:,0,s,:, 0] - EJderiv[:,0,s,:, 0]) / EJderiv[:,0,s,:, 0])))
-            if (ite_num % 200) == 0:   
-                plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function') 
+            if (ite_num % 50) == 0:   
+                plt.plot(W[self.p.z_0-2, 0, 1, :, 0 ,1], Rho[self.p.z_0-2, 0, 1, :, 0], label='1 senior value function') 
                 #plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], Jderiv[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function') 
                        
                 #plt.show() # this will load image to console before executing next line of code

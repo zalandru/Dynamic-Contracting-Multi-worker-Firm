@@ -991,8 +991,8 @@ class MultiworkerContract:
              print("EJinv diff 1j 2s:", np.mean(np.abs((EJinv[:,j,s,:, 0]/pc_star[:,j,s,:, 0] - EJderiv[:,j,s,:, 0]) / EJderiv[:,j,s,:, 0])))
              print("EJinv diff 1 sen:", np.mean(np.abs((EJinv[:,0,1,:, 0]/pc_star[:,0,1,:, 0] - EJderiv[:,0,1,:, 0]) / EJderiv[:,0,1,:, 0])))
              print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,s,:, 0]/pc_star[:,0,s,:, 0] - EJderiv[:,0,s,:, 0]) / EJderiv[:,0,s,:, 0])))
-            if (ite_num % 1000) == 0:   
-                plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function') 
+            if (ite_num % 5) == 0:   
+                plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], J[self.p.z_0-2, 0, 1, :, 0], label='1 senior value function') 
                 #plt.plot(W[self.p.z_0-1, 0, 1, :, 0 ,1], Jderiv[self.p.z_0-1, 0, 1, :, 0], label='1 senior value function') 
                        
                 #plt.show() # this will load image to console before executing next line of code
