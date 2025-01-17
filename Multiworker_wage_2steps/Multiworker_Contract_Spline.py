@@ -12,9 +12,6 @@ from valuefunction_multi import PowerFunctionGrid
 from scipy.interpolate import RegularGridInterpolator
 from scipy.interpolate import splrep
 from scipy.interpolate import splev
-
-
-from regulargrid.cartesiangrid import CartesianGrid
 import numba as nb
 
 import pickle
@@ -73,13 +70,20 @@ def impose_increasing(A0):
     for v in range(1,nv):
         A[v] = np.maximum(A[v],A[v-1])
     return A
+@nb.njit()
+def impose_increasing_policy(A0):
+    A = np.copy(A0)
+    for v in range(1,A.shape[3]):
+        A[...,v,:] = np.maximum(A[...,v,:],A[...,v-1,:])
+    return A
 
+@nb.njit()
 def impose_increasing_W(A0):
     A = np.copy(A0)
     for v in range(1,A.shape[3]):
         A[...,v,:,1] = np.maximum(A[...,v,:,1],A[...,v-1,:,1]+1e-4)
     return A
-#@nb.njit()
+
 def array_exp_dist(A,B,h):
     """ 
         computes sqrt( (A-B)^2 ) / sqrt(B^2) weighted by exp(- (B/h)^2 ) 
@@ -416,7 +420,7 @@ class MultiworkerContract:
         else:
             self.js = js       
 
-        _,re_temp,pc_temp = self.getWorkerDecisions(self.W[...,1])
+        #_,re_temp,pc_temp = self.getWorkerDecisions(self.W[...,1])
         #Create a guess for the MWF value function
         #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #self.J_grid1 = np.zeros_like(self.J_grid)
@@ -725,7 +729,6 @@ class MultiworkerContract:
         N_grid = self.N_grid
         N_grid1 = self.N_grid1
         Q_grid = self.Q_grid
-        grid = self.grid
         size = self.size
         q = self.q
 
@@ -869,7 +872,7 @@ class MultiworkerContract:
             #if ite_num<=1:
             rho_star = optimized_loop(
                 pc, EW, rho_grid, N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.n_bar, self.p.num_v, self.p.num_q) 
-            
+            rho_star = impose_increasing_policy(rho_star)
             #MINIMUM WAGE ADDITION! DON'T ALLOW RHO_GRID TO GO BELOW RELATED MIN WAGE
             #Would this work tho? I dunno if it's the correct way of doing this... anyway let's try
             #rho_cutoff = interp(self.p.min_wage,self.w_grid,rho_grid)
@@ -905,7 +908,7 @@ class MultiworkerContract:
                 inv_util_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_reshaped * EU[...,ax] + (1-sep_reshaped) * (EW_star[...,ax] + re_star[...,ax])))
                 sep_star = sep_solve_2(sep_star,J_fut_deriv_n,J_fut_deriv_q,J_s_deriv,q_deriv_s,pc_temp,inv_util_1d,rho_star,re_star,EW_star,EU,sep_grid,size,self.p.num_z,self.p.num_v,self.p.num_n,self.p.num_q)
                 print("sep borders", sep_star.min(),sep_star.max())
-
+            sep_star = impose_increasing_policy(sep_star) #This may work for juniors... but would it work for seniors?
             #Getting n1_star
             n1_star = (size[...,0]*(1-sep_star)+size[...,1])*pc_temp
             q_star = (size[...,0]* np.minimum(self.p.q_0,1-sep_star)+q*size[...,1])/(size[...,0]*(1-sep_star)+size[...,1])
@@ -956,7 +959,6 @@ class MultiworkerContract:
             comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
             print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
             
-            #Rho = Rho_alt
 
             Rho = .2 * Rho + .8 * Rho2
             J= .2 * J + .8 * J2
