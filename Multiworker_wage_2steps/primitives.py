@@ -38,7 +38,7 @@ class Parameters:
         self.hire_c = 10.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
-        self.prod_q = 1.0 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
+        self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
         #DRS production
         self.prod_alpha = 0.85 #Taken from Schaal who quotes the 90s empirical literature (is there smth more recent??) Bilal et al. have smth similar, 0.817. Though tbf this is all US
         # Unemployment Parameters
@@ -106,7 +106,7 @@ class Parameters:
         self.verbose          = 5
         self.iter_display     = 25
         self.tol_simple_model = 1e-8
-        self.tol_full_model   = 1e-7
+        self.tol_full_model   = 1e-6
         self.tol_search       = 1e-2
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations

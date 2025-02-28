@@ -16,6 +16,7 @@ from valuefunction_multi import PowerFunctionGrid
 from scipy.interpolate import RegularGridInterpolator
 from scipy.interpolate import splrep
 from scipy.interpolate import splev
+from itertools import product #To clean up the code: use nested loops but without actual ugly nesting
 import numba as nb
 
 import pickle
@@ -36,7 +37,7 @@ logging.basicConfig(
     # Suppress debug logs from the numba library
 logging.getLogger('numba').setLevel(logging.WARNING)
 
-def load_pickle_file(new_p_value, pickle_file="results_hmq_sep.pkl"):
+def load_pickle_file(new_p_value, pickle_file="results_GE.pkl"):
     # Step 1: Load the existing data from the pickle file
     try:
         with open(pickle_file, "rb") as file:
@@ -77,12 +78,11 @@ def impose_increasing_policy(A0):
     for v in range(1,A.shape[3]):
         A[...,v,:] = np.maximum(A[...,v,:],A[...,v-1,:])
     return A
-
 @nb.njit()
 def impose_increasing_W(A0):
     A = np.copy(A0)
     for v in range(1,A.shape[3]):
-        A[...,v,:,1] = np.maximum(A[...,v,:,1],A[...,v-1,:,1]+1e-4)
+        A[...,v,:,1] = np.maximum(A[...,v,:,1],A[...,v-1,:,1]+1e-8)
     return A
 
 def array_exp_dist(A,B,h):
@@ -326,6 +326,10 @@ class MultiworkerContract:
         self.K = 2
         K = 2
         self.p = input_param
+        #Deep loops
+        self.indices = product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n), range(self.p.num_v) ,range(self.p.num_q))
+        self.indices_no_v = product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n),range(self.p.num_q))
+
         self.deriv_eps = 1e-4 # step size for derivative
         # Model preferences initialized by the same parameter object.
         self.pref = Preferences(input_param=self.p)
@@ -715,7 +719,7 @@ class MultiworkerContract:
         self.P = P
         return J,W,U,Rho,EW_star,pc_star,n0_star, n1_star
 
-    def J_sep(self,Jg=None,Wg=None,Ug=None,Rhog=None,update_eq=1,s=1.0):    
+    def J_sep(self,Jg=None,Wg=None,Ug=None,Rhog=None,P=None,kappa=None,update_eq=1,s=1.0):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -728,6 +732,8 @@ class MultiworkerContract:
         grid = self.grid
         size = self.size
         q = self.q
+        indices = self.indices
+        indices_no_v = self.indices_no_v
 
         if Jg is None:
             J = np.copy(self.J_grid)
@@ -741,20 +747,21 @@ class MultiworkerContract:
             U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
         else:
             U = np.copy(Ug)
+        if Rhog is None:
+            Rho = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]  
+        else:
+            Rho = np.copy(Rhog) 
         # create representation for J1p
         Jp = np.zeros_like(J)
+        Wp = np.zeros_like(J)
+        Rhop = np.zeros_like(J)
         # Updating J1 representation
-        for iz in range(self.p.num_z):
-            for in0 in range(self.p.num_n):
-                for in1 in range(self.p.num_n):
-                        for iq in range(self.p.num_q):
-                            Jp[iz,in0,in1,:,iq] = splev(W[iz,in0,in1,:,iq,1], splrep(W[iz,in0,in1,:,iq,1],J[iz,in0,in1,:,iq],s=s))
-
-        if Rhog is None:
-            Rho = Jp + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]  
-        else:
-            Rho = np.copy(Rhog)        
-     
+        for iz, in0, in1, iq in indices_no_v:
+            #Jp[iz,in0,in1,:,iq] = splev(W[iz,in0,in1,:,iq,1], splrep(W[iz,in0,in1,:,iq,1],J[iz,in0,in1,:,iq],s=s))
+            Wp[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,W[iz,in0,in1,:,iq,1],s=s))
+            Rhop[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,Rho[iz,in0,in1,:,iq],s=s))
+       
+        Jp = Rhop - size[...,1] * rho_grid[ax,ax,ax,:,ax] * Wp
 
         print("J shape", J.shape)
         print("W shape", W.shape)        
@@ -796,7 +803,8 @@ class MultiworkerContract:
         # General equilibrium first time
         self.v_0 = U
         self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
-        kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
+        if P is None:
+            kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
         print("kappa", kappa)
         print("P", P)
         self.js.update(self.v_grid,P)
@@ -850,10 +858,10 @@ class MultiworkerContract:
             
             
             # we compute the expected value next period by applying the transition rules
-            EW = Ez(W[...,1], self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
+            EW = Ez(Wp, self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
             EJ = Ez(Jp, self.Z_trans_mat)
-            ERho = Ez(Rho, self.Z_trans_mat)
+            ERho = Ez(Rhop, self.Z_trans_mat)
             EU = U
 
             # get worker decisions
@@ -1005,7 +1013,7 @@ class MultiworkerContract:
             # Update worker value function
             W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
-            W = impose_increasing_W(W)
+            #W = impose_increasing_W(W)
             #W[...,1] = W[...,1] * (J > 0) + U * (J <= 0)
             #Rho= Rho * (J > 0) + 0 * (J <= 0)
             #J[J <= 0] = 0
@@ -1018,17 +1026,17 @@ class MultiworkerContract:
 
             # Updating J1 representation
             st= time.time()
-            for iz in range(self.p.num_z):
-             for in0 in range(self.p.num_n):
-                for in1 in range(self.p.num_n):
-                        for iq in range(self.p.num_q):
-                            W_inc = W[iz,in0,in1,:,iq,1]
-                            Jp[iz,in0,in1,:,iq] = splev(W_inc, splrep(W_inc,J[iz,in0,in1,:,iq],s=s))
+            for iz, in0, in1, iq in indices_no_v:
+                Wp[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,W[iz,in0,in1,:,iq,1],s=s))
+                Rhop[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,Rho[iz,in0,in1,:,iq],s=s))
+                #W_inc = W[iz,in0,in1,:,iq,1]
+                #Jp[iz,in0,in1,:,iq] = splev(W_inc, splrep(W_inc,J[iz,in0,in1,:,iq],s=s))
             end=time.time()
             if (ite_num % 100 == 0):
                 print("Time to fit the spline", end - st)
             #TRYING AGAIN WITH THE BASIC RHO
-            Rho = Jp + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]          
+            #Rho = Jp + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]    
+            Jp = Rhop - size[...,1]*rho_grid[ax,ax,ax,:,ax]*Wp      
 
             # Compute convergence criteria
             error_j1i = array_exp_dist(Rho,Rho2,100) #np.power(J - J2, 2).mean() / np.power(J2, 2).mean()  
@@ -1095,19 +1103,83 @@ class MultiworkerContract:
                 #plt.show() # this will load image to console before executing next line of code
                 #plt.plot(W[self.p.z_0-1, 0, 1, :, 0, 1], 1-pc_star[self.p.z_0-1, 0, 1, :, 0], label='Probability of the worker leaving across submarkets')      
                 plt.show()
+
+        # --------- wrapping up the model ---------
+
+        # find rho_j2j
+        rho_j2j = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q))
+        ve_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q))
+        #for ix in range(self.p.num_x):
+        for iz, in0, in1, iq in indices:
+        #for iz in range(self.p.num_z):
+            ve_star[iz, in0, in1, :, iq] = self.js.ve( EW_star[iz, in0, in1, :, iq])
+            rho_j2j[iz, in0, in1, :, iq] = np.interp(ve_star[iz, in0, in1, :, iq], W[iz, in0, in1, :, iq, 1], rho_grid)
+
+        # find rho_u2e
+        #rho_u2e = np.zeros(self.p.num_x)
+        #Pr_u2e  = np.zeros(self.p.num_x)
+        #for ix in range(self.p.num_x):
+        ve = self.js.ve(EU)
+        #rho_u2e = np.interp(ve, W[self.p.z_0, :, ix], rho_grid) We don't have rho_u2e, since all workers start on the same v0. Instead we get wage_jun, but that depends on the firm
+        Pr_u2e = self.js.pe(EU) # this does not include the inefficiency of search for employed
+
+        # value functions
+        self.Vf_J = J
+        self.Vf_W = W
+        self.Vf_U = U
+        self.Vf_Rho = Rho
+        self.Jp = Jp
+        self.EW_star  = EW_star
+
+        # policies
+        self.rho_j2j = rho_j2j
+        #self.rho_u2e = rho_u2e
+        self.w_jun = wage_jun
+        self.rho_star = rho_star
+        self.sep_star = sep_star
+        self.n0_star = n0_star
+        self.n1_star = n1_star
+        self.q_star = q_star
+        self.pe_star = 1-pc_star
+        self.ve_star = ve_star
+        self.Pr_u2e = Pr_u2e
+
+        #self.target_w = target_w
+        #self.target_rho = target_rho
+
+        #self.Vf_Vbar = np.array([self.js[x].e0 for x in range(self.p.num_x)])
+        self.Vf_Vbar = self.js.e0
+        #if plot:
+        #    self.plot()
+        #    plt.show()
+
+        self.error_w1 = error_w1
+        self.error_j = error_j1i
+        #self.error_j1p = error_j1g
+        self.error_js = error_js
+        self.niter = ite_num
+
+        #GE values
         self.P = P
-        self.append_results_to_pickle(J, W, U, EW_star, sep_star, n0_star, n1_star)
+        self.kappa = kappa
 
-        return J,W,U,EW_star,sep_star, n0_star, n1_star
+        self.append_results_to_pickle(J, W, U, Rho, P, kappa, EW_star, sep_star, n0_star, n1_star)
+
+        #return J,W,U,Rho,EW_star,sep_star, n0_star, n1_star
+        #Saving the entire model
+        self.save("model_GE.pkl")
+        return self
 
 
 
-
+    def save(self,filename):
+        with open(filename, "wb") as output_file:
+            pickle.dump(self, output_file)
     def GE(self,EJ,W,kappa_old=None,J=None,n0_star=None):
         #Find kappa, which is the hiring cost firms have to pay per worker unit
         #BIG NOTE: For now I'm assuming that all the firms start at the same productivity level, p.z_0-1, rather than the Schaal assumption of them drawing their productivity upon entering.
         #Quick method: Envelope Theorem
-        if (kappa_old is not None) and (n0_star[self.p.z_0-1,0,0,0,0] > 0):
+        if (kappa_old is not None) and (n0_star[self.p.z_0-1,0,0,0,0] > 0) and (n0_star[self.p.z_0-1,0,0,0,0] <= 0):
             print("Fast kappa method")
             kappa = np.divide( -self.p.k_entry + J[self.p.z_0-1,0,0,0,0] + n0_star[self.p.z_0-1,0,0,0,0] * kappa_old, n0_star[self.p.z_0-1,0,0,0,0] )
         else:
@@ -1119,6 +1191,7 @@ class MultiworkerContract:
             n0_k[:] = np.interp(-kappa_grid / self.p.beta,impose_increasing(-J_diff),self.N_grid[1:])
             n0_k[(EJ[self.p.z_0-1,1,0,0,0] - EJ[self.p.z_0-1,0,0,0,0]) / (self.N_grid[1] - self.N_grid[0]) - kappa_grid / self.p.beta <= 0] = 0
             entry = -n0_k * kappa_grid -self.p.k_f + self.p.beta * np.interp(n0_k,self.N_grid,EJ[self.p.z_0-1,:,0,0,0])
+            entry = - kappa_grid - self.p.k_f + self.p.beta *EJ[self.p.z_0-1,1,0,0,0] #Simplifying assumption: entering firms always just hire 1 guy
             kappa = np.interp(-self.p.k_entry,impose_increasing(-entry),kappa_grid)
 
         #Smoothing the kappa
@@ -1169,7 +1242,7 @@ class MultiworkerContract:
         #plt.show() # this will load image to console before executing next line of code
  
         return kappa, P
-    def append_results_to_pickle(self, J, W, U, EW_star, sep_star, n0_star, n1_star, pickle_file="results_hmq_sep.pkl"):
+    def append_results_to_pickle(self, J, W, U, Rho, P, kappa, EW_star, sep_star, n0_star, n1_star, pickle_file="results_GE.pkl"):
         # Step 1: Load the existing data from the pickle file
         try:
             with open(pickle_file, "rb") as file:
@@ -1179,10 +1252,10 @@ class MultiworkerContract:
             print("No existing file found. Creating a new one.")
 
         # Step 2: Create results for the multi-dimensional p
-        new_results = self.save_results_for_p(J, W, U, EW_star, sep_star, n0_star, n1_star)
+        new_results = self.save_results_for_p(J, W, U, Rho, P, kappa, EW_star, sep_star, n0_star, n1_star)
 
         # Step 3: Use a tuple (p.num_z, p.num_v, p.num_n) as the key
-        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.k_entry,self.p.k_f,self.p.prod_alpha,self.p.dt)
+        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt,self.p.u_bf_m)
 
         # Step 4: Add the new results to the dictionary
         all_results[key] = new_results
@@ -1192,17 +1265,21 @@ class MultiworkerContract:
             pickle.dump(all_results, file)
 
         print(f"Results for p = {key} have been appended to {pickle_file}.")
-    def save_results_for_p(self, J, W, EW_star, sep_star, n0_star, n1_star):
+    def save_results_for_p(self, J, W, U, Rho, P, kappa, EW_star, sep_star, n0_star, n1_star):
         current_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return {
         'date': current_date,
-        'Ji': J,
+        'J': J,
         'W': W,
+        'U': U,
+        'Rho': Rho,
+        'P': P,
+        'kappa': kappa,
         'EW_star': EW_star,
         'sep_star': sep_star,
         'n0_star': n0_star,
         'n1_star': n1_star,
-        'p_value': (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt)
+        'p_value': (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt,self.p.u_bf_m)
     }    
     def construct_z_grid(self):
         """
@@ -1243,15 +1320,12 @@ class MultiworkerContract:
 
         return pe, re, pc
     def matching_function(self,J1): 
-        #Andrei: the formula of their matching function, applied to each particula job value J1. The function is: p(theta) = alpha * (1 - (kappa/max(J,kappa))^sigma)^(1/sigma)
-        #EqUvalently (taken from BL paper), q(theta) = [alpha^sigma/(alpha^sigma+theta^sigma)]^(1/sigma)
-        #What is the q inverse then?? 
-        #Alternatively, could go for Schaal/Menzio-Shi functions: p(theta)=theta(1+theta^gamma)^(-1/gamma), q(theta)=p(theta)/theta. This is eqUvalent to BL with alpha=1,sigma=gamma
-        #So, q(theta)=(1+theta^sigma)^(-1/sigma). So theta=(q^(-sigma)-1)^(1/sigma). Or, with alpha, theta=((alpha/q)^(sigma)-alpha^(sigma))^(1/sigma)
-        return self.p.alpha * np.power(1 - np.power(
+        return self.p.alpha * np.power(1 - np.power( 
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
-                                1 / self.p.sigma)
-
+                                1 / self.p.sigma) #Andrei: the formula of their matching function, applied to each particula job value J1       
+        
+        
+         
 #from primitives import Parameters
 #p = Parameters()
 #from ContinuousContract import ContinuousContract
