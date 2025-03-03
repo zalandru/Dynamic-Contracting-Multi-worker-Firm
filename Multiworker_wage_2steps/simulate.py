@@ -124,6 +124,77 @@ def discretize_n(n):
     n[ ~ceil_firms] = n_floor[~ceil_firms]
     return n
 
+def allocate_workers_to_vac_rand(n_hire,F_set,total_workers):
+
+    # Split into integer and fractional parts
+    integer_parts = np.floor(n_hire).astype(int)
+    fractional_parts = n_hire - integer_parts
+
+    # Generate integer vacancies (1.0 probability)
+    integer_firms = np.repeat(F_set, integer_parts) #This WILL REMOVE firms not hiring at all.
+    integer_probs = np.ones_like(integer_firms, dtype=np.float64)
+
+    # Generate fractional vacancies (prob = fractional part)
+    has_fractional = fractional_parts > 1e-2  # Tolerance for floating point precision
+    fractional_firms = F_set[has_fractional]
+    fractional_probs = fractional_parts[has_fractional]
+
+    # Combine all vacancies and probabilities
+    all_firms = np.concatenate([integer_firms, fractional_firms])
+    all_probs = np.concatenate([integer_probs, fractional_probs])
+
+    # Normalize probabilities
+    prob_sum = all_probs.sum()
+    if prob_sum == 0:
+        raise ValueError("No vacancies available for allocation.")
+    all_probs_normalized = all_probs / prob_sum
+
+    # Create vacancy indices (0, 1, 2, ...)
+    vacancy_indices = np.arange(len(all_probs))
+
+    # Allocate workers without replacement
+    selected_indices = np.random.choice(
+        vacancy_indices, 
+        size=total_workers, 
+        replace=False, 
+        p=all_probs_normalized
+    )
+    selected_firms = all_firms[selected_indices]
+    return selected_firms
+
+def allocate_workers_to_vac_determ(n_hire,F_set,F,Id,I_find_job):
+    # Split into integer and fractional parts
+    integer_parts = np.floor(n_hire).astype(int)
+
+    # Generate integer vacancies (1.0 probability)
+    integer_firms = np.repeat(F_set, integer_parts)
+    integer_vacancies = np.arange(len(integer_firms))
+    #Randomly select workers to be allocated to these vacancies
+    Id_to_int_vacancies = np.random.choice(Id[I_find_job], size=len(integer_firms),replace=False) #This gives us literal worker id's. Still need to bring this back to boolean
+    I_to_int_vacancies = np.isin(Id,Id_to_int_vacancies) #This gives us a boolean, set to 1 workers who were selected in the line above
+    selected_vacancies = np.random.choice(integer_vacancies, size=len(Id_to_int_vacancies),replace=False)
+    F[I_to_int_vacancies] = integer_firms[selected_vacancies]
+    
+    #Now take the allocate of the workers to the fractional vacancies
+    I_to_frac_vacancies = bool_index_combine(I_find_job,~np.isin(Id,Id_to_int_vacancies))
+
+    fractional_parts = n_hire - integer_parts
+    has_fractional = fractional_parts >= 1e-2  # Tolerance for floating point precision
+    fractional_firms = F_set[has_fractional]
+    fractional_vacancies = np.arange(len(fractional_firms))
+
+    # Set and Normalize probabilities
+    fractional_probs = fractional_parts[has_fractional]
+    prob_sum = fractional_probs.sum()
+    if prob_sum == 0:
+        raise ValueError("No vacancies available for allocation.") #This should not be an actual error. Can just skip if no fractional
+    probs_normalized = fractional_probs / prob_sum
+
+    selected_vacancies = np.random.choice(fractional_vacancies,size = I_to_frac_vacancies.sum(),replace=False,p=probs_normalized)
+    F[I_to_frac_vacancies] = fractional_firms[selected_vacancies]
+
+    return F
+
 class Simulator:
     """
     Simulates data from the model and computes moments on simulated data.
@@ -187,6 +258,7 @@ class Simulator:
         INCLUDE_WERR = not ('werr' in ignore)
 
         # we store the current state into an array
+        Id = range(ni) #Worker id. Only important for determenistic allocation of workers to vacancies
         X  = np.zeros(ni,dtype=int)  # current value of the X shock
         Z  = np.zeros(ni,dtype=int)  # current value of the Z shock
         R  = np.zeros(ni)            # current value of rho
@@ -202,17 +274,30 @@ class Simulator:
         S  = np.zeros(ni,dtype=int)  # number of periods in current spell
         pr = np.zeros(ni)            # probability, either u2e or e2u
 
+        #Prepare firm info
+        rho = np.zeros((nt,nf+1)) #Extra 1 is added, so that rho[:,0] ends up unused
+        w = np.zeros_like(rho)
+        n_hire = np.zeros_like(rho)
+        q = np.zeros_like(rho) #Should q be int or no?
+        sep_rate = np.zeros_like(rho)
+        pr_j2j = np.zeros_like(rho)
+        w = np.zeros_like(rho)
+        prod = np.zeros((nt,nf+1),dtype=int)
+        n0 = np.zeros_like(prod)
+        n1 = np.zeros_like(prod)
+        
         # we create a long sequence of firm innovation shocks where we store
         # a sequence of realized Z, we store realized Z_t+1 | Z_t for each
         # value of Z_t.
-        if (redraw_zhist):
-            Zhist = np.zeros((p.num_z,nl),dtype=int)
-            for i in range(1,nl):
+        if (redraw_zhist): #Andrei: this doesn't work for me as the set of firms is not preset. 
+            #Moreover, since new hire firms always start at the same prod level (p.z_0-1), can't initialize extra firms in advance
+            Zhist = np.zeros((p.num_z,nf+1),dtype=int)
+            for i in range(1,nf+1):
                 # at each time we draw a uniform shock
                 u = np.random.uniform(0,1,1)
                 # for each value of Z we find the draw given that shock
                 for z in range(p.num_z):
-                   Zhist[z,i] = np.argmax( model.Z_trans_mat[ z , : ].cumsum() >= u  )
+                   Zhist[z,i] = np.argmax( model.Z_trans_mat[ z ].cumsum() >= u  )
             self.Zhist = Zhist
         #Andrei: good time as any to ask the big question
         # How do I assign workers to firms??? Guess it doesn't matter since workers are homogenous, no?
@@ -276,17 +361,15 @@ class Simulator:
             #Check destruction:
             self.close_pr = 0.05 #Percent of closing firms. For now, without aggregate movements, keep it constant
             close = np.random.binomial(1, self.close_pr, F_set.shape[0])==1  
-            F_set     = F_set * (~close) #All the closed firms have index 0, the rest keep their indeces
-            for f in F:
-                if f==0:
-                    continue
-
+            #F_set     = F_set * (~close) #All the closed firms have index 0, the rest keep their indeces
+            F_set = np.where(close, -2, F_set) #All the closed firms are now called -2, to avoid confusion with unemployed workers who have F=-1
+            for f in F_set[F_set != -2]: 
                 #But for t=2, where rho may be not on the grid. for now, assume it's just rho, and q gets put back on the grid somehow
                 rho[t,f] = np.interp(rho[t-1,f],model.rho_grid,model.rho_star[prod[t-1,f],n0[t-1,f],n1[t-1,f],:,q[t-1,f]])
                 #Junior wage
                 w[t,f,0] = np.interp(rho[t-1,f],model.rho_grid,model.wage_jun[prod[t-1,f],n0[t-1,f],n1[t-1,f],:,q[t-1,f]])
                 #Senior wage, calculated by knowing the rho
-                w[t,f,1] = pref.inv_utility_1d(rho[t,f])
+                w[t,f,1] = p.pref.inv_utility_1d(rho[t,f])
 
                 #Get the hiring rate and quality
                 n_hire[t,f] = np.interp(rho[t-1,f],model.rho_grid,model.n0_star[prod[t-1,f],n0[t-1,f],n1[t-1,f],:,q[t-1,f]])
@@ -297,7 +380,6 @@ class Simulator:
                 pr_j2j[t,f] = 1 - np.interp(rho[t-1,f],model.rho_grid,model.pe_star[prod[t-1,f],n0[t-1,f],n1[t-1,f],:,q[t-1,f]])
 
                 #Also the sep rate to actually get the sense of firing:
-                sep_rate[t,0] = 0 #So that workers temp assigned to zero don't get anything changed
                 sep_rate[t,f] = np.interp(rho[t-1,f],model.rho_grid,model.sep_star[prod[t-1,f],n0[t-1,f],n1[t-1,f],:,q[t-1,f]])  
                 #The ACTUAL n0 and n1 will be calculated BASED on these!
 
@@ -323,22 +405,22 @@ class Simulator:
 
             #Also, this ideally should NOT BE invariant! Even if I don't wanna make it completely endogenous, AT LEAST gotta make it cycle-variant
             #2. Summing up all the hiring of remaining firms
-            F_hiring = (n0[t,:] > 0) & (F_stay_open==1) #Gotta ensure the timing's correct
-            n0_total = np.sum(n0[t,F_hiring])
+            #F_hiring = (n0[t,:] > 0) & (F_stay_open==1) #Gotta ensure the timing's correct
+            #n0_total = np.sum(n0[t,F_hiring])
             #3. Adding entering firms to clear the market (so that sum of n0_star = U * p + all incumbents from last period * (1-s) * p)
             #Formula is N_newfirms = U*p + (1-F_close) * (1-s) * p - n0_total
-            Ix = (E0==0) #Unemployed workers
-            pr_unemp = model.Pr_u2e
-            N_newfirms = Ix.sum * pr_unemp + (1 - sep[t,F_stay_open]) * p - n0_total
-            F_new = np.ones(N_newfirms)
+            #Ix = (E0==0) #Unemployed workers
+            #pr_unemp = model.Pr_u2e
+            #N_newfirms = Ix.sum * pr_unemp + (1 - sep[t,F_stay_open]) * p - n0_total
+            #F_new = np.ones(N_newfirms)
             #This clearing formula aint gonna be easy though...
             #5. Updating the firm set
-            F = (F_stay_open==1) #This doesn't work correctly. This should be a merging process!!!
+            #F = (F_stay_open==1) #This doesn't work correctly. This should be a merging process!!!
             #Append new firms
-            F = np.append(F,F_stay_open) #Literally just made this shit up, 99% wrong
+            #F = np.append(F,F_stay_open) #Literally just made this shit up, 99% wrong
             #4. Deciding whether firms will ultimately hire the floor or ceil of n0_star for each firm
-            n0[t,:] = discretize_n(n0[t,:])
-            n1[t,:] = discretize_n(n1[t,:]) #May be better to merge these. Have a single function for both. Not much faster, def not at 2 steps, but is indeed a bit more fast
+            #n0[t,:] = discretize_n(n0[t,:])
+            #n1[t,:] = discretize_n(n1[t,:]) #May be better to merge these. Have a single function for both. Not much faster, def not at 2 steps, but is indeed a bit more fast
 
             #4.5 Shit, I need to do the same with n1! Moreover, depending on whether it's floor or ceil, I'd need to either let some guy go or keep them!!!
             #Even worse, I need to know whether the guy left due to separation of OJS (or both???)
@@ -359,23 +441,22 @@ class Simulator:
             #Once I have that, I can proceed to aggregating.
             
             #1. Make employed workers of closed firms unemployed
-            I_close = (E0==1) & ~np.isin(F,F_set)
+            I_close = (E0==1) & ~np.isin(F0,F_set)
 
             E[I_close]  = 0           # make the worker unemployed
-            W[I_close]  = 0           # no wage
             D[I_close]  = Event.e2u
+            W[I_close]  = 0           # no wage
             F[I_close]  = -1
             S[I_close]  = 1
             R[I_close]  = 0
-            S[I_close]  = 0
 
             #2. Fire employed workers
-            I_remain = (E0==1) & np.isin(F,F_set)
-            F_remain = F * I_remain
+            I_remain = (E0==1) & np.isin(F0,F_set)
+            F_remain = F0 * I_remain #This one isn't actually necessary, right? Correct, when we do bool_index_combine, the workers with technically real firms still get left out
             # we check the for separation
             rng = np.random.default_rng()
-            sep = INCLUDE_E2U *  rng.binomial(1, sep_rate[t,F_remain]) == 1  #This still doesn't work, as F indices of ALL THE WORKERS, INCLUDING UNEMPLOYED ONES
-            #sep[I_remain]     = INCLUDE_E2U * np.random.binomial(1, sep[F], 1 )==1
+            sep = INCLUDE_E2U *  rng.binomial(1, sep_rate[t,F_remain]) == 1  #This should work, if slightly inefficient. 
+            #All the workers outside of I_remain are assigned F_remain=0, so their sep_rate[t,0]=0. For the rest, they're assigned their firm's actual sep_rate
 
             # workers who got fired
             I_e2u      = bool_index_combine(I_remain,sep)
@@ -388,10 +469,51 @@ class Simulator:
 
             #3. Search for Unemp and Emp workers
             # a) Search shock for unemp workers
-            
+            Iu = (E0==0)
+            # get whether match a firm
+            meet_u2e = np.random.binomial(1, model.Pr_u2e, Iu.sum())==1
+            pr = model.Pr_u2e        
+            Iu_u2e     = bool_index_combine(Iu,meet_u2e)
             # b) Search shock for emp workers            
-            
-            
+            Ie = bool_index_combine(I_remain,~sep) #If their firm closed, I_remain=0. If they got separated, ~sep=0.
+            F_e = F0 * Ie #All the workers outside of this set are assigned "firm' 0, where all the policies are zero.
+            # search decision for those not fired    
+            rng = np.random.default_rng()           
+            meet = INCLUDE_J2J *  rng.binomial(1, pr_j2j[t,F_e]) == 1  
+            Ie_e2e = bool_index_combine(Ie,meet)
+            #c) Total search and allocation
+            I_find_job = Iu_u2e + Ie_e2e #Note that I'm simply summing up boolean values here
+            #Sum up expected hiring across all firms
+            hire_total = n_hire[t,:].sum()
+            #If not enough expected vacancies, update:
+            if np.ceil(hire_total) < I_find_job.sum():
+                #Note that, if there're 4 workers searching and 3.5 vacancies, no firms are added.
+                #Add new firms
+                n_new = np.floor(I_find_job.sum() - hire_total).astype(int)
+                #And, if we have 4w/2.5v, we add 1 firm
+                new_firms = np.arange(nf + 1, nf + n_new + 1)
+                F_set = np.concatenate((F_set, new_firms)) #or is this too soon? let these firms find a job first mayb?
+                #Add these firms into aggregate hiring
+                n_hire_new = np.zeros((nt,n_new))
+                n_hire_new[t,:] = 1
+                n_hire = np.concatenate((n_hire, n_hire_new))
+                hire_total = n_hire[t,:].sum()
+                assert (np.ceil(hire_total) >= I_find_job.sum()), "Not enough expected hirings"
+            #First, a basic version: allocating workers across vacancies completely randomly
+            F[I_find_job] = allocate_workers_to_vac_rand(n_hire,F_set,I_find_job.sum())
+            #Now try satisfying all the prob 1 vacancies first. DO THIS AND CAN GO HOME!!!
+            F[I_find_job] = allocate_workers_to_vac_determ(n_hire,F_set,F,Id,I_find_job)
+
+            #Tomorrow: now that searching workers are allocated, give the rest of their values. Also update the firm set F_set? Ah, no, shouldn't do that, would mess up the indices
+            E[I_find_job]   = 1
+            #The rest is different across different workers??? Or not because all workers start at the same v_0 anyway?
+            W[I_find_job]   = w[t,F[I_e2u],0]  # jun wage
+            S[I_find_job]   = 1
+            R[I_find_job]   = model.v_0 #v_0? Not sure actually. Main question for tomorrow!
+
+            D[Ie_e2e]   = Event.e2e
+            D[Iu_u2e]   = Event.u2e
+
             #########################OLDDDDD################################################# 
             # first we look at the unemployed of a given type X
             for ix in range(p.num_x):
