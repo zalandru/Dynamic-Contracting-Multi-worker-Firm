@@ -742,7 +742,7 @@ class MultiworkerContract:
         if Wg is None:
             W = np.copy(self.W)
         else:
-            W = np.copy(Wg)
+            W = impose_increasing_W(Wg)
         if Ug is None:
             U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
         else:
@@ -757,11 +757,12 @@ class MultiworkerContract:
         Rhop = np.zeros_like(J)
         # Updating J1 representation
         for iz, in0, in1, iq in indices_no_v:
-            #Jp[iz,in0,in1,:,iq] = splev(W[iz,in0,in1,:,iq,1], splrep(W[iz,in0,in1,:,iq,1],J[iz,in0,in1,:,iq],s=s))
+            W_inc = W[iz,in0,in1,:,iq,1]
+            Jp[iz,in0,in1,:,iq] = splev(W_inc, splrep(W[iz,in0,in1,:,iq,1],J[iz,in0,in1,:,iq],s=s))
             Wp[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,W[iz,in0,in1,:,iq,1],s=s))
             Rhop[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,Rho[iz,in0,in1,:,iq],s=s))
        
-        Jp = Rhop - size[...,1] * rho_grid[ax,ax,ax,:,ax] * Wp
+        #Jp = Rhop - size[...,1] * rho_grid[ax,ax,ax,:,ax] * Wp
 
         print("J shape", J.shape)
         print("W shape", W.shape)        
@@ -1013,7 +1014,7 @@ class MultiworkerContract:
             # Update worker value function
             W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
                 self.p.beta * (EW_star + re_star) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
-            #W = impose_increasing_W(W)
+            W = impose_increasing_W(W)
             #W[...,1] = W[...,1] * (J > 0) + U * (J <= 0)
             #Rho= Rho * (J > 0) + 0 * (J <= 0)
             #J[J <= 0] = 0
@@ -1027,16 +1028,17 @@ class MultiworkerContract:
             # Updating J1 representation
             st= time.time()
             for iz, in0, in1, iq in indices_no_v:
+
                 Wp[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,W[iz,in0,in1,:,iq,1],s=s))
                 Rhop[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,Rho[iz,in0,in1,:,iq],s=s))
-                #W_inc = W[iz,in0,in1,:,iq,1]
-                #Jp[iz,in0,in1,:,iq] = splev(W_inc, splrep(W_inc,J[iz,in0,in1,:,iq],s=s))
+                W_inc = W[iz,in0,in1,:,iq,1]
+                Jp[iz,in0,in1,:,iq] = splev(W_inc, splrep(W_inc,J[iz,in0,in1,:,iq],s=s))
             end=time.time()
             if (ite_num % 100 == 0):
                 print("Time to fit the spline", end - st)
             #TRYING AGAIN WITH THE BASIC RHO
             #Rho = Jp + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]    
-            Jp = Rhop - size[...,1]*rho_grid[ax,ax,ax,:,ax]*Wp      
+            #Jp = Rhop - size[...,1]*rho_grid[ax,ax,ax,:,ax]*Wp      
 
             # Compute convergence criteria
             error_j1i = array_exp_dist(Rho,Rho2,100) #np.power(J - J2, 2).mean() / np.power(J2, 2).mean()  
@@ -1110,7 +1112,7 @@ class MultiworkerContract:
         rho_j2j = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q))
         ve_star = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n, self.p.num_v, self.p.num_q))
         #for ix in range(self.p.num_x):
-        for iz, in0, in1, iq in indices:
+        for iz, in0, in1, iq in indices_no_v:
         #for iz in range(self.p.num_z):
             ve_star[iz, in0, in1, :, iq] = self.js.ve( EW_star[iz, in0, in1, :, iq])
             rho_j2j[iz, in0, in1, :, iq] = np.interp(ve_star[iz, in0, in1, :, iq], W[iz, in0, in1, :, iq, 1], rho_grid)
@@ -1148,7 +1150,7 @@ class MultiworkerContract:
         #self.target_rho = target_rho
 
         #self.Vf_Vbar = np.array([self.js[x].e0 for x in range(self.p.num_x)])
-        self.Vf_Vbar = self.js.e0
+        #self.Vf_Vbar = self.js.e0
         #if plot:
         #    self.plot()
         #    plt.show()
@@ -1173,8 +1175,21 @@ class MultiworkerContract:
 
 
     def save(self,filename):
+        # Load the existing data from the pickle file
+        try:
+            with open(filename, "rb") as file:
+                all_results = pickle.load(file)
+        except FileNotFoundError:
+            all_results = {}
+            print("No existing file found. Creating a new one.")
+        # Use a tuple as the key
+        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt,self.p.u_bf_m)
+        
+        all_results[key] = self
+        #Save the updated dictionary back to the pickle file        
         with open(filename, "wb") as output_file:
-            pickle.dump(self, output_file)
+            pickle.dump(all_results, output_file)
+        print(f"Results for p = {key} have been appended to {filename}.")
     def GE(self,EJ,W,kappa_old=None,J=None,n0_star=None):
         #Find kappa, which is the hiring cost firms have to pay per worker unit
         #BIG NOTE: For now I'm assuming that all the firms start at the same productivity level, p.z_0-1, rather than the Schaal assumption of them drawing their productivity upon entering.
@@ -1213,6 +1228,9 @@ class MultiworkerContract:
         #assert np.all((EW - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
         #signon_bonus = self.pref.inv_utility(self.v_grid - self.p.beta * self.v_0)
         signon_bonus = self.pref.inv_utility(self.v_grid - self.v_0) - self.pref.inv_utility(self.v_grid[0] - self.v_0) #-1 to compensate the initial difference
+        #Andrei: WTF is this sign_on bonus?? I can't even back out the initial formula here. The 2nd part is super confusing
+        #u(w_bon)+v_0=v_m makes sense. the 2nd part doesnt. I guess it's some kind of correction?? In case v_grid[0]<v_0? But I don't see how it could be theoretically founded...
+        #u(w_bon+u^-1(v_grid[0]-v_0))+v_0=v_m is the original formula here #Is the idea here to normalize w_bon to 0? I think so, right???
         #So this guy isn't tooooooooooo bad... but it still blows up super quickly
         #An alternative could be that, upon being signed, they get the bonus wage in addition to the unemp production
         # u(w_bon+unemp.bf)+beta*v_0=v_m, so w_bon = u^{-1}(v_m-beta*v_0)-unemp.bf
@@ -1226,7 +1244,7 @@ class MultiworkerContract:
         signon_bonus[signon_bonus < 0] = 0
         #Another signon bonus alternative: just linear!!!
         #signon_bonus = self.v_grid - self.p.beta * self.v_0
-        print("signon", signon_bonus)
+        #print("signon", signon_bonus)
 
         # Given kappa, find the tightness
         q=np.minimum(self.p.hire_c/(kappa-signon_bonus),1)
