@@ -1,7 +1,7 @@
 """ 
     Simulates panel data from the model    
 """
-from time import time
+
 import numpy as np
 import logging
 import pandas as pd
@@ -277,36 +277,20 @@ class Simulator:
         #Prepare firm info
         extra = 5000 #1k extra firms allowed to enter at most before an error appears
         rho = np.zeros((nt,nf+1+extra)) #Extra 1 is added, so that rho[:,0] ends up unused
-        w = np.zeros((nt,nf+1+extra))
+        w = np.zeros_like(rho)
         n_hire = np.zeros((nt,nf+1)) #No extra here as we're gonna be concatenating n_hire
-        q = np.zeros_like(w) #Should q be int or no?
-        sep_rate = np.zeros_like(w)
-        pr_j2j = np.zeros_like(w)
-        ve_star = np.zeros_like(w)
-        bon_leave = np.zeros_like(w)
+        q = np.zeros_like(rho) #Should q be int or no?
+        sep_rate = np.zeros_like(rho)
+        pr_j2j = np.zeros_like(rho)
+        ve_star = np.zeros_like(rho)
+        bon_leave = np.zeros_like(rho)
         w = np.zeros((nt,nf+1+extra,2))
         prod = np.zeros((nt,nf+1+extra))
-        z = np.ones((nt,nf+1+extra),dtype=int) * (p.z_0-1) #So the productivity always starts at the starting value
+        z = np.ones((nt,nf+1+extra),dtype=int) * (p.z_0) #So the productivity always starts at the starting value
         n0 = np.zeros_like(z)
         n1 = np.zeros_like(z)
-        rho_diff_idx = np.zeros(nf+1+extra,dtype=int)
+        
 
-        #Initialize interpolators
-        rho_interpolator = np.empty((p.num_z, p.num_n, p.num_n), dtype=object)
-        n_interpolator = np.empty_like(rho_interpolator)
-        j2j_interpolator = np.empty_like(rho_interpolator)
-        sep_interpolator = np.empty_like(rho_interpolator)
-        q_interpolator = np.empty_like(rho_interpolator)
-        ve_interpolator = np.empty_like(rho_interpolator)
-        for iz in range(p.num_z):
-            for in0 in range(p.num_n):
-                for in1 in range(p.num_n):        
-                    rho_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    n_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    j2j_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    sep_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    q_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    ve_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
 
         """
         Schaal's GE algorithm:
@@ -341,6 +325,7 @@ class Simulator:
         df_all = pd.DataFrame()
         # looping over time
         for t in range(1,nt):
+            #print("t", t)
             # save the state when starting the period
             E0 = np.copy(E)
             #Z0 = np.copy(Z)
@@ -353,21 +338,20 @@ class Simulator:
             #F_set     = F_set * (~close) #All the closed firms have index 0, the rest keep their indeces
             #F_set = np.where(close, 0, F_set) #All the closed firms are now called 0, to avoid confusion with unemployed workers who have F=-1
             F_set = F_set[~close] #removing the closed firms from the set
+            #print("Number of firms",len(F_set))
+            #print("Number of open firms", len(F_set[F_set != 0]))
+            #print("Open firms", F_set[F_set != 0])
+            for f in F_set[F_set != 0]: 
+                #Via 2d interpolation (may be too slow, we'll see)
+                rho[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
+                w[t,f,1] = model.pref.inv_utility_1d(rho[t,f])
 
-            #Loop over firm states: so that firms aren't repeated
-            for iz in range(p.num_z):
-                for in0 in range(p.num_n):
-                    for in1 in range(p.num_n):
-                        F_spec = F_set[(z[t-1,F_set]==iz) & (n0[t-1,F_set]==in0) & (n1[t-1,F_set]==in1)]
-                        if len(F_spec)==0:
-                            continue
-                        rho[t,F_spec] = rho_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        n_hire[t,F_spec] = n_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        pr_j2j[t,F_spec] = j2j_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        sep_rate[t,F_spec] = sep_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        q[t,F_spec] = q_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        ve_star[t,F_spec] = ve_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-            bon_leave[t,F_set] = model.pref.inv_utility(ve_star[t,F_set] - model.v_0) - model.pref.inv_utility(model.v_grid[0] - model.v_0) #Bonus wage if leave the current firm            
+                n_hire[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
+                pr_j2j[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
+                sep_rate[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
+                q[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
+                ve_star[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
+                bon_leave[t,f] = model.pref.inv_utility(ve_star[t,f] - model.v_0) - model.pref.inv_utility(model.v_grid[0] - model.v_0) #Bonus wage if leave the current firm
             bon_unemp = model.pref.inv_utility(model.ve - model.v_0) - model.pref.inv_utility(model.v_grid[0] - model.v_0) #Bonus wage if find a job
             # print(n_hire[t,F_set[F_set == 0]].sum())
             #print("n_hire for that period", n_hire[t,:])
@@ -380,7 +364,7 @@ class Simulator:
             E[I_close]  = 0           # make the worker unemployed
             D[I_close]  = Event.e2u
             W[I_close]  = 0           # no wage
-            F[I_close]  = 0
+            F[I_close]  = -1
             S[I_close]  = 1
             R[I_close]  = 0
 
@@ -391,12 +375,13 @@ class Simulator:
             rng = np.random.default_rng()
             sep = INCLUDE_E2U *  rng.binomial(1, sep_rate[t,F_remain]) == 1  #This should work, if slightly inefficient. 
             #All the workers outside of I_remain are assigned F_remain=0, so their sep_rate[t,0]=0. For the rest, they're assigned their firm's actual sep_rate
+            #I_remain = I_remain + 1 #Somehow this is necessary????
             # workers who got fired
             I_e2u      = I_remain * sep
             E[I_e2u]   = 0
             D[I_e2u]   = Event.e2u
             W[I_e2u]   = 0  # no wage
-            F[I_e2u]  = 0 # no firm
+            F[I_e2u]  = -1 # no firm
             S[I_e2u]   = 1
             R[I_e2u]   = 0
 
@@ -405,18 +390,17 @@ class Simulator:
             Iu = (E0==0)
             # get whether match a firm
             meet_u2e = np.random.binomial(1, model.Pr_u2e, Iu.sum())==1
-            #pr = model.Pr_u2e        
+            pr = model.Pr_u2e        
             #Deal with the unlucky unemployed
             Iu_uu = bool_index_combine(Iu,~meet_u2e)
             E[Iu_uu]   = 0
             D[Iu_uu]   = Event.uu
             W[Iu_uu]   = 0  # no wage
-            F[Iu_uu]  = 0 # no firm
+            F[Iu_uu]  = -1 # no firm
             S[Iu_uu]   = S[Iu_uu] + 1
             R[Iu_uu]   = 0
             #Unemployed that did find a job
             Iu_u2e     = bool_index_combine(Iu,meet_u2e)
-            
             #4. Emp workers            
             Ie = I_remain * (1 - sep) #Before this was bool_index_combine(I_remain,~sep), but that didn't work when I_remain was all zeroes. I think this is due to how sep is created
             #If their firm closed, I_remain=0. If they got separated, ~sep=0.
@@ -426,8 +410,8 @@ class Simulator:
             meet = INCLUDE_J2J *  rng.binomial(1, pr_j2j[t,F_e]) == 1  
 
             # Employed workers that didn't transition
-            Ie_stay = bool_index_combine(Ie,~meet)
-            E[Ie_stay]  = 1          
+            Ie_stay =bool_index_combine(Ie,~meet)
+            E[Ie_stay]  = 1           # make the worker unemployed
             D[Ie_stay]  = Event.ee
             W[Ie_stay]  = w[t,F[Ie_stay],1]           # senior wage
             F[Ie_stay]  = F0[Ie_stay]
@@ -437,9 +421,9 @@ class Simulator:
             #Emp workers that did find a job
             Ie_e2e = bool_index_combine(Ie,meet)
             #5. Total search and allocation of workers to firms
-            I_find_job = (Iu_u2e + Ie_e2e).astype(bool) #Note that I'm simply summing up non-overlapping boolean values here
+            I_find_job = (Iu_u2e + Ie_e2e).astype(bool) #Note that I'm simply summing up boolean values here
             #Sum up expected hiring across all firms
-            hire_total = n_hire[t,F_set].sum()
+            hire_total = n_hire[t,F_set[F_set != 0]].sum()
             #If not enough expected vacancies, update:
             if np.ceil(hire_total) < I_find_job.sum():
                 #Note that, if there're 4 workers searching and 3.5 vacancies, no firms are added.
@@ -453,42 +437,53 @@ class Simulator:
                 n_hire_new = np.zeros((nt,n_new))
                 n_hire_new[t,:] = 1
                 n_hire = np.concatenate((n_hire, n_hire_new),axis=1)
-                hire_total = n_hire[t,F_set].sum()
-                #print("Number of workers looking for job vs total hiring (diff caps)", I_find_job.sum(), n_hire[t,1:len(F_set)+1].sum(), n_hire[t,F_set].sum())
+                hire_total = n_hire[t,F_set[F_set != 0]].sum()
+                #print("Number of workers looking for job vs total hiring (diff caps)", I_find_job.sum(), n_hire[t,1:len(F_set)+1].sum(), n_hire[t,F_set[F_set != 0]].sum())
                 assert (np.ceil(hire_total) >= I_find_job.sum()), "Not enough expected hirings"
             #First, a basic version: allocating workers across vacancies completely randomly
-            #F[I_find_job] = allocate_workers_to_vac_rand(n_hire[t,F_set],F_set,I_find_job.sum()) #should it be +1 or +2???
+            #F[I_find_job] = allocate_workers_to_vac_rand(n_hire[t,F_set[F_set != 0]],F_set[F_set != 0],I_find_job.sum()) #should it be +1 or +2???
             #Now try satisfying all the prob 1 vacancies first
-            F = allocate_workers_to_vac_determ(n_hire[t,F_set],F_set,F,Id,I_find_job) #Am I sure it's the entire F??? seems a little sus ngl. yes, it's ok, it only updates for I_find_job rows
+            F = allocate_workers_to_vac_determ(n_hire[t,F_set[F_set != 0]],F_set[F_set != 0],F,Id,I_find_job)
+
+            #Tomorrow: now that searching workers are allocated, give the rest of their values. Also update the firm set F_set? Ah, no, shouldn't do that, would mess up the indices
+            #Ah, it's only non-moving workers left! Update them. THEN update the actual firm sizes!!!
             E[I_find_job]   = 1
+            #The rest is different across different workers??? Or not because all workers start at the same v_0 anyway?
             S[I_find_job]   = 1
-            R[I_find_job]   = model.v_0 #Bonus noted in the actual wage, computed below
+            R[I_find_job]   = model.v_0 #v_0? Not sure actually. Main question for tomorrow!
+
             D[Ie_e2e]   = Event.j2j
             D[Iu_u2e]   = Event.u2e  
 
             #6. Wrapping the period up: updating firm info 
-            #Sum up the number of jun and sen workers
-            n0[t,F_set] = np.bincount(F[S == 1], minlength=n0.shape[1])[F_set]
-            n1[t,F_set] = np.bincount(F[S > 1], minlength=n1.shape[1])[F_set]
-            #Update firm prod shock
+            #Update firm production
             for iz in range(p.num_z):
                 Fz =  F_set[(z[t-1,F_set]==iz) & (F_set != 0)]
                 #print(len(Fz))
                 z[t,Fz] = np.random.choice(p.num_z, len(Fz), p=model.Z_trans_mat[iz])
-            #Update firm production + jun wage (both are interpolations, so put in the same loop)
-            for iz in range(p.num_z):
-                for in0 in range(p.num_n):
-                    for in1 in range(p.num_n):
-                        F_spec = F_set[(z[t,F_set]==iz) & (n0[t,F_set]==in0) & (n1[t,F_set]==in1)]
-                        if len(F_spec)==0:
-                            continue
-                        #Jun wage requires 2d intepolation so perform it the same way. Note also that it takes today's states, not previous ones. It's the only policy variable that works like that                
-                        w[t,F_spec,0] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[iz, in0, in1, ...], bounds_error=False, fill_value=None) ((rho[t,F_spec],q[t,F_spec])) #Is this time inconsistent??? Given that prod is decided later?
-                        prod[t,F_spec] = np.interp(q[t,F_spec],model.Q_grid,model.prod[iz,in0,in1,0,:])
-            #Update new hire wages not jun wages are known
-            #W[I_find_job]   = w[t,F[I_find_job],0]   # jun wage. potentially could add the wage bonus here as well. Important for tracking j2j wage growth
+            #Update firm size and jun wage, both in the F_set and in the panel
+            for f in F_set[F_set != 0]: 
+                #Sum up the number of jun and sen workers
+                n0[t,f] = len(F[(F == f) & (S == 1)])
+                n1[t,f] = len(F[(F == f) & (S > 1)])
+                prod[t,f] = np.interp(q[t,f],model.Q_grid,model.prod[z[t,f],n0[t,f],n1[t,f],0,:])
+                w[t,f,0] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f])) #Is this time inconsistent??? Given that prod is decided later?
+            #W[I_find_job]   = w[t,F[I_find_job],0] +   # jun wage. potentially could add the wage bonus here as well. Important for tracking j2j wage growth
             W[Iu_u2e]   = w[t,F[Iu_u2e],0] + bon_unemp
             W[Ie_e2e]   = w[t,F[Ie_e2e],0] + bon_leave[t,F[Ie_e2e]]
+            #Z[E==1] = z[t,F[E==1]]
+            #N0[E==1] = n0[t,F[E==1]]
+            #N0[E==0] = 0 #MUST DO THIS!!! Because these guys don't reset on their own!
+            #N1[E==1] = n1[t,F[E==1]]
+            #N[E==1] = N0[E==1] + N1[E==1]
+            #PROD[E==1] = prod[t,F[E==1]] #Can I add all of these later???
+            #Also gotta initialize productivies for firms??? That's the job for tomorrow. PAST THAT, WE GOT IT!!! THE SIMULATION'S THERE, CAN BUG TEST AND MOVE ON TO MOMENTS
+
+            # we shock the type of workers
+            #for ix in range(p.num_x):
+            #    Ix    = (X==ix)
+            #    if INCLUDE_XCHG:
+            #        X[Ix] = np.random.choice(p.num_x, Ix.sum(), p=model.X_trans_mat[:,ix])
 
             # append to data
             if (t>burn):
@@ -497,17 +492,23 @@ class Simulator:
                 df_all = pd.concat([df_all, df], axis =0) #Andrei: merge current dataset with the previous ones based on the i axis. So then each worker just has a single row assigned to them?
 
         # append match output
+        #df_all['n00'] = n0[df_all.t,df_all.f]
         df_all['z'] = z[df_all['t'].values.astype(int), df_all['f'].values.astype(int)]
         df_all['n0'] = n0[df_all['t'].values.astype(int), df_all['f'].values.astype(int)]
+        #df_all.loc[df_all.e==0,'n0'] = 0
         df_all['n1'] = n1[df_all['t'].values.astype(int), df_all['f'].values.astype(int)]
         df_all['prod'] = prod[df_all['t'].values.astype(int), df_all['f'].values.astype(int)]
+        #df_all['prod2'] =  np.interp(q[df_all['t'].values.astype(int), df_all['f'].values.astype(int)],model.Q_grid,model.prod[df_all['z'].values.astype(int),df_all['n0'].values.astype(int),df_all['n1'].values.astype(int),0,:])
         df_all['n'] = df_all['n0'].values + df_all['n1'].values
-        #Unemployed don't get any firm info
         df_all.loc[df_all.e==0,['z','n0','n1', 'prod', 'n']] = 0        
+
+        #df_all['f'] = model.prod[(df_all.z,df_all.n0,df_all.r,df_all.n1,df_all.q)] #for me this will be self.prod? Exactly! Exact same thing except at these values (meaning, for me, z,n0,n1,any_v,q)
+        #Can I do other stuff like this, too? Some easy stuff to append?
+        #df_all.loc[df_all.e==0,'f'] = 0 #unemployed get output of 0?
 
         # sort the data
         df_all = df_all.sort_values(['i', 't'])
-        #print("Cumul time gain, good if >0", cumul_time_gain)
+
         self.sdata = df_all
         return(self)
 
@@ -827,54 +828,6 @@ class Simulator:
 
 """ 
 Old Notes
-#Old 2d, slightly (just barely) slower, because it needed to re-initialize every time:
-            beg_old=time()
-            for iz in range(p.num_z):
-                for in0 in range(p.num_n):
-                    for in1 in range(p.num_n):
-                        F_spec = F_set[(z[t-1,F_set]==iz) & (n0[t-1,F_set]==in0) & (n1[t-1,F_set]==in1)]
-                        if len(F_spec)==0:
-                            continue
-                        rho[t,F_spec] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        n_hire[t,F_spec] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        pr_j2j[t,F_spec] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        sep_rate[t,F_spec] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        q[t,F_spec] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        ve_star[t,F_spec] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) ((rho[t-1,F_spec],q[t-1,F_spec]))
-            end_old=time()
-
-
-            #1d approach: here I do not interpolate for rho, instead I assign it to the closest value. Cost: max diff between the two rho's is 0.4, which is quite a bit imo
-            #rho_diff = np.zeros(nf+1+extra)
-            #for f in F_set:
-                #rho_diff[f] = np.interp(q[t-1,f],model.Q_grid,model.rho_star[z[t-1,f],n0[t-1,f],n1[t-1,f],rho[t-1,f],:])
-                #This rho_diff uses idx from the previous period! so the comparisons are always valid
-            #    rho_diff[f] = model.rho_grid[np.argmin(np.abs(model.rho_grid - np.interp(q[t-1,f],model.Q_grid,model.rho_star[z[t-1,f],n0[t-1,f],n1[t-1,f],rho_diff_idx[f],:]))).astype(int)]
-            #    rho_diff_idx[f] = np.argmin(np.abs(model.rho_grid - np.interp(q[t-1,f],model.Q_grid,model.rho_star[z[t-1,f],n0[t-1,f],n1[t-1,f],rho_diff_idx[f],:]))).astype(int)
-            #    w[t,f,1] = model.pref.inv_utility_1d(np.interp(q[t-1,f],model.Q_grid,model.rho_star[z[t-1,f],n0[t-1,f],n1[t-1,f],rho[t-1,f],:]))
-
-            #    n_hire[t,f] = np.interp(q[t-1,f],model.Q_grid,model.n0_star[z[t-1,f],n0[t-1,f],n1[t-1,f],rho[t-1,f],:])
-            #   pr_j2j[t,f] = np.interp(q[t-1,f],model.Q_grid,model.pe_star[z[t-1,f],n0[t-1,f],n1[t-1,f],rho[t-1,f],:])
-            #    sep_rate[t,f] = np.interp(q[t-1,f],model.Q_grid,model.sep_star[z[t-1,f],n0[t-1,f],n1[t-1,f],rho[t-1,f],:])
-            #    q[t,f] = np.interp(q[t-1,f],model.Q_grid,model.q_star[z[t-1,f],n0[t-1,f],n1[t-1,f],rho[t-1,f],:])
-            #    ve_star[t,f] = np.interp(q[t-1,f],model.Q_grid,model.ve_star[z[t-1,f],n0[t-1,f],n1[t-1,f],rho[t-1,f],:])           
-            
-            
-            #for f in F_set: 
-            #    #Via 2d interpolation (may be too slow, we'll see). Could I do this in numba?
-            #    rho[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
-            #    w[t,f,1] = model.pref.inv_utility_1d(rho[t,f])
-
-            #    n_hire[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
-            #    pr_j2j[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
-            #    sep_rate[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
-            #    q[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
-            #    ve_star[t,f] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[z[t-1,f], n0[t-1,f],n1[t-1,f], ...], bounds_error=False, fill_value=None) ((rho[t-1,f],q[t-1,f]))
-            #    bon_leave[t,f] = model.pref.inv_utility(ve_star[t,f] - model.v_0) - model.pref.inv_utility(model.v_grid[0] - model.v_0) #Bonus wage if leave the current firm
-            #print("len fset",len(F_set))
-
-
-
             #Andrei: can start by updating everything for firms
             #for ifirm in range() #Probably easier to do it via a loop? So yes, iterate over all the firms and add the crucial information: 
             # today's size (or tomorrow's? depends on the timing)
@@ -960,23 +913,4 @@ Old Notes
             
             #Okay, so this shit DOES seem fairly complicated... but not impossible, just gotta tackle this step-by-step, starting with individual firm decisions.
             #Once I have that, I can proceed to aggregating.
-            #Remove empty firms!!! Might not actually be good tbh. Forces more and more new firms in when unneeded
-            #F_set = F_set[n0[t,F_set]+n1[t,F_set] > 0]
-
-            
-            
-            #Z[E==1] = z[t,F[E==1]]
-            #N0[E==1] = n0[t,F[E==1]]
-            #N0[E==0] = 0 #MUST DO THIS!!! Because these guys don't reset on their own!
-            #N1[E==1] = n1[t,F[E==1]]
-            #N[E==1] = N0[E==1] + N1[E==1]
-            #PROD[E==1] = prod[t,F[E==1]] #Can I add all of these later???
-            #Also gotta initialize productivies for firms??? That's the job for tomorrow. PAST THAT, WE GOT IT!!! THE SIMULATION'S THERE, CAN BUG TEST AND MOVE ON TO MOMENTS
-
-            # we shock the type of workers
-            #for ix in range(p.num_x):
-            #    Ix    = (X==ix)
-            #    if INCLUDE_XCHG:
-            #        X[Ix] = np.random.choice(p.num_x, Ix.sum(), p=model.X_trans_mat[:,ix])
-            
-            """
+"""

@@ -327,8 +327,8 @@ class MultiworkerContract:
         K = 2
         self.p = input_param
         #Deep loops
-        self.indices = product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n), range(self.p.num_v) ,range(self.p.num_q))
-        self.indices_no_v = product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n),range(self.p.num_q))
+        self.indices = list(product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n), range(self.p.num_v) ,range(self.p.num_q)))
+        self.indices_no_v = list(product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n),range(self.p.num_q)))
 
         self.deriv_eps = 1e-4 # step size for derivative
         # Model preferences initialized by the same parameter object.
@@ -1121,7 +1121,7 @@ class MultiworkerContract:
         #rho_u2e = np.zeros(self.p.num_x)
         #Pr_u2e  = np.zeros(self.p.num_x)
         #for ix in range(self.p.num_x):
-        ve = self.js.ve(EU)
+        self.ve = self.js.ve(EU)
         #rho_u2e = np.interp(ve, W[self.p.z_0, :, ix], rho_grid) We don't have rho_u2e, since all workers start on the same v0. Instead we get wage_jun, but that depends on the firm
         Pr_u2e = self.js.pe(EU) # this does not include the inefficiency of search for employed
 
