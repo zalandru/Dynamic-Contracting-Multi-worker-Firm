@@ -228,7 +228,7 @@ class Preferences:
 
     def inv_utility_1d(self, value):
         """
-            Computes the first derivative of the inverse utility function at a particular value.
+            Computes the first derivative of the inverse utility function at a particular value. u'(u^{-1}(v))
             :param value: Argument of the function.
             :return: Output of the function.
         """

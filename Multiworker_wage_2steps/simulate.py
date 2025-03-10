@@ -345,7 +345,7 @@ class Simulator:
             E0 = np.copy(E)
             #Z0 = np.copy(Z)
             F0 = np.copy(F) #Note that this F is the set of firms, not the assignment of workers to firms
-
+            S0 = np.copy(S)
 
             #Check destruction:
             self.close_pr = 0.05 #Percent of closing firms. For now, without aggregate movements, keep it constant
@@ -367,6 +367,7 @@ class Simulator:
                         sep_rate[t,F_spec] = sep_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
                         q[t,F_spec] = q_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
                         ve_star[t,F_spec] = ve_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
+            w[t,F_set,1] = rho[t,F_set]
             bon_leave[t,F_set] = model.pref.inv_utility(ve_star[t,F_set] - model.v_0) - model.pref.inv_utility(model.v_grid[0] - model.v_0) #Bonus wage if leave the current firm            
             bon_unemp = model.pref.inv_utility(model.ve - model.v_0) - model.pref.inv_utility(model.v_grid[0] - model.v_0) #Bonus wage if find a job
             # print(n_hire[t,F_set[F_set == 0]].sum())
@@ -384,8 +385,8 @@ class Simulator:
             S[I_close]  = 1
             R[I_close]  = 0
 
-            #2. Fire employed workers
-            I_remain = (E0==1) & np.isin(F0,F_set)
+            #2. Fire employed workers. WAIT. I'm FIRING EVERYONE HERE, EVEN SENIORS!!!
+            I_remain = (E0==1) & np.isin(F0,F_set) & (S0==1)
             F_remain = F0 * I_remain #This one isn't actually necessary, right? Correct, when we do bool_index_combine, the workers with technically real firms still get left out
             # we check the for separation
             rng = np.random.default_rng()
@@ -418,7 +419,9 @@ class Simulator:
             Iu_u2e     = bool_index_combine(Iu,meet_u2e)
             
             #4. Emp workers            
-            Ie = I_remain * (1 - sep) #Before this was bool_index_combine(I_remain,~sep), but that didn't work when I_remain was all zeroes. I think this is due to how sep is created
+            Ie_jun = I_remain * (1 - sep) #Before this was bool_index_combine(I_remain,~sep), but that didn't work when I_remain was all zeroes. I think this is due to how sep is created
+            Ie_sen = (E0==1) & np.isin(F0,F_set) & (S0 > 1) #Seniors never at risk of firing (for now)
+            Ie = (Ie_jun + Ie_sen).astype(bool)
             #If their firm closed, I_remain=0. If they got separated, ~sep=0.
             F_e = F0 * Ie #All the workers outside of this set are assigned "firm' 0, where all the policies are zero.
             # search decision for those not fired    
@@ -510,6 +513,135 @@ class Simulator:
         #print("Cumul time gain, good if >0", cumul_time_gain)
         self.sdata = df_all
         return(self)
+
+    def simulate_firm(self,z,n0,n1,rho,q,nt, allow_hiring=True,allow_leave=True,update_z=False, pb=True):
+        """
+        simulates a path of a particular firm from initial state [z,n0,n1,rho,q]
+        one can choose to allow the firm to expand or allow the workers to leave using allow_hiring and allow_leave
+        one can choose to update z using update_z
+        one can choose to show a progress bar with pb=True
+        for the aggregate version (multiple firms), simulate_force_ee is a better comparison
+        """
+        model = self.model
+        all_df = []
+        extra = 100 #extra workers to be potentially hired
+        if allow_hiring == False:
+            extra=0
+        ni=n0+n1 #Number of workers employed
+        W  = np.zeros(ni+extra)     # log-wage
+        W1 = np.zeros(ni+extra)     # value to the worker
+        Vs = np.zeros(ni+extra)     # search decision
+        S = np.zeros(ni+extra)      # tenure at the firm
+        D  = np.zeros(ni+extra,dtype=int)  # event  
+
+        S[:n0] = 1          
+        S[n0:ni] = 2
+        Y = np.zeros(ni+extra)  # log-output
+        P = np.zeros(ni+extra)      # firm profit
+        pr_sep_array = np.zeros(ni+extra)  # probability, either u2e or e2u
+        pr_j2j_array = np.zeros(ni+extra)  # probability, either u2e or e2u
+        F = np.zeros(ni+extra) #==1 if worker is in the firm, zero otherwise    
+        F[:ni] = 1
+        N0_array = np.zeros(ni+extra)  
+        N0_array[F==1] = n0 
+        N1_array = np.zeros(ni+extra) 
+        N1_array[F==1] = n1
+        Z = np.zeros(nt,dtype=int)
+        Z[0] = z
+        Z_array = np.zeros(ni+extra)
+        Z_array[F==1] = z
+        N0 = np.zeros_like(Z)
+        N0[0] = n0
+        N1 = np.zeros_like(Z)
+        N1[0] = n1
+        RHO = np.zeros(nt)
+        RHO[0] = rho
+        Q = np.zeros_like(RHO)
+        Q[0] = q
+        prod = np.zeros(nt)
+        prod[0] = np.interp(q,model.Q_grid,model.prod[z,n0,n1,0,:])
+        w = np.zeros((nt,2))
+
+        #Time 0 append with no update
+        W[(F==1) & (S==1)] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[z, n0, n1, ...], bounds_error=False, fill_value=None) ((rho,q)) )
+        W[(F==1) & (S>1)] = np.log(rho)
+        Y[F==1] = np.log(prod[0])
+        W1[(F==1) & (S>1)] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[z, n0, n1, ...,1], bounds_error=False, fill_value=None) (((rho,q)))
+        #Firm info, added for every employed worker
+        P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[z, n0, n1, ...], bounds_error=False, fill_value=None) ((rho,q))
+
+        all_df.append(pd.DataFrame({ 'i':range(ni+extra),'t':0, 'f':F, 
+                'z':Z_array, 'w':W , 'Pi':P, 'D': D, 'S': S, 'n0': N0_array, 'n1': N1_array,
+                'pr_e2u':pr_sep_array, 'pr_j2j':pr_j2j_array , 'y':Y, 'W1':W1, 'vs':Vs, 
+                }))
+        if pb:
+            rr = tqdm(range(1,nt))
+        else:
+            rr = range(1,nt) 
+
+        for t in rr:
+            #Update firm decisions first
+            RHO[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            pr_j2j = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            pr_sep = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            Q[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            Vs[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            w[t,1] = RHO[t]
+            #Update probabilities for the data
+            pr_j2j_array[F==1] = pr_j2j
+            pr_sep_array[F==1] = pr_sep
+            #Question: is it okay that I put these values before firing/hiring happens? I do this because I want to focus on the guys that do indeed have a chance to leave/be fired etc
+            if update_z:
+                Z[t] = np.random.choice(model.p.num_z, 1, p=model.Z_trans_mat[Z[t-1]])
+
+            #Workers leave. Once they leave, they're no longer tracked
+            if allow_leave:
+                #Firing first:
+                I_jun = (S==1) & (F==1)
+                sep = np.random.binomial(1, pr_sep, I_jun.sum()) == 1
+                I_sep = bool_index_combine(I_jun,sep)
+                F[I_sep] =0
+                D[I_sep] = Event.e2u
+                #Next j2j
+                I_rest = (F==1) #all the employed workers have a chance to leave
+                j2j = np.random.binomial(1, pr_j2j, I_rest.sum())
+                I_j2j = bool_index_combine(I_rest,j2j)
+                F[I_j2j] = 0
+                D[I_j2j] = Event.j2j
+            #Update seniority of survivors
+            S[F==1] = S[F==1] + 1
+            if allow_hiring:
+                N0[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+                #Discretize n0:
+                n0_int = np.floor(N0[t])
+                N0[t] = n0_int + np.random.binomial(1, N0[t]-n0_int)
+                F[ni:ni+N0[t]] = 1 #these guys now employed
+                S[ni:ni+N0[t]] = 1 #they're juniors
+                D[ni:ni+N0[t]] = Event.u2e #they don't actually have to be hired from unemp btw
+                ni = ni + N0[t] #add the extra workers
+            
+            #Update firm size and jun wage
+            N1[t] = ((F==1) & (S>1)).sum()
+            w[t,0] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[Z[t], N0[t], N1[t], ...], bounds_error=False, fill_value=None) ((RHO[t],Q[t])) ) #Is this time inconsistent??? Given that prod is decided later?
+            prod[t] = np.interp(Q[t],model.Q_grid,model.prod[Z[t],N0[t],N1[t],0,:])
+
+            #Update the employed worker info
+            W[ni:ni+N0[t]] = w[t,0] #junior wage paid
+            I_sen = (F==1) & (S>1) #Seniors that didn't leave
+            W[I_sen] = np.log(w[t,1])
+            D[I_sen] = Event.ee
+            W1[I_sen] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[Z[t], N0[t], N1[t], ...,1], bounds_error=False, fill_value=None) ((RHO[t],Q[t]))
+            #Firm info, added for every employed worker
+            P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[Z[t], N0[t], N1[t], ...], bounds_error=False, fill_value=None) ((RHO[t],Q[t]))
+            Y[F==1] = np.log(prod[t])
+            N0_array[F==1] = N0[t]
+            N1_array[F==1] = N1[t]
+
+            all_df.append(pd.DataFrame({ 'i':range(ni+extra),'t':t, 'f':F, 
+                'z':Z_array, 'w':W , 'Pi':P, 'D': D, 'S': S, 'n0': N0_array, 'n1': N1_array,
+                'pr_e2u':pr_sep_array, 'pr_j2j':pr_j2j_array , 'y':Y, 'W1':W1, 'vs':Vs, 
+                }))
+        return pd.concat(all_df).sort_values(['i','t'])
 
     def simulate_force_ee(self,X0,Z0,H0,R0,nt,update_x=True, update_z=True, pb=False):
         """
