@@ -28,24 +28,25 @@ class Parameters:
         self.num_np = 5       # Number of non-permanent levels
         self.num_z  = 3      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 5     # Number of points of support for the number of workers
-        self.n_bar = 4       # Number of workers in the firm	
+        self.num_n  = 6     # Number of points of support for the number of workers
+        self.n_bar = 5       # Number of workers in the firm        
+        self.num_n1  = 11     # Number of points of support for the number of workers
+        self.n_bar1 = 10       # Number of workers in the firm
         self.num_q = 6      #Number of avg match quality levels
         # Time periods in the Model
         self.dt     = 1.0 #0.25    # Time as a Fraction of Year
 
         # Vacancy cost
-        self.hire_c = 10.0
+        self.hire_c = 5.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
-        self.prod_q = 1.0 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
+        self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
         #DRS production
         self.prod_alpha = 0.85 #Taken from Schaal who quotes the 90s empirical literature (is there smth more recent??) Bilal et al. have smth similar, 0.817. Though tbf this is all US
         # Unemployment Parameters
         self.u_bf_m = 1.0        #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
-        #self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
         #Firm entry and maintenance cost
-        self.k_entry = 50.0 # was 200
+        self.k_entry = 100.0 # was 200
         self.k_f = 1.0
 
         #Min wage
@@ -61,7 +62,7 @@ class Parameters:
 
         # Search Environment
         self.z_0      = int(self.num_z/2+0.5)         # Slice of value function of firms (index starts at 1)
-        self.s_job    = 1.0        # Relative Efficiency of Search on the Job #0.53 in BL, but this is a bit of a pain at lower values since worker value is then below then unemp
+        self.s_job    = 0.65        # Relative Efficiency of Search on the Job #0.53 in BL, but this is a bit of a pain at lower values since worker value is then below then unemp
         self.alpha    = 0.8        # Parameter for probability of finding a job
         self.sigma    = 0.8         # Parameter for probability of finding a job #PRESET
         self.kappa    = 1.0         # Vacancy cost parameter

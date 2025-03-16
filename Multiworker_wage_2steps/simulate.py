@@ -514,14 +514,16 @@ class Simulator:
         self.sdata = df_all
         return(self)
 
-    def simulate_firm(self,z,n0,n1,rho,q,nt, allow_hiring=True,allow_leave=True,update_z=False, pb=True):
+    def simulate_firm(self,z,n0,n1,rho,q,nt, allow_hiring=True,allow_leave=True,update_z=False, z_dir=None,seed=False):
         """
         simulates a path of a particular firm from initial state [z,n0,n1,rho,q]
         one can choose to allow the firm to expand or allow the workers to leave using allow_hiring and allow_leave
-        one can choose to update z using update_z
-        one can choose to show a progress bar with pb=True
+        one can choose to update z using update_z. choosing z_dir=1 or -1 will result in simulating just a single, deterministic, shock in the middle of the simulation
+        one can choose to fix the seed using seed
         for the aggregate version (multiple firms), simulate_force_ee is a better comparison
         """
+        if seed:
+            np.random.seed(42)
         model = self.model
         all_df = []
         extra = 100 #extra workers to be potentially hired
@@ -546,10 +548,13 @@ class Simulator:
         N0_array[F==1] = n0 
         N1_array = np.zeros(ni+extra) 
         N1_array[F==1] = n1
-        Z = np.zeros(nt,dtype=int)
-        Z[0] = z
+        Z = np.zeros(nt,dtype=int) + z #if z is not updated, always keep it at the same value
         Z_array = np.zeros(ni+extra)
         Z_array[F==1] = z
+        #If performing a deterministic prod shock
+        if update_z and z_dir is not None:
+            #Shock a
+            Z[np.floor(nt/2).astype(int):] = z+z_dir
         N0 = np.zeros_like(Z)
         N0[0] = n0
         N1 = np.zeros_like(Z)
@@ -574,10 +579,10 @@ class Simulator:
                 'z':Z_array, 'w':W , 'Pi':P, 'D': D, 'S': S, 'n0': N0_array, 'n1': N1_array,
                 'pr_e2u':pr_sep_array, 'pr_j2j':pr_j2j_array , 'y':Y, 'W1':W1, 'vs':Vs, 
                 }))
-        if pb:
-            rr = tqdm(range(1,nt))
-        else:
-            rr = range(1,nt) 
+        #if pb:
+        #    rr = tqdm(range(1,nt))
+        #else:
+        rr = range(1,nt) 
 
         for t in rr:
             #Update firm decisions first
@@ -591,7 +596,7 @@ class Simulator:
             pr_j2j_array[F==1] = pr_j2j
             pr_sep_array[F==1] = pr_sep
             #Question: is it okay that I put these values before firing/hiring happens? I do this because I want to focus on the guys that do indeed have a chance to leave/be fired etc
-            if update_z:
+            if update_z and z_dir is None:
                 Z[t] = np.random.choice(model.p.num_z, 1, p=model.Z_trans_mat[Z[t-1]])
 
             #Workers leave. Once they leave, they're no longer tracked
@@ -610,23 +615,26 @@ class Simulator:
                 D[I_j2j] = Event.j2j
             #Update seniority of survivors
             S[F==1] = S[F==1] + 1
+
+            #Update firm size
+            N1[t] = ((F==1) & (S>1)).sum()
             if allow_hiring:
                 N0[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
                 #Discretize n0:
                 n0_int = np.floor(N0[t])
                 N0[t] = n0_int + np.random.binomial(1, N0[t]-n0_int)
+                if update_z and z_dir is not None and (t==np.floor(nt/2).astype(int)):
+                    #Force a hire that could potentially get fired
+                    N0[t] = N0[t] + 1
                 F[ni:ni+N0[t]] = 1 #these guys now employed
                 S[ni:ni+N0[t]] = 1 #they're juniors
-                D[ni:ni+N0[t]] = Event.u2e #they don't actually have to be hired from unemp btw
-                ni = ni + N0[t] #add the extra workers
-            
-            #Update firm size and jun wage
-            N1[t] = ((F==1) & (S>1)).sum()
+                D[ni:ni+N0[t]] = Event.u2e #they don't actually have to be hired from unemp btw           
             w[t,0] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[Z[t], N0[t], N1[t], ...], bounds_error=False, fill_value=None) ((RHO[t],Q[t])) ) #Is this time inconsistent??? Given that prod is decided later?
-            prod[t] = np.interp(Q[t],model.Q_grid,model.prod[Z[t],N0[t],N1[t],0,:])
-
-            #Update the employed worker info
             W[ni:ni+N0[t]] = w[t,0] #junior wage paid
+            ni = ni + N0[t] #add the extra workers 
+
+            prod[t] = model.fun_prod_onedim[Z[t]] * np.interp(Q[t],model.Q_grid,model.prod[Z[t],N0[t],N1[t],0,:])
+            #Update the employed worker info
             I_sen = (F==1) & (S>1) #Seniors that didn't leave
             W[I_sen] = np.log(w[t,1])
             D[I_sen] = Event.ee
@@ -636,12 +644,16 @@ class Simulator:
             Y[F==1] = np.log(prod[t])
             N0_array[F==1] = N0[t]
             N1_array[F==1] = N1[t]
-
-            all_df.append(pd.DataFrame({ 'i':range(ni+extra),'t':t, 'f':F, 
+            Z_array[F==1] = Z[t]
+            #print("shapes", F.shape,Z_array.shape,W.shape,S.shape,D.shape,W.shape, P.shape, N0_array.shape, N1_array.shape)
+            all_df.append(pd.DataFrame({ 'i':range(n0+n1+extra),'t':t, 'f':F, 
                 'z':Z_array, 'w':W , 'Pi':P, 'D': D, 'S': S, 'n0': N0_array, 'n1': N1_array,
                 'pr_e2u':pr_sep_array, 'pr_j2j':pr_j2j_array , 'y':Y, 'W1':W1, 'vs':Vs, 
                 }))
-        return pd.concat(all_df).sort_values(['i','t'])
+        all_df = pd.concat(all_df).sort_values(['i','t'])
+        all_df.loc[all_df.f==0,['z','n0','n1', 'y', 'w', 'Pi', 'S', 'pr_e2u', 'pr_j2j', 'W1', 'vs']] = 0
+        all_df['n'] = all_df['n0'].values + all_df['n1'].values              
+        return all_df
 
     def simulate_force_ee(self,X0,Z0,H0,R0,nt,update_x=True, update_z=True, pb=False):
         """
