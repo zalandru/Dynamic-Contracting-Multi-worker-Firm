@@ -514,7 +514,7 @@ class Simulator:
         self.sdata = df_all
         return(self)
 
-    def simulate_firm(self,z,n0,n1,rho,q,nt, allow_hiring=True,allow_leave=True,update_z=False, z_dir=None,seed=False):
+    def simulate_firm(self,z,n0,n1,rho,q,nt, allow_hiring=True,allow_fire=True,allow_leave=True,update_z=False, z_dir=None,seed=False,disable_fire=False):
         """
         simulates a path of a particular firm from initial state [z,n0,n1,rho,q]
         one can choose to allow the firm to expand or allow the workers to leave using allow_hiring and allow_leave
@@ -589,24 +589,193 @@ class Simulator:
             RHO[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
             pr_j2j = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
             pr_sep = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            pr_sep1 = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star1[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))            
             Q[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
             Vs[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
             w[t,1] = RHO[t]
+            #if (disable_fire & (t>np.floor(nt/2).astype(int))):
+            #    Q[t] = Q[t-1]
+                #Q[t] = (N0[t-1]* np.minimum(self.p.q_0,1)+N1[t-1]*np.minimum(Q[t-1],1))/(N0[t-1]+N1[t-1])
             #Update probabilities for the data
             pr_j2j_array[F==1] = pr_j2j
-            pr_sep_array[F==1] = pr_sep
+            pr_sep_array[(F==1) & (S==1)] = pr_sep
+            pr_sep_array[(F==1) & (S>1)] = pr_sep1            
             #Question: is it okay that I put these values before firing/hiring happens? I do this because I want to focus on the guys that do indeed have a chance to leave/be fired etc
             if update_z and z_dir is None:
                 Z[t] = np.random.choice(model.p.num_z, 1, p=model.Z_trans_mat[Z[t-1]])
 
             #Workers leave. Once they leave, they're no longer tracked
-            if allow_leave:
+            if allow_fire & ((not disable_fire) | (t<np.floor(nt/2).astype(int))):
                 #Firing first:
                 I_jun = (S==1) & (F==1)
                 sep = np.random.binomial(1, pr_sep, I_jun.sum()) == 1
-                I_sep = bool_index_combine(I_jun,sep)
+                I_sep_jun = bool_index_combine(I_jun,sep)
+                I_sen = (S>1) & (F==1)
+                sep1 = np.random.binomial(1, pr_sep1, I_sen.sum()) == 1
+                I_sep_sen = bool_index_combine(I_sen,sep1)                
+                I_sep = (I_sep_jun + I_sep_sen).astype(bool)
                 F[I_sep] =0
                 D[I_sep] = Event.e2u
+            if allow_leave:
+                #Next j2j
+                I_rest = (F==1) #all the employed workers have a chance to leave
+                j2j = np.random.binomial(1, pr_j2j, I_rest.sum())
+                I_j2j = bool_index_combine(I_rest,j2j)
+                F[I_j2j] = 0
+                D[I_j2j] = Event.j2j
+            #Update seniority of survivors
+            S[F==1] = S[F==1] + 1
+
+            #Update firm size
+            N1[t] = ((F==1) & (S>1)).sum()
+            if allow_hiring:
+                N0[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+                #Discretize n0:
+                n0_int = np.floor(N0[t])
+                N0[t] = n0_int + np.random.binomial(1, N0[t]-n0_int)
+                if update_z and z_dir is not None and (t==np.floor(nt/2).astype(int)):
+                    #Force a hire that could potentially get fired
+                    N0[t] = N0[t] + 1
+                F[ni:ni+N0[t]] = 1 #these guys now employed
+                S[ni:ni+N0[t]] = 1 #they're juniors
+                D[ni:ni+N0[t]] = Event.u2e #they don't actually have to be hired from unemp btw           
+            w[t,0] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[Z[t], N0[t], N1[t], ...], bounds_error=False, fill_value=None) ((RHO[t],Q[t])) ) #Is this time inconsistent??? Given that prod is decided later?
+            W[ni:ni+N0[t]] = w[t,0] #junior wage paid
+            ni = ni + N0[t] #add the extra workers 
+
+            prod[t] = model.fun_prod_onedim[Z[t]] * np.interp(Q[t],model.Q_grid,model.prod[Z[t],N0[t],N1[t],0,:])
+            #Update the employed worker info
+            I_sen = (F==1) & (S>1) #Seniors that didn't leave
+            W[I_sen] = np.log(w[t,1])
+            D[I_sen] = Event.ee
+            W1[I_sen] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[Z[t], N0[t], N1[t], ...,1], bounds_error=False, fill_value=None) ((RHO[t],Q[t]))
+            #Firm info, added for every employed worker
+            P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[Z[t], N0[t], N1[t], ...], bounds_error=False, fill_value=None) ((RHO[t],Q[t]))
+            Y[F==1] = np.log(prod[t])
+            N0_array[F==1] = N0[t]
+            N1_array[F==1] = N1[t]
+            Z_array[F==1] = Z[t]
+            #print("shapes", F.shape,Z_array.shape,W.shape,S.shape,D.shape,W.shape, P.shape, N0_array.shape, N1_array.shape)
+            all_df.append(pd.DataFrame({ 'i':range(n0+n1+extra),'t':t, 'f':F, 
+                'z':Z_array, 'w':W , 'Pi':P, 'D': D, 'S': S, 'n0': N0_array, 'n1': N1_array,
+                'pr_e2u':pr_sep_array, 'pr_j2j':pr_j2j_array , 'y':Y, 'W1':W1, 'vs':Vs, 
+                }))
+        all_df = pd.concat(all_df).sort_values(['i','t'])
+        all_df.loc[all_df.f==0,['z','n0','n1', 'y', 'w', 'Pi', 'S', 'pr_e2u', 'pr_j2j', 'W1', 'vs']] = 0
+        all_df['n'] = all_df['n0'].values + all_df['n1'].values              
+        return all_df
+
+    def simulate_firm_sep(self,z,n0,n1,rho,q,nt, force_sep=True,allow_hiring=True,allow_fire=True,allow_leave=True,update_z=False, z_dir=None,seed=False):
+        """
+        simulates a path of a particular firm from initial state [z,n0,n1,rho,q], forcing a separation at some point
+        one can choose to allow the firm to expand or allow the workers to leave using allow_hiring and allow_leave
+        one can choose to update z using update_z. choosing z_dir=1 or -1 will result in simulating just a single, deterministic, shock in the middle of the simulation
+        one can choose to fix the seed using seed
+        for the aggregate version (multiple firms), simulate_force_ee is a better comparison
+        """
+        if seed:
+            np.random.seed(42)
+        model = self.model
+        all_df = []
+        extra = 100 #extra workers to be potentially hired
+        if allow_hiring == False:
+            extra=0
+        ni=n0+n1 #Number of workers employed
+        W  = np.zeros(ni+extra)     # log-wage
+        W1 = np.zeros(ni+extra)     # value to the worker
+        Vs = np.zeros(ni+extra)     # search decision
+        S = np.zeros(ni+extra)      # tenure at the firm
+        D  = np.zeros(ni+extra,dtype=int)  # event  
+
+        S[:n0] = 1          
+        S[n0:ni] = 2
+        Y = np.zeros(ni+extra)  # log-output
+        P = np.zeros(ni+extra)      # firm profit
+        pr_sep_array = np.zeros(ni+extra)  # probability, either u2e or e2u
+        pr_j2j_array = np.zeros(ni+extra)  # probability, either u2e or e2u
+        F = np.zeros(ni+extra) #==1 if worker is in the firm, zero otherwise    
+        F[:ni] = 1
+        N0_array = np.zeros(ni+extra)  
+        N0_array[F==1] = n0 
+        N1_array = np.zeros(ni+extra) 
+        N1_array[F==1] = n1
+        Z = np.zeros(nt,dtype=int) + z #if z is not updated, always keep it at the same value
+        Z_array = np.zeros(ni+extra)
+        Z_array[F==1] = z
+        #If performing a deterministic prod shock
+        if update_z and z_dir is not None:
+            #Shock a
+            Z[np.floor(nt/2).astype(int):] = z+z_dir
+        N0 = np.zeros_like(Z)
+        N0[0] = n0
+        N1 = np.zeros_like(Z)
+        N1[0] = n1
+        RHO = np.zeros(nt)
+        RHO[0] = rho
+        Q = np.zeros_like(RHO)
+        Q[0] = q
+        prod = np.zeros(nt)
+        prod[0] = np.interp(q,model.Q_grid,model.prod[z,n0,n1,0,:])
+        w = np.zeros((nt,2))
+
+        #Time 0 append with no update
+        W[(F==1) & (S==1)] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[z, n0, n1, ...], bounds_error=False, fill_value=None) ((rho,q)) )
+        W[(F==1) & (S>1)] = np.log(rho)
+        Y[F==1] = np.log(prod[0])
+        W1[(F==1) & (S>1)] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[z, n0, n1, ...,1], bounds_error=False, fill_value=None) (((rho,q)))
+        #Firm info, added for every employed worker
+        P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[z, n0, n1, ...], bounds_error=False, fill_value=None) ((rho,q))
+
+        all_df.append(pd.DataFrame({ 'i':range(ni+extra),'t':0, 'f':F, 
+                'z':Z_array, 'w':W , 'Pi':P, 'D': D, 'S': S, 'n0': N0_array, 'n1': N1_array,
+                'pr_e2u':pr_sep_array, 'pr_j2j':pr_j2j_array , 'y':Y, 'W1':W1, 'vs':Vs, 
+                }))
+        #if pb:
+        #    rr = tqdm(range(1,nt))
+        #else:
+        rr = range(1,nt) 
+
+        for t in rr:
+            #Update firm decisions first
+            RHO[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            pr_j2j = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            pr_sep = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            pr_sep1 = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star1[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))            
+            Q[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            Vs[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            w[t,1] = RHO[t]
+            #Update probabilities for the data
+            pr_j2j_array[F==1] = pr_j2j
+            pr_sep_array[(F==1) & (S==1)] = pr_sep
+            pr_sep_array[(F==1) & (S>1)] = pr_sep1            
+            #Question: is it okay that I put these values before firing/hiring happens? I do this because I want to focus on the guys that do indeed have a chance to leave/be fired etc
+            if update_z and z_dir is None:
+                Z[t] = np.random.choice(model.p.num_z, 1, p=model.Z_trans_mat[Z[t-1]])
+
+            #Workers leave. Once they leave, they're no longer tracked
+            if force_sep and (t==np.floor(nt/2).astype(int)): #Easy quick route: raise sep probability
+                    #fired_workers = np.random.choice(
+                    #vacancy_indices, 
+                    #size=1, 
+                    #replace=False)
+                I_f = F==1
+                sep = np.random.binomial(1, 0.25, I_f.sum()) == 1
+                I_sep = bool_index_combine(I_f,sep)  
+                F[I_sep] =0
+                D[I_sep] = Event.e2u           
+
+            if allow_fire:
+                #Firing first:
+                I_jun = (S==1) & (F==1)
+                sep = np.random.binomial(1, pr_sep, I_jun.sum()) == 1
+                I_sep_jun = bool_index_combine(I_jun,sep)
+                I_sen = (S>1) & (F==1)
+                sep1 = np.random.binomial(1, pr_sep1, I_sen.sum()) == 1
+                I_sep_sen = bool_index_combine(I_sen,sep1)                
+                I_sep = (I_sep_jun + I_sep_sen).astype(bool)
+                F[I_sep] =0
+                D[I_sep] = Event.e2u
+            if allow_leave:
                 #Next j2j
                 I_rest = (F==1) #all the employed workers have a chance to leave
                 j2j = np.random.binomial(1, pr_j2j, I_rest.sum())
