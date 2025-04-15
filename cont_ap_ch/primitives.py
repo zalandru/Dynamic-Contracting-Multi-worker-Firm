@@ -29,7 +29,7 @@ class Parameters:
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
         #self.num_np = 5       # Number of non-permanent levels
         self.num_np = 1       # Number of non-permanent levels
-        self.num_z  = 7      # Number of points for match productivity
+        self.num_z  = 1      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
 
         # Time periods in the Model

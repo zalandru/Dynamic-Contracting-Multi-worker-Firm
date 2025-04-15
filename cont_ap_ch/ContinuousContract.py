@@ -206,7 +206,7 @@ class ContinuousContract:
             #Andrei: why is the w_grid still preset? Doesn't it depend on what you promised to the worker?
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
             Ji = self.fun_prod[:, ax] - w_grid[ax, :] + self.p.beta * (1 - pe_star) * EJ1_star
-            print("Value diff:", np.max(np.abs(Ji-Ji2)))
+            #print("Value diff:", np.max(np.abs(Ji-Ji2)))
             # Update worker value function
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
