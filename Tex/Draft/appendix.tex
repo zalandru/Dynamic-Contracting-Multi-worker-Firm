@@ -1,0 +1,161 @@
+\appendix
+\section{Model Appendix} 
+
+\subsection{Microfounding the Wage Noncontractability} \label{microfoundation}
+Consider a simplified, 2-period version of the model. The firm starts with measure $n=2$ of workers, half of them of high quality and the other half of low. I allow the firm to offer quality-contingent wages in whichever way it likes. \\
+I show that, under a sufficiently small elasticity of job search probability with respect to promised value $v'$, $\eta(v')\equiv\frac{\partial (1-p(v')) /\partial v'}{(1-p(v'))}$, the firm will optimally choose to keep wages constant across matches of different quality.
+\subsection{Recursive Lagrangian Approach} \label{dual}
+The original design of the problem would require solving promised values $v'_{y',k}$ for both each tenure step and each future productivity state. Following \textcite{balke2022}, I solve the following Pareto problem:
+\begin{equation*}
+\begin{split}
+\mathcal{P}(y,\{n_k,\rho_k,z_k\}) = &\inf_{\omega_k} \sup_{\tilde{n},\tilde{v},\{w_k,s_k,v'_k\}}  yF(n,z) - \sum_k n_kw_k - \kappa_f - \tilde{n}\frac{c}{q(\theta_{\tilde{v}})}   \\
+& + \sum_k\rho_kn_k(u(w_k)+\beta[s_kU+(1-s_k)R(v'_{k+1})] \\
+& -\beta\sum_k \omega_kn'_{k+1} v'_{k+1}+\beta E_{y'|y}\mathcal{P}(y',\{n'_k,\omega_k,z'_k\})    
+\end{split}
+\end{equation*}
+
+where
+\[\mathcal{P}(y,\{n_k,\rho_k,z_k\}) \equiv \sup_{\{v_k\}} J(y,\{n_k,v_k,z_k\})+\sum_k \rho_k n_k v_k \]
+The following proof (for $K\rightarrow\infty$ but the proof extends trivially to finite $K$) establishes its equivalence with the initial problem. It follows the steps of \textcite{balke2022}, extending it to the case of a multi-worker firm.
+\begin{proof}
+We have the following recursive formulation for $J$:
+\begin{equation*}
+    \begin{split}
+ J(y,\{n_k,v_k,z_k\}_{k\leq K}) =
+    %Max
+    & \max_{\tilde{n},\tilde{v},\{v'_k,v'_{y',k},w_{k},s_{k}\}_{k\leq K}} 
+    %Production
+    yF(\sum_k n_k,\frac{\sum n_kz_k}{\sum n_k})-
+    %Wage
+    \sum_k w_kn_k
+    %Size
+    -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
+    %Expectation
+    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) \\
+(\lambda_k) \: & u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})=v_k] \; \forall k\leq K \\
+(\omega_k)    & v'_{k+1} = E_{y'|y} v'_{k+1,y'} \; \forall k\leq K \\
+    & n'_{k+1} = n_k(1-s_k)(1-p(v'_{k+1}))+\tilde{n}\; \forall k\leq K \\
+    & z'_{k+1} = min(\frac{z_k}{1-s_k},1)\; \forall k\leq K \\
+    & n'_0 = \tilde{n}, v'_0 = \tilde{v}, z'_0 = z_0
+    \end{split}
+\end{equation*}
+Consider the Pareto problem
+\[\mathcal{P}(y,\{n_k,\rho_k,z_k\}) = \sup_{\{v_k\}} J(y,\{n_k,v_k,z_k\})+\sum_k \rho_k n_k v_k \]
+I first substitute the definition of $J$ together with its constraints into $\mathcal{P}$:
+\begin{equation*}
+    \begin{split}
+ \mathcal{P}(y,\{n_k,\rho_k,z_k\}) =
+    %Max
+    & \sup_{\tilde{n},\tilde{v},\{v_k,v'_{k},v'_{y',k},w_{k},s_{k}\}_{k\leq K}} 
+    %Production
+    yF(\sum_k n_k,\frac{\sum n_kz_k}{\sum n_k})-
+    %Wage
+    \sum_k w_kn_k
+    %Size
+    -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
+    %Expectation
+    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k \rho_k n_kv_k  \\
+(\lambda_k) \: & u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})=v_k] \; \forall k\leq K \\
+(\omega_k) \:   & v'_{k+1} = E_{y'|y} v'_{k+1,y'} \; \forall k\leq K \\
+    & n'_{k+1} = n_k(1-s_k)(1-p(v'_{k+1}))+\tilde{n}\; \forall k\leq K \\
+    & z'_{k+1} = min(\frac{z_k}{1-s_k},1)\; \forall k\leq K \\
+    & n'_0 = \tilde{n}, v'_0 = \tilde{v}, z'_0 = z_0
+    \end{split}
+\end{equation*}
+I now substitute in the promise-keeping constraint:
+\begin{equation*}
+    \begin{split}
+ \mathcal{P}(y,\{n_k,\rho_k,z_k\}) =
+    %Max
+    & \sup_{\tilde{n},\tilde{v},\{v'_k,v'_{y',k},w_{k},s_{k}\}_{k\leq K}} 
+    %Production
+    yF(\sum_k n_k,\frac{\sum n_kz_k}{\sum n_k})-
+    %Wage
+    \sum_k w_kn_k
+    %Size
+    -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
+    %Expectation
+    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k \rho_k n_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])  \\
+(\omega_k) \:    & v'_{k+1} = E_{y'|y} v'_{k+1,y'} \; \forall k\leq K \\
+    & n'_{k+1} = n_k(1-s_k)(1-p(v'_{k+1}))+\tilde{n}\; \forall k\leq K \\
+    & z'_{k+1} = min(\frac{z_k}{1-s_k},1)\; \forall k\leq K \\
+    & n'_0 = \tilde{n}, v'_0 = \tilde{v}, z'_0 = z_0
+    \end{split}
+\end{equation*}
+I introduce the $\omega_k$-constraints with weights $\beta n'_{k+1}$ into the problem:
+\begin{equation*}
+    \begin{split}
+ \mathcal{P}(y,\{n_k,\rho_k,z_k\}) =
+    %Max
+    & \inf_{\{\omega_k\}}\sup_{\tilde{n},\tilde{v},\{v'_k,v'_{y',k},w_{k},s_{k}\}_{k\leq K}} 
+    %Production
+    yF(\sum_k n_k,\frac{\sum n_kz_k}{\sum n_k})-
+    %Wage
+    \sum_k w_kn_k
+    %Size
+    -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
+    %Expectation
+    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k \rho_k n_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])  \\
+    & + \sum_k \beta\omega_kn'_{k+1}(E_{y'|y}v'_{y',k+1}-v'_{k+1})\\
+    & n'_{k+1} = n_k(1-s_k)(1-p(v'_{k+1}))+\tilde{n}\; \forall k\leq K \\
+    & z'_{k+1} = min(\frac{z_k}{1-s_k},1)\; \forall k\leq K \\
+    & n'_0 = \tilde{n}, v'_0 = \tilde{v}, z'_0 = z_0
+    \end{split}
+\end{equation*}
+I then rearrange the value function by moving $E_{y'|y}\sum_k \beta\omega_kn'_{k+1}v'_{y',k+1}$ (additional constraints are dropped to simplify notation):
+\begin{equation*}
+    \begin{split}
+ \mathcal{P}(y,\{n_k,\rho_k,z_k\}) =
+    %Max
+    & \inf_{\{\omega_k\}}\sup_{\tilde{n},\tilde{v},\{v_k,v'_{y',k},w_{k},s_{k}\}_{k\leq K}} 
+    %Production
+    yF(\sum_k n_k,\frac{\sum n_kz_k}{\sum n_k})-
+    %Wage
+    \sum_k w_kn_k
+    %Size
+    -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
+    %Expectation
+    & +\beta E_{y'|y} [J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k\omega_kn'_{k+1}v'_{y',k+1}]\\
+    & \sum_k \rho_k n_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])- \sum_k \beta\omega_kn'_{k+1}v'_{k+1}  
+    \end{split}
+\end{equation*}
+Lastly, I split the sup:
+\begin{equation*}
+    \begin{split}
+    \mathcal{P}(y,\{n_k,\rho_k,z_k\}) =
+    %Max
+    & \inf_{\{\omega_k\}}\sup_{\tilde{n},\tilde{v},\{v'_k,w_{k},s_{k}\}_{k\leq K}} 
+    %Production
+    yF(\sum_k n_k,\frac{\sum n_kz_k}{\sum n_k})-
+    %Wage
+    \sum_k w_kn_k
+    %Size
+    -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
+    %Expectation
+    & +\beta E_{y'|y} [\sup_{v'_{y',k+1}}J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k\omega_kn'_{k+1}v'_{y',k+1}]\\
+    & \sum_k \rho_k n_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])- \sum_k \beta\omega_kn'_{k+1}v'_{k+1}     
+    \end{split}
+\end{equation*}
+From this, one can note that, by definition of $\mathcal{P}$ \[\sup_{v'_{y',k+1}}J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k\omega_kn'_{k+1}v'_{y',k+1} = \mathcal{P}(y',\{n'_k,\omega_k,z'_k\}\]
+We thus arrive to the formulationof the problem as described at the beginning, not involving finding future state-specific promised values $v'_{y',k}$.
+\end{proof}
+\subsection{Block Recursivity} \label{blocrecur}
+I introduce an assumption that would allow for a block recursive eqiulibrium under the same conditions as in \textcite{schaal2017}. Block recursivity requires an indifference condition, either on the side of the firms or on the side of the workers. Under two-sided ex-post heterogeneity, that is not immediately achievable. \\
+\textcite{schaal2017} shows that, in a setting similar to mine, but with transferable utility between workers and firms, which he achieves due to the risk-neutral worker utility function, firms all have the same preferences across all the submarkets that they may post vacancies in. 
+Define the minimal hiring cost as 
+\[k = \min_{v} [v + \frac{c}{q_v}]\]
+Due to transferable utility, the cost of employing the worker from submarket $v$ becomes simply the value $v$. Thus, the optimal entry of vacancies in \textcite{schaal2017} can be summarized by 
+\[\theta_v [v + \frac{c}{q_v} - k]=0\]
+Meaning that either a submarket $v$ minimizes the hiring cost or it is closed. This condition is completely independent of the distribution of firms and workers, exactly because the one component where the firm type might come through, the cost of employing a worker from submarket $v$, is completely independent from the firm's state due to transferable utility.\\
+Utility is not transferable in my model, and thus different firms may face different costs of employing a worker at some value $v$ (for example, fixing $y$ and $z$, small firms prefer high values $v$ due to their intention to upsize). To get around that, I split the value $v$ that the worker would get upon getting hired into two components, the sign-on wage $w_v$ and the remaining value $v_0$ such that
+\[u(w_v)+\beta v_0= v\]
+This additional wage payment is incurred immediately upon hiring, allowing the remaining value that the firm owes to its worker, $v_0$, to be completely independent of the submarket $v$. Essentially, from the firm's perspective, submarkets now differ not in the value that firms would owe to the workers, but in this sign-on wage. The cost minimization problem then becomes 
+\[k = \min_{v} [w_v + \frac{c}{q_v}]\]
+This problem is now again completely independent of the firm's state, and thus the distribution of firms and workers no longer affects the tightness function $q_v$.\textcite{schaal2017} shows that, in a setting similar to mine, but with transferable utility between workers and firms, which he achieves due to the risk-neutral worker utility function, firms all have the same preferences across all the submarkets that they may post vacancies in. Then setting $\theta_v$ such that 
+\section{Data Appendix}
+\
+\subsection{Wage Growth} \label{wagegrowthK}
+I use the same sample to plot the log (real) wage growth across first 30 years of tenure. 
+\includegraphics[width=0.75\textwidth]{Wage growth across tenure under 30,cutoff 100.jpg} \\
+The wage growth appears to flatten after about 10 years of tenure, suggesting that it is not quantitatively costly to use $K=10$ as an approximation of the firm problem from Definition \ref{firmproblem}.
+

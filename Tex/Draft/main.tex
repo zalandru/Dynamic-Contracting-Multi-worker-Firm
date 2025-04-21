@@ -1,0 +1,93 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+
+\usepackage{graphicx}
+\usepackage{subfig} % Manipulation and reference of small or sub figures and tables
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta}
+%\usepgfplotslibrary{fillbetween}
+\usepackage{amsthm, amsmath, amsfonts, mathtools, amssymb}
+\usepackage{bbm}
+\usepackage[colorlinks=true,citecolor=blue,linkcolor=blue,urlcolor=black,bookmarksopen=true]{hyperref}
+\usepackage[margin=1.0in]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage{appendix}
+\usepackage[style=authoryear]{biblatex} %Imports biblatex package
+\addbibresource{references.bib} %Import the bibliography file
+\defbibenvironment{bibliography}
+  {\begin{enumerate}}
+  {\end{enumerate}}
+  {\item}
+
+\renewcommand{\baselinestretch}{1.2}
+\linespread{1.25}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{subfig} % Manipulation and reference of small or sub figures and tables
+\usepackage{tikz}
+\usepackage{caption}
+\usepackage{blkarray}
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem{lemma}{Lemma}
+
+\title{Wage and Layoff Risk Across Tenure}
+%\footnote{I am extremely grateful to Christian Hellwig, Eugenia Gonzalez-Aguado, and Nicolas Werquin for their invaluable advice and continuous guidance. I also thank  Martin Beraja, Charles Brendon, Fabrice Collard, Patrick Feve, Alexandre Gaillard, Carlo Galli, Jonas Gathen, Jonathon Hazell, Gerard Maideu Morera, Iourii Manovskii, Francois Poinas, Andreas Schaab, Vincent Sterk, Philipp Wangner, Wenxuan Xu, Miguel Zerecero, and  participants at various seminars for constructive comments and insightful discussions.  }
+\author{Andrei Zaloilo\footnote{Email: andrei.zaloilo@tse-fr.eu} \\ \textit{Toulouse School of Economics} }
+\date{April 2025}
+%Maybe remove Victoria Gregory and Morten Ravn, they gave feedback on the other paper.
+\begin{document}
+%\onehalfspacing
+\maketitle
+
+%\begin{abstract}
+%Wage rigidity as an amplification mechanism for the volatility of unemployment requires that jobs with rigid wages actually hire unemployed workers (rather than poach them from other firms). I differentiate jobs based on their hiring pool: whether they hire mostly unemployed or employed workers - and separately estimate their wage cyclicality. Using French matched employer-employee panel data, I find that wage rigidity varies significantly across jobs, with those engaging in worker poaching exhibiting more cyclical wages. I develop a labor search model with separation of search and heterogeneous wage cyclicality to measure the importance of distinguishing jobs by their hiring pool. The model reveals that rigid wages in jobs hiring unemployed workers have a disproportionately large effect on unemployment volatility compared to jobs poaching workers. Incorporating this heterogeneity yields a $20\%$ increase in unemployment volatility.
+
+
+
+%Short
+%Firms hire workers from different pools. Some firms hire more unemployed workers than others, making their demand for labor more important for unemployment. I differentiate jobs based on their hiring pool and estimate their wage cyclicality. The key finding is that wages in jobs hiring from unemployment are half as cyclical as wages in other jobs, for both incumbent workers and new hires. To measure the effects of this on unemployment volatility, I develop a labor search model with separation of search and heterogeneous wage rigidity and show that accounting for this heterogeneity increases the volatility of unemployment by $14\%-34\%$.
+
+%Medium
+%Wage rigidity as an amplification mechanism for the volatility of unemployment assumes that jobs with rigid wages actually hire unemployed workers (rather than poach them from other firms) which is not always the case. I differentiate jobs based on their hiring pool: whether they hire mostly unemployed or employed workers - and estimate wage rigidity separately for each of them. I find that wages in jobs hiring from unemployment are half as cyclical as wages in other jobs. This is true for the wages of both incumbent workers and new hires. I develop a labor search model with separation of search and heterogeneous wage rigidity to measure the importance of distinguishing jobs by their hiring pool. I find that wage rigidity in jobs hiring unemployed workers has a 3 times larger effect than the rigidity of other jobs, thus confirming the original intuition. Moreover, moving from homogeneous wage rigidity estimates to heterogeneous ones increases the volatility of unemployment by $14\%-34\%$. Therefore, accounting for the heterogeneity of wage rigidity across different jobs significantly raises the value of wage rigidity as an amplification mechanism.
+
+
+
+
+%Looooong
+%Wage rigidity as an amplification mechanism for the volatility of unemployment assumes that jobs with rigid wages actually hire unemployed workers, rather than poach them from other firms, which is not always the case. I differentiate jobs based on their hiring pool: whether they hire mostly unemployed or employed workers - and use the French matched employer-employee data to estimate wage rigidity separately for each of them. I find that wages in jobs hiring from unemployment are half as cyclical as wages in other jobs. This is true for the wages of both incumbent workers and new hires. I construct and simulate a labor search model with separation of search and heterogeneous wage rigidity to measure the importance of distinguishing jobs by their hiring pool. I find that wage rigidity in jobs hiring unemployed workers has a 3 times larger effect than the rigidity of other jobs, thus confirming the original intuition. Moreover, moving from homogeneous wage rigidity estimates to heterogeneous ones increases the volatility of unemployment by $14\%-34\%$. Therefore, accounting for the heterogeneity of wage rigidity across different jobs significantly raises the value of wage rigidity as an amplification mechanism.
+
+%%%%%%%%%%%%%%
+ %Are wage rigidity and its impact on unemployment volatility homogeneous across different jobs? I differentiate jobs based on how many of their workers are hired from unemployment (unemployment-to-employment, or UE) as compared to employment (EE) since the two have fundamentally different ways of affecting unemployment. I use French matched employer-employee data to estimate wage rigidity across these two types of jobs and find that wages are half as cyclical in jobs that hire from unemployment. To see the heterogeneous effects of wage rigidity, I construct a theoretical model with on-the-job search and separation of search. There is a finite number of locations, where workers can choose to search, each with its own wage determination mechanism. Thus, my model allows for heterogeneous wage rigidity across different submarkets. I simulate this model to find that the wage rigidity of the UE submarket matters significantly more for the volatility of unemployment than the rigidity of any other jobs. Combined with the empirical result, this implies that wages are highly rigid in the jobs where rigidity matters for the volatility of unemployment, which goes in the direction of solving the unemployment volatility puzzle. Moreover, this has implications for future empirical work on wage rigidity estimation as pooling the two different kinds of jobs results in a biased estimator, due to only rigidity of the jobs hiring from unemployment being relevant for the unemployment volatility.  
+%\end{abstract}
+%Maybe another abstract with a stronger focus on estimating UE wage rigidity?
+
+\input{introduction}
+%\input{simple model}
+%\input{empirics}
+\input{model}
+%\input{quantitative}
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Conclusion}
+%I estimate wage cyclicality separately for different jobs, based on their hiring pools. I use the matched employer-employee data to find that wages, both for new and incumbent workers, are significantly more rigid in jobs hiring from unemployment than in jobs poaching workers. I then simulate a model incorporating the separation of search and heterogeneous wage rigidity across different submarkets to find that wage rigidity in the entry-level submarket matters significantly more for the volatility of unemployment than in the higher submarkets. Together, the empirical and the theoretical results imply that, for unemployment volatility purposes, wages are highly rigid. I confirm this by comparing the heterogeneous wage cyclicality calibration of the model to the homogeneous one and find that accounting for the heterogeneity across jobs increases the unemployment volatility by $20\%$.
+%Moreover, the higher up the ladder is the submarket, the less important is its wage rigidity.  This goes in the direction of solving the unemployment volatility puzzle.
+
+%Potential interesting application of the empirical result could be explaining some of the business cycle-related job ladder facts. As one example, \textcite{moscarini2018} find that the job-to-job transition rate is procyclical, and especially so at the bottom of the job ladder. This might be because wages at the bottom of the ladder are too high during recessions, thus disincentivizing workers from transitioning to a different job. It would also be interesting to understand where the observed heterogeneity in wage cyclicality stems from. 
+\newpage
+\printbibliography %Prints bibliography
+
+
+
+\input{appendix}
+
+
+
+
+\end{document}

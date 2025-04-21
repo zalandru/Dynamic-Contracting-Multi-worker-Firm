@@ -12,6 +12,7 @@ from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
 from search import JobSearchArray
 import matplotlib.pyplot as plt
+from time import time
 # Set random seeds for reproducibility
 torch.manual_seed(0)
 np.random.seed(0)
@@ -78,18 +79,11 @@ class ValueFunctionNN(nn.Module):
     def forward(self, x):
         return self.model(x)
 def get_batch_gradients(range,states, value_function_model):
-    #states = states.detach().clone().requires_grad_(True)
-    values = value_function_model(states)
-    
-    # Sum values to get scalar for backward pass
-    values.sum().backward(retain_graph=True)
-    
-    gradients = states.grad.clone()
-    # Clear gradients for next computation
-    states.grad.zero_()
-    gradients = gradients / (range) #Normalize the gradient back to the original (not [-1,1]) state space
-
-    return gradients 
+    with torch.enable_grad():
+        states = states.clone().requires_grad_(True)
+        values = value_function_model(states).sum()
+        gradients = torch.autograd.grad(values, states, create_graph=False)[0]  # Note create_graph=False
+    return gradients / range
 
 class FOCOptimizer:
     """
@@ -123,21 +117,23 @@ class FOCOptimizer:
         self.rho_grid=1/self.pref.utility_1d(self.w_grid)
         # Normalize rho_grid to tensor for model input
         self.rho_normalized = self.bounds_processor.normalize(torch.tensor(self.rho_grid, dtype=torch.float32)).unsqueeze(1).requires_grad_(True)
-
-        
+        test_states = bounds_processor.normalize(torch.tensor(cc.rho_grid, dtype=torch.float32)).unsqueeze(1).requires_grad_(True)
+        print("Rho grid diff", np.max(np.abs(self.rho_normalized.detach().numpy()-test_states.detach().numpy())))
+        #print(self.rho_normalized.min(),self.rho_normalized.max())
         #Gotta fix the tightness+re functions somehow. Ultra simple J maybe?
         self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
+        #print(self.rho_normalized[0,0],self.rho_normalized[-1,0])
         self.simple_J=np.divide(self.fun_prod[self.p.z_0-1,ax] -self.pref.inv_utility(self.v_grid[:]*(1-self.p.beta)),1-self.p.beta)
         self.simple_Rho = self.simple_J + self.rho_grid * self.v_grid #We do indeed need to work with Rho here since we're taking W via its derivatives
         #Apply the matching function: take the simple function and consider its different values across v.
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
             np.divide(self.p.kappa, np.maximum(self.simple_J[ :], 1.0)), self.p.sigma), 1/self.p.sigma)
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
-        if js is None:
+        if cc is None:
             self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
             self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
         else:
-            self.js = js
+            self.js = cc.js
         #Note: I think??? js takes the values over the uniform grid only. so if I use NNs, gotta adapt it. But for now forget about updating it, keep it as is
 
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
@@ -215,15 +211,18 @@ class FOCOptimizer:
 
             action = rho_star_tensor
             next_state = self.bounds_processor.normalize(rho_star_tensor)
-            reward = self.fun_prod[p.z_0-1] - np.interp(states_denorm,self.rho_grid,self.w_grid) + states_denorm * self.pref.utility(np.interp(states_denorm,self.rho_grid,self.w_grid))  # The entire Rho here. Big note though: this should be today's W, not EW
+            wage = np.interp(states_denorm,self.rho_grid,self.w_grid)
+            utility = self.pref.utility(wage)
+            reward = self.fun_prod[p.z_0-1] - wage + states_denorm * utility  # The entire Rho here. Big note though: this should be today's W, not EW
             reward = torch.tensor(reward, dtype=torch.float32)
-
+             
 
 
         return {
             "action": action,
             "next_state": next_state,
-            "reward": reward
+            "reward": reward,
+            "utility": torch.tensor(utility, dtype=torch.float32)
         }
 
     def simulate_trajectory(self,state, value_function_model, foc_optimizer, steps=5):
@@ -241,26 +240,28 @@ class FOCOptimizer:
         """
         total_reward = 0
         discount = 1.0
+        w_value = 0.0
     
-        current_state = state.clone().requires_grad_(True)
-        with torch.enable_grad():
-            EW_tensor = get_batch_gradients(self.bounds_processor.range,self.rho_normalized, value_function_model)[:,0]
+        current_state = state.clone().requires_grad_(True)[:,0]
+
+        EW_tensor = get_batch_gradients(self.bounds_processor.range,self.rho_normalized, value_function_model)[:,0]
         self.EW = EW_tensor.detach().numpy()  # Convert to NumPy for further processing
         #assert np.all(self.EW[ 1:] >= self.EW[ :-1])
         with torch.no_grad():
-            self.vf_output = value_function_model(self.rho_normalized).squeeze(1).numpy() #This EJpi from the CC FOC. I just precompute it for every point here
+            self.vf_output = value_function_model(self.rho_normalized).squeeze(1).numpy() - self.rho_grid * self.EW #This EJpi from the CC FOC. I just precompute it for every point here
         for _ in range(steps):
             
             # Solve FOC to get optimal action and next state
             result = foc_optimizer.solve_foc(current_state, value_function_model)
             #Probability that the worker stays
-            EW_star = get_batch_gradients(self.bounds_processor.range,result["next_state"].unsqueeze(1).requires_grad_(True), value_function_model)[:,0]
+            EW_star = get_batch_gradients(self.bounds_processor.range,result["next_state"].unsqueeze(1), value_function_model)[:,0]
             ve_star, re_star, pc_star = self.getWorkerDecisions(EW_star.numpy())
             re_star = torch.from_numpy(re_star)
             pc_star = torch.from_numpy(pc_star)            
             # Accumulate discounted reward
             #if _<range(steps)[-1]:
             total_reward += discount *( result["reward"] + self.p.beta * self.bounds_processor.denormalize(current_state) * (EW_star + re_star) - self.p.beta * result["action"] * pc_star *EW_star)  #This should be: reward + rho*beta*ve_star*pe_star (so the value worker gets from leaving) + discount*next_reward
+            w_value += discount * (result["utility"] + self.p.beta * ( 1- pc_star) * ve_star) #Each period: utility from wage + value from J2J. Then, if worker stays (with prob pc_star), keep adding future utilities
             #else:
             #    total_reward += discount * result["reward"] #for the last period we don't enymore do ve_star as that's included... right? confirm later
             # Update state and discount factor
@@ -270,10 +271,14 @@ class FOCOptimizer:
         # Add final state value
         with torch.no_grad():
             final_value = value_function_model(current_state.unsqueeze(1).requires_grad_(True))
-    
-        total_value = total_reward + discount * final_value
-    
-        return total_value, current_state
+
+        total_value = total_reward + discount * final_value.squeeze(1)
+        w_value = w_value + discount * EW_star #This is the value of the job the worker has today, not the value of the job he will have tomorrow. So we don't need to add it to the reward.
+        
+        #Seeing whether the gradients converge (later to be used for the loss function)
+        #EW = get_batch_gradients(self.bounds_processor.range,state, value_function_model).squeeze(1)
+        #print("Difference in W", torch.abs(EW-w_value).mean().item())
+        return total_value, current_state, w_value
 
 
 
@@ -311,7 +316,7 @@ def train_value_function(
     value_function_model = ValueFunctionNN(state_dim, hidden_dims)
 
     # Initialize FOC optimizer
-    foc_optimizer = FOCOptimizer(state_dim, action_dim, value_function_model, bounds_processor, parameters, cc.js)
+    foc_optimizer = FOCOptimizer(state_dim, action_dim, value_function_model, bounds_processor, parameters, cc)
     
     # Initialize neural network optimizer
     optimizer = optim.Adam(value_function_model.parameters(), lr=learning_rate)
@@ -319,14 +324,22 @@ def train_value_function(
     #Step 0: basic guess    
     states = foc_optimizer.rho_normalized #This should be renormalized... right?
     #print(np.max(np.abs(cc.rho_grid-foc_optimizer.rho_grid)))
-    #target_values=torch.tensor(foc_optimizer.simple_Rho, dtype=torch.float32)
-    for _ in (range(2000)):
+    target_values=torch.tensor(foc_optimizer.simple_Rho, dtype=torch.float32)
+
+    for _ in (range(100)):
         optimizer.zero_grad()
         predicted_values = value_function_model(states)[:,0]
+        #Add gradient loss, to see whether it'll fix the problem
         loss = nn.MSELoss()(predicted_values, target_values)
         loss.backward() 
         optimizer.step()
+    # After pre-training:
+    with torch.no_grad():
+        test_pred = value_function_model(foc_optimizer.rho_normalized)
+        print("Pre-train MAE:", torch.abs(test_pred.squeeze(1) - target_values).mean().item())
 
+
+# If these are unstable, your simulation logic is flawed
     # Training loop
     for iteration in tqdm(range(num_iterations)):
         # Generate uniform random starting states
@@ -337,25 +350,29 @@ def train_value_function(
         #print("States shape", states.shape)
         # Calculate target values through simulation
         target_values = []
-
         # Simulate trajectory and get total discounted reward
-        target_values, _ = foc_optimizer.simulate_trajectory(
-            states[:,0], value_function_model, foc_optimizer, simulation_steps)
-        #target_values.append(total_values)
+        target_values, _, W = foc_optimizer.simulate_trajectory(
+            states, value_function_model, foc_optimizer, simulation_steps)
+        target_values  = target_values.unsqueeze(1)
         
         #target_values = torch.tensor(target_values, dtype=torch.float32)
         
         # Update neural network based on simulated values
         optimizer.zero_grad()
         predicted_values = value_function_model(states)
-        print(np.mean(np.abs(predicted_values.detach().numpy()-target_values.detach().numpy())/np.abs(target_values.detach().numpy())))
-        loss = nn.MSELoss()(predicted_values, target_values)
+        #Also compare the gradient wrt rho to the worker's value W
+        EW_NN = get_batch_gradients(bounds_processor.range,states, value_function_model).squeeze(1)
+        #AND add monotonicity loss on the gradient
+        mon_loss = torch.mean(torch.min(torch.tensor(0),EW_NN[1:]-EW_NN[:-1]) * torch.min(torch.tensor(0),EW_NN[1:]-EW_NN[:-1])) #This is the loss function that forces the gradient to be increasing
+        #print(np.mean(np.abs(predicted_values.detach().numpy()-target_values.detach().numpy())/np.abs(target_values.detach().numpy())))
+        loss = nn.MSELoss()(predicted_values, target_values) + nn.MSELoss()(EW_NN, W) + 5.0 * mon_loss #+ nn.MSELoss()(predicted_values, target_values)
         loss.backward() #
+        #torch.nn.utils.clip_grad_norm_(value_function_model.parameters(), max_norm=2.0)  # Critical!
         optimizer.step()
         
         # Print progress
-        if (iteration + 1) % 5 == 0 or iteration == 0:
-            print(f"Iteration {iteration + 1}, Loss: {loss.item():.6f}")
+        if (iteration + 1) % (num_iterations/10) == 0 or iteration == 0:
+            print(f"Iteration {iteration + 1}, Loss: {loss.item():.6f} ,Monotonicity Loss: {mon_loss.item():.6f}")
     
     return value_function_model
 
@@ -375,9 +392,9 @@ def evaluate_value_function(model, p, lower_bounds,upper_bounds,cc,cc_Rho,cc_Wst
     #test_states = torch.randn(num_test_points, state_dim)
     test_states = bounds_processor.normalize(torch.tensor(cc.rho_grid, dtype=torch.float32)).unsqueeze(1).requires_grad_(True)
     # Evaluate model
-
+    print(test_states[0,0],test_states[-1,0])
     values = model(test_states)[:,0]
-    EW_star_NN=get_batch_gradients(bounds_processor.range,test_states, model)[:,0]
+    EW_star_NN=get_batch_gradients(bounds_processor.range,test_states, model)[:,0] #This is just W, not EW_star!!! Bcs this is just a derivative of Rho wrt the rho_grid, which gives us today's W
     
     # Print results
     #print("\nValue function evaluation on test states:")
@@ -398,7 +415,7 @@ if __name__ == "__main__":
     # Define parameters
     STATE_DIM = 1  # Just one, continuous state, the promised value. Next step will be adding (discrete) y
     ACTION_DIM = 1  # Adjust based on your problem
-    HIDDEN_DIMS = [256,256,256,256,256,256]  # Decreasing width architecture
+    HIDDEN_DIMS = [64,64]  # Decreasing width architecture
     pref = Preferences(input_param=p)
     cc=ContinuousContract(p) 
     cc_J,cc_W,cc_Wstar,_ = cc.J(0) 
@@ -408,22 +425,23 @@ if __name__ == "__main__":
     UPPER_BOUNDS = [cc.rho_grid[-1]] #Ideally this should come from fun_prod.max
     # Train value function
     print("Training value function...")
+    beg=time()
     trained_model = train_value_function(
         state_dim=STATE_DIM,
         lower_bounds=LOWER_BOUNDS,
         upper_bounds=UPPER_BOUNDS,
         action_dim=ACTION_DIM,
         hidden_dims=HIDDEN_DIMS,
-        num_iterations=1,
-        starting_points_per_iter=200,
-        simulation_steps=1,
-        learning_rate=0.001,
+        num_iterations=4000,
+        starting_points_per_iter=500,
+        simulation_steps=10,
+        learning_rate=0.01,
         parameters=p,
         cc=cc, target_values=target_values
     )
-    
+    print("Training time:", time()-beg)
     # Evaluate trained model
-    evaluate_value_function(trained_model, p, LOWER_BOUNDS, UPPER_BOUNDS,cc,target_values,cc_Wstar)
+    evaluate_value_function(trained_model, p, LOWER_BOUNDS, UPPER_BOUNDS,cc,target_values,cc_W)
     
     # Save the model
     torch.save(trained_model.state_dict(), "trained_value_function.pt")
