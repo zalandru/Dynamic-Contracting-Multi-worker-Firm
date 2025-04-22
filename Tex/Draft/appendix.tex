@@ -1,6 +1,37 @@
 \appendix
 \section{Model Appendix} 
-
+\subsection{Proofs}
+\subsubsection*{Proof of Proposition \ref{prop:wagegrowth}} \label{proof:wagegrowth}
+\subsubsection*{Proof of Proposition \ref{prop:targetwage}} \label{proof:targetwage}
+\subsection{Tenure-specific Severance Payments} \label{severance}
+I allow the firm to offer tenure-specific severance payments $sev_k$ to its workers. The severance is constant over time and paid perpetually upon firing and before finding a new job. I show that the severance structure involves higher payments for longer tenured workers (if those workers are on a higher promised value). 
+\begin{proposition}
+\label{severanceprop}
+Fix a firm state. Its severance payments for each tenure $k$ are given by
+\begin{equation*}
+    \begin{split}
+    & \frac{u'(b+sev_k)}{u'(w_k)}=1-\frac{\beta sev_k \frac{\partial p(\theta_{sev_k})}{\partial sev_k}}{1-\beta(1-p(\theta_{sev_k}))} \\
+    & \theta_{sev_k} = \theta(arg \max_v [(1-p(v))U(sev_k)+p(v)v]) \\
+    \end{split}
+\end{equation*}
+\end{proposition}
+\begin{proof}
+I start by describing the unemployment value of a worker with severance payment $sev_k$:
+\[U(sev_k) = u(b+sev_k) + \beta \max_v[(1-p(\theta_v))U(sev_k)+p(\theta_v)v]\]
+Denote the probability of finding a job with severance payment $sev_k$ as $p(\theta_{sev_k})$. The extra value to the unemployed from the severance payment is then given by
+\[\frac{\partial U(sev_k)}{\partial sev_k} = u'(b+sev_k) + \beta (1-p(\theta_{sev_k}))U'(sev_k)=\frac{u'(b+sev_k)}{1-\beta(1-p(\theta_{sev_k}))}\]
+Then the total benefit to the firm from raising the severance payment is the slackening of the promised-keeping constraint thanks to this rise in the unemployment value:
+\[\lambda_k n_k \beta s_k \frac{\partial U(sev_k)}{\partial sev_k} = \frac{n_k}{u'(w_k)}\beta s_k \frac{u'(b+sev_k)}{1-\beta(1-p(\theta_{sev_k}))}\]
+On the cost side, the firm internalizes the net present value of the severance payments when firing $n_ks_k$ workers:
+\[\frac{\partial}{\partial sev_k}\Big[n_k s_k \beta \frac{sev_k}{1-\beta(1-p(\theta_{sev_k}))}\Big]=n_ks_k\beta \frac{[1-\beta(1-p(\theta_{sev_k}))]-\beta sev_k \frac{\partial p(\theta_{sev_k})}{\partial sev_k}}{[1-\beta(1-p(\theta_{sev_k}))]^2}\]
+The optimal severance payment then follows from the first-order condition:
+\[ \frac{n_k}{u'(w_k)}\beta s_k \frac{u'(b+sev_k)}{1-\beta(1-p(\theta_{sev_k}))} = n_ks_k\beta \frac{[1-\beta(1-p(\theta_{sev_k}))]-\beta sev_k \frac{\partial p(\theta_{sev_k})}{\partial sev_k}}{[1-\beta(1-p(\theta_{sev_k}))]^2}\]
+Rearranging gives the result.
+\[\frac{u'(b+sev_k)}{u'(w_k)}=1-\frac{\beta sev_k \frac{\partial p(\theta_{sev_k})}{\partial sev_k}}{1-\beta(1-p(\theta_{sev_k}))}\]
+\end{proof}
+Note that, besides $u'(w_k)$, all the components of the severance payment are independent of both the firm state and the worker tenure. 
+It is immediate to notice then that higher paid workers will have higher severance payments: as $\frac{1}{u'(w_k)}$, the value to the firm of the severance payment goes up, while costs stay the same. Therefore, the firm will optimally choose to offer higher severance payments to higher paid workers. \\
+This equation is also easy to implement numerically: using the formulation in Appendix~\ref{dual}, where $\rho_k\equiv u'(w_k)$ is a state variable, I can immediately compute the payments for all the firm states, before solving the rest of the firm problem.
 \subsection{Microfounding the Wage Noncontractability} \label{microfoundation}
 Consider a simplified, 2-period version of the model. The firm starts with measure $n=2$ of workers, half of them of high quality and the other half of low. I allow the firm to offer quality-contingent wages in whichever way it likes. \\
 I show that, under a sufficiently small elasticity of job search probability with respect to promised value $v'$, $\eta(v')\equiv\frac{\partial (1-p(v')) /\partial v'}{(1-p(v'))}$, the firm will optimally choose to keep wages constant across matches of different quality.
@@ -152,6 +183,7 @@ Utility is not transferable in my model, and thus different firms may face diffe
 This additional wage payment is incurred immediately upon hiring, allowing the remaining value that the firm owes to its worker, $v_0$, to be completely independent of the submarket $v$. Essentially, from the firm's perspective, submarkets now differ not in the value that firms would owe to the workers, but in this sign-on wage. The cost minimization problem then becomes 
 \[k = \min_{v} [w_v + \frac{c}{q_v}]\]
 This problem is now again completely independent of the firm's state, and thus the distribution of firms and workers no longer affects the tightness function $q_v$.\textcite{schaal2017} shows that, in a setting similar to mine, but with transferable utility between workers and firms, which he achieves due to the risk-neutral worker utility function, firms all have the same preferences across all the submarkets that they may post vacancies in. Then setting $\theta_v$ such that 
+\newpage
 \section{Data Appendix}
 \
 \subsection{Wage Growth} \label{wagegrowthK}

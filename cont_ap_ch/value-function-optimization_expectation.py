@@ -57,7 +57,7 @@ class StateBoundsProcessor:
         return normalized_states * self.range + self.lower_bounds #Check: 0.5 * 10 + 10= 15.
 class ValueFunctionNN(nn.Module):
     """Neural network to approximate the value function"""
-    def __init__(self, state_dim, hidden_dims=[40, 30, 20, 10]):
+    def __init__(self, state_dim, num_y, hidden_dims=[40, 30, 20, 10]):
         super(ValueFunctionNN, self).__init__()
         
         # Build layers
@@ -71,19 +71,52 @@ class ValueFunctionNN(nn.Module):
             #layers.append(nn.LayerNorm(hidden_dim))
             input_dim = hidden_dim
         
-        # Output layer
-        layers.append(nn.Linear(input_dim, 1)) #was input_dim instead of 16
-        
+        # Final layer: one output per discrete state y'
+        layers.append(nn.Linear(input_dim, num_y)) #was input_dim instead of 16
         self.model = nn.Sequential(*layers)
-    
     def forward(self, x):
         return self.model(x)
+
+#Gradient functions
 def get_batch_gradients(range,states, value_function_model):
     with torch.enable_grad():
         states = states.clone().requires_grad_(True)
         values = value_function_model(states).sum()
         gradients = torch.autograd.grad(values, states, create_graph=False)[0]  # Note create_graph=False
     return gradients / range
+def get_expectation_gradients(range_tensor, states, value_model, P_mat, current_y):
+    """
+    states: [B,1]  (requires_grad=True)
+    P_mat: [num_y, num_y]
+    current_y: LongTensor of shape [B] with values in {0,1,2}
+    """
+    with torch.enable_grad():
+        states = states.clone().requires_grad_(True)      # [B,1]
+        V_all = value_model(states)                       # [B, num_y]
+        # select the P-row for each sample:
+        P_rows = P_mat[current_y]                         # [B, num_y]
+        EV = torch.sum(P_rows * V_all, dim=1)             # [B]
+        total = EV.sum()                                  # scalar
+        grads = torch.autograd.grad(total, states)[0]     # [B,1]
+    return grads / range_tensor                        # scale back to original units
+def get_expectation_gradients_full(range_tensor, states, value_model, P_mat):
+    """
+    Gives the gradient of the expectation of the value function for all today's y
+    states: [B,1]  (requires_grad=True)
+    P_mat: [num_y, num_y]
+    """
+    with torch.enable_grad():
+        states = states.clone().requires_grad_(True)      # [B,1]
+        V_all = value_model(states)                       # [B, num_y]
+        # select the P-row for each sample:
+        grads = torch.zeros((P_mat.shape[0],states.shape[0],states.shape[1]))    # [num_y,B]
+        for i in range(P_mat.shape[0]):
+            P_rows = P_mat[i]                                 # [B, num_y]
+            EV = torch.sum(P_rows * V_all, dim=1)             # [B]
+            total = EV.sum()
+            gr =    torch.autograd.grad(total, states)[0]                               # scalar
+            grads[i,:] = gr      # [B,1]
+    return grads / range_tensor  
 
 class FOCOptimizer:
     """
@@ -110,9 +143,9 @@ class FOCOptimizer:
 
         # Transition matrices
         self.Z_trans_mat = createPoissonTransitionMatrix(self.p.num_z, self.p.z_corr)
-
+        self.Z_trans_tensor = torch.tensor(self.Z_trans_mat, dtype=torch.float32)
         # Value Function Setup
-        self.J_grid   = -10 * np.ones((self.p.num_v)) #grid of job values, first productivity, then starting value, then tenure level
+        self.J_grid   = -10 * np.ones((self.p.num_z,self.p.num_v)) #grid of job values, first productivity, then starting value, then tenure level
         self.w_grid = np.linspace(self.unemp_bf, self.fun_prod.max(), self.p.num_v )
         self.rho_grid=1/self.pref.utility_1d(self.w_grid)
         # Normalize rho_grid to tensor for model input
@@ -123,11 +156,12 @@ class FOCOptimizer:
         #Gotta fix the tightness+re functions somehow. Ultra simple J maybe?
         self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
         #print(self.rho_normalized[0,0],self.rho_normalized[-1,0])
-        self.simple_J=np.divide(self.fun_prod[self.p.z_0-1,ax] -self.pref.inv_utility(self.v_grid[:]*(1-self.p.beta)),1-self.p.beta)
-        self.simple_Rho = self.simple_J + self.rho_grid * self.v_grid #We do indeed need to work with Rho here since we're taking W via its derivatives
+        self.simple_J = np.zeros_like(self.J_grid)
+        self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
+        self.simple_Rho = self.simple_J + self.rho_grid[ax,:] * self.v_grid [ax,:]#We do indeed need to work with Rho here since we're taking W via its derivatives
         #Apply the matching function: take the simple function and consider its different values across v.
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
-            np.divide(self.p.kappa, np.maximum(self.simple_J[ :], 1.0)), self.p.sigma), 1/self.p.sigma)
+            np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
         if cc is None:
             self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
@@ -170,7 +204,7 @@ class FOCOptimizer:
 
         return lnorm.ppf(q=exp_z, s=self.p.prod_var_z)    
  
-    def solve_foc(self, states, value_function_model):
+    def solve_foc(self, states, prod_states, value_function_model):
         """
         Solves first-order conditions to find optimal action and next state
         
@@ -191,14 +225,15 @@ class FOCOptimizer:
         # Placeholder implementation (just random actions and states)
         with torch.no_grad():
             states_denorm = self.bounds_processor.denormalize(states).numpy()
+            prod_states = prod_states.numpy()
             # get worker decisions
-            _, _, pc = self.getWorkerDecisions(EW) #This EW1i is computed by taking the derivative of Rho, which is our core value function, wrt rho, which is the value-related state-variable
+            _, _, pc = self.getWorkerDecisions(EW[prod_states,:]) #This EW1i is computed by taking the derivative of Rho, which is our core value function, wrt rho, which is the value-related state-variable
             # get worker decisions at EW1i + epsilon
-            _, _, pc_d = self.getWorkerDecisions(EW + self.deriv_eps)
+            _, _, pc_d = self.getWorkerDecisions(EW[prod_states,:] + self.deriv_eps)
             log_diff = np.zeros_like(self.rho_grid)
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
-            foc = self.rho_grid[:] - self.vf_output * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
+            foc = self.rho_grid[:] - self.vf_output[prod_states,:] * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
             assert (np.isnan(foc) & (pc > 0)).sum() == 0, "foc has NaN values where p>0"
 
                     #Andrei: so we look for the shadow cost that will satisfy the foc? Yes, look for u'(w'), with u'(w) given, so that the foc is satisfied
@@ -213,7 +248,7 @@ class FOCOptimizer:
             next_state = self.bounds_processor.normalize(rho_star_tensor)
             wage = np.interp(states_denorm,self.rho_grid,self.w_grid)
             utility = self.pref.utility(wage)
-            reward = self.fun_prod[p.z_0-1] - wage + states_denorm * utility  # The entire Rho here. Big note though: this should be today's W, not EW
+            reward = self.fun_prod[prod_states] - wage + states_denorm * utility  # The entire Rho here. Big note though: this should be today's W, not EW
             reward = torch.tensor(reward, dtype=torch.float32)
              
 
@@ -225,7 +260,7 @@ class FOCOptimizer:
             "utility": torch.tensor(utility, dtype=torch.float32)
         }
 
-    def simulate_trajectory(self,state, value_function_model, foc_optimizer, steps=5):
+    def simulate_trajectory(self,state, prod_states, value_function_model, foc_optimizer, steps=5):
         """
         Simulate a trajectory starting from a state and using the current value function
     
@@ -238,23 +273,35 @@ class FOCOptimizer:
         Returns:
             Total discounted reward and final state value
         """
+        # prepare expectation call
+        Ez = oe.contract_expression('av,az->zv', [self.p.num_z,state.shape[0]], self.Z_trans_mat.shape)
         total_reward = 0
         discount = 1.0
         w_value = 0.0
     
         current_state = state.clone().requires_grad_(True)[:,0]
-
-        EW_tensor = get_batch_gradients(self.bounds_processor.range,self.rho_normalized, value_function_model)[:,0]
+        #EW_TENSOR IS SHAPE (1,200,1) !!! IS THAT RIGHT? THINK MARK
+        EW_tensor = get_expectation_gradients_full(self.bounds_processor.range,self.rho_normalized, value_function_model, self.Z_trans_tensor)
         self.EW = EW_tensor.detach().numpy()
         #assert np.all(self.EW[ 1:] >= self.EW[ :-1])
         with torch.no_grad():
-            self.vf_output = value_function_model(self.rho_normalized).squeeze(1).numpy() - self.rho_grid * self.EW #This EJpi from the CC FOC. I just precompute it for every point here
-        for _ in range(steps):
+            # evaluate V(y', s) for all y' on your s-grid:
+            V_all = value_function_model(self.rho_normalized).numpy()   # [num_z, num_y]
+            # get transition row for today's y
+            #P_row = self.Z_trans_mat                   # [num_y,num_y]
+            # compute E[V(y',s)]
+            #EV = V_all.matmul(P_row)                           # [num_y] Hopefully, this gives us the expectation for all the possible y
+            EJ = Ez(V_all, self.Z_trans_mat)
+            # now subtract the derivative as before:
+            self.vf_output = EJ - self.rho_grid * self.EW 
+            #self.vf_output = value_function_model(self.rho_normalized).squeeze(1).numpy() - self.rho_grid * self.EW #This EJpi from the CC FOC. I just precompute it for every point here
+
+        for t in range(steps):
             
             # Solve FOC to get optimal action and next state
-            result = foc_optimizer.solve_foc(current_state, value_function_model)
+            result = foc_optimizer.solve_foc(current_state, prod_states, value_function_model)
             #Probability that the worker stays
-            EW_star = get_batch_gradients(self.bounds_processor.range,result["next_state"].unsqueeze(1), value_function_model)[:,0]
+            EW_star = get_expectation_gradients(self.bounds_processor.range,result["next_state"].unsqueeze(1), value_function_model, self.Z_trans_tensor, current_state)[:,0]
             ve_star, re_star, pc_star = self.getWorkerDecisions(EW_star.numpy())
             re_star = torch.from_numpy(re_star)
             pc_star = torch.from_numpy(pc_star)            
@@ -313,7 +360,7 @@ def train_value_function(
     """
     bounds_processor = StateBoundsProcessor(lower_bounds,upper_bounds)
     # Initialize value function neural network
-    value_function_model = ValueFunctionNN(state_dim, hidden_dims)
+    value_function_model = ValueFunctionNN(state_dim, parameters.num_z, hidden_dims)
 
     # Initialize FOC optimizer
     foc_optimizer = FOCOptimizer(state_dim, action_dim, value_function_model, bounds_processor, parameters, cc)
@@ -324,16 +371,16 @@ def train_value_function(
     #Step 0: basic guess    
     states = foc_optimizer.rho_normalized #This should be renormalized... right?
     #print(np.max(np.abs(cc.rho_grid-foc_optimizer.rho_grid)))
-    target_values=torch.tensor(foc_optimizer.simple_Rho, dtype=torch.float32)
-    target_W = torch.tensor(foc_optimizer.v_grid, dtype=torch.float32)
+    target_values=torch.tensor(foc_optimizer.simple_Rho, dtype=torch.float32).t()
+    target_W = torch.tensor(foc_optimizer.v_grid[ax,:], dtype=torch.float32).t()
     #Train also on the gradient
 
     for _ in (range(50)):
         optimizer.zero_grad()
-        predicted_values = value_function_model(states)[:,0]
-        predicted_grads = get_batch_gradients(bounds_processor.range,states, value_function_model)[:,0]
+        predicted_values = value_function_model(states)
+        predicted_grads = get_batch_gradients(bounds_processor.range,states, value_function_model)
         #Add gradient loss and monotonicity loss
-        violation = torch.relu(predicted_grads[:-1] - predicted_grads[1:])
+        violation = torch.relu(predicted_grads[:-1,:] - predicted_grads[1:,:])
         mon_loss = (violation ** 2).mean() #This is the loss function that forces the gradient to be increasing
         loss = nn.MSELoss()(predicted_values, target_values) + nn.MSELoss()(predicted_grads, target_W) + mon_loss #+ nn.MSELoss()(predicted_values, target_values)
         loss.backward() 
@@ -349,7 +396,14 @@ def train_value_function(
     for iteration in tqdm(range(num_iterations)):
         # Generate uniform random starting states
         states= torch.rand(starting_points_per_iter, state_dim,dtype=torch.float32).requires_grad_(True)
+        #prod_states = torch.zeros_like(states)
         states, _ = torch.sort(states, dim=0)
+        #prod_states = np.random_choice(range(parameters.num_z), size=(starting_points_per_iter,simulation_steps)) #Simulate a productiivity process.
+        #prod_states = np.zeros((starting_points_per_iter, simulation_steps),dtype=int)
+        prod_states = np.random.choice(range(parameters.num_z), size=(starting_points_per_iter))
+        #for i in range(simulation_steps)[1:]:
+        #    prod_states[:,i] = np.random.choice(range(parameters.num_z), size=(starting_points_per_iter), p=foc_optimizer.Z_trans_mat[prod_states[:,i-1],:])
+        prod_states = torch.tensor(prod_states, dtype=torch.float32)
         #states_denormal = rand_points * bounds_processor.range + torch.tensor(lower_bounds,dtype=torch.float32) #Turning lower_bounds into torch every time is wasteful
         #states = bounds_processor.normalize(states_denormal)
         #print("States shape", states.shape)
@@ -357,7 +411,7 @@ def train_value_function(
         target_values = []
         # Simulate trajectory and get total discounted reward
         target_values, _, W = foc_optimizer.simulate_trajectory(
-            states, value_function_model, foc_optimizer, simulation_steps)
+            states, prod_states, value_function_model, foc_optimizer, simulation_steps)
         target_values  = target_values.unsqueeze(1)
         
         #target_values = torch.tensor(target_values, dtype=torch.float32)
@@ -440,7 +494,7 @@ if __name__ == "__main__":
         hidden_dims=HIDDEN_DIMS,
         num_iterations=5000,
         starting_points_per_iter=200,
-        simulation_steps=5,
+        simulation_steps=1,
         learning_rate=0.01,
         parameters=p,
         cc=cc, target_values=target_values
