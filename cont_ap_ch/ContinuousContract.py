@@ -211,7 +211,7 @@ class ContinuousContract:
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
             W1i = .2*W1i + .8*W1i2
-            Ji = .4*Ji+.6*Ji2
+            #Ji = .4*Ji+.6*Ji2
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
 
