@@ -29,11 +29,11 @@ class Parameters:
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
         #self.num_np = 5       # Number of non-permanent levels
         self.num_np = 1       # Number of non-permanent levels
-        self.num_z  = 1      # Number of points for match productivity
+        self.num_z  = 3      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
 
         # Time periods in the Model
-        self.dt     = 1.0 #0.25    # Time as a Fraction of Year
+        self.dt     = 0.25 #0.25    # Time as a Fraction of Year
 
         # Utility Function Parameters
         self.u_rho = 1.5      # Risk aversion coefficient, was 1.5

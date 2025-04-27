@@ -6,13 +6,13 @@ import numpy as np
 from scipy.stats import lognorm as lnorm
 from ContinuousContract import ContinuousContract
 from primitives import Parameters
-p = Parameters()
 import opt_einsum as oe
 from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
 from search import JobSearchArray
 import matplotlib.pyplot as plt
 from time import time
+p = Parameters()
 # Set random seeds for reproducibility
 torch.manual_seed(0)
 np.random.seed(0)
@@ -440,7 +440,7 @@ if __name__ == "__main__":
         hidden_dims=HIDDEN_DIMS,
         num_iterations=5000,
         starting_points_per_iter=200,
-        simulation_steps=5,
+        simulation_steps=1,
         learning_rate=0.01,
         parameters=p,
         cc=cc, target_values=target_values
