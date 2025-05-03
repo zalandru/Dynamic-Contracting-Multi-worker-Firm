@@ -78,7 +78,7 @@ class JobSearch:
     of the job where to apply and the associated probability for any expected value e.
     """
     def __init__(self):
-        self.x = [0,-1,-1]  # parameters of the approximation
+        self.x = torch.tensor([0,-1,-1],dtype = torch.float32)  # parameters of the approximation
         self.e0 = 0         # e value where p crosses 0
         self.e_asy = 0      # asymptotic point in function
         self.input_P = 0
@@ -94,6 +94,7 @@ class JobSearch:
     def update(self,V,P,disp=False,type=0,relax=0):
 
         # we first compute the maximization problem
+        self.x = self.x.numpy()
         nv = P.size
         self.input_Ps = np.zeros(nv)
         self.input_Vs = np.zeros(nv)
@@ -152,9 +153,10 @@ class JobSearch:
         #    self.rsq = 1.0 - self.mse / np.power(self.input_Ps2, 2).mean()
         #self.log.debug("done with optimization")
         self.x = torch.from_numpy(self.x)  
-        self.e_asy = torch.tensor(self.e_asy,dtype=torch.float32)      
+        if isinstance(self.e_asy,np.ndarray):
+            self.e_asy = torch.tensor(self.e_asy,dtype=torch.float32)      
         self.e0 = -(-self.x[0]/self.x[1]) **( 1/self.x[2]) + self.e_asy #Andrei: This is the crossing point of the function, where p(v) = 0.
-        self.e0 = torch.tensor(self.e0,dtype=torch.float32)      
+        #self.e0 = torch.tensor(self.e0,dtype=torch.float32)      
         #p=0 => x[0]+x[1]*abs(e0-e_asy)^x[2]=0 => abs(e0-e_asy)^x[2]=-x[0]/x[1] => e0= e_asy - (-x[0]/x[1])^(1/x[2])
         self.re_cst = 0
         self.re_cst = -self.re(self.e0) #Andrei: this is the value of search when the continuation value is equal to the crossing point of the function, set to 0 because p(v(e0))=0
