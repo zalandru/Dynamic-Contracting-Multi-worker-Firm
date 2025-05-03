@@ -11,10 +11,11 @@ from primitives import Parameters
 import opt_einsum as oe
 from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
-from search import JobSearchArray
+from search_tensor import JobSearchArray
 import matplotlib.pyplot as plt
 from time import time
 import math
+import copy
 
 p = Parameters()
 tensor = torch.tensor
@@ -97,11 +98,12 @@ class PolicyNN(nn.Module):
             layers.append(nn.Linear(input_dim, hidden_dim))
             # Consider adding layer normalization for stability
             #layers.append(nn.LayerNorm(hidden_dim))
-            layers.append(nn.ReLU())  # ReLU activation function: policies must be non-negative
+            layers.append(nn.Softplus())  # ReLU activation function: policies must be non-negative
             input_dim = hidden_dim
         
         # Final layer: one output per discrete state y'
         layers.append(nn.Linear(input_dim, num_y)) #Note: once I have multiple policies, I will need to adapt this: see Deep Equilibrium Nets Design chat with chatGPT.
+        layers.append(nn.ReLU())
         self.model = nn.Sequential(*layers)
     def forward(self, x):
         return self.model(x)
@@ -231,7 +233,7 @@ class FOCresidual:
         self.unemp_bf = self.p.u_bf_m
 
         # Production Function in the Model
-        self.fun_prod = tensor(self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho),dtype=type)
+        self.fun_prod = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
         # Unemployment Benefits across Worker Productivities
         self.unemp_bf = self.p.u_bf_m
 
@@ -259,6 +261,10 @@ class FOCresidual:
             self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
         else:
             self.js = cc.js
+        self.fun_prod = tensor(self.fun_prod,dtype=type)
+    def matching_function(self,J): #Andrei: the formula of their matching function, applied to each particula job value J1
+        return self.p.alpha * (1 - (
+            (self.p.kappa / torch.maximum(J, tensor(self.p.kappa,dtype=type))) ** self.p.sigma)) ** (1 / self.p.sigma)
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
         """
         :param EW1: Expected value of employment
@@ -267,7 +273,7 @@ class FOCresidual:
         :return: pe,re,qi search decision and associated return, as well as quit decision.
         """
         pe, re = self.js.solve_search_choice(EW1) #Uses the job search array to solve for the search choice
-        assert (~np.isnan(pe)).all(), "pe is not NaN"
+        assert (~torch.isnan(pe)).all(), "pe is not NaN"
         assert (pe <= 1).all(), "pe is not less than 1"
         assert (pe >= -1e-10).all(), "pe is not larger than 0"
         ve = self.js.ve(EW1)
@@ -288,7 +294,6 @@ class FOCresidual:
                         (1))
 
         return lnorm.ppf(q=exp_z, s=self.p.prod_var_z)    
-
     def future_values(self, prod_states, policies, value_net):
         """Compute the expected value of the value function for the given states and policy"""
         policies_norm = self.bounds_processor.normalize(policies)
@@ -298,8 +303,7 @@ class FOCresidual:
         i=torch.arange(policies.shape[0])
         ERho_star = ERho_star[i,prod_states.long()]
         EJ_star = ERho_star - policies.squeeze(1) * EW_star #This should all be policy shape
-        return ERho_star, EJ_star, EW_star 
-    
+        return ERho_star, EJ_star, EW_star     
     def values(self, states, prod_states, EJ_star, EW_star, pc_star, re_star):
         """Compute the value function for the given states and policy"""
         states = self.bounds_processor.denormalize(states)
@@ -310,40 +314,33 @@ class FOCresidual:
         #values = tensor(values, dtype=type) #Convert to tensor
         values+= self.p.beta * pc_star * EJ_star 
         #print("Diff btw two versions", torch.abs(pc_star*EJ_star - (pc_star*ERho_star - policies.unsqueeze(1) * pc_star * EW_star) ).mean().item())
-        return values, worker_values
-    
-    
-    def FOC_loss(self, states, policies, EJ_star, EW_star):
+        return values, worker_values    
+    def FOC_loss(self, states, policies, pc, EJ_star, EW_star):
         """Given the Value network and the policy network,
         Compute the FOC residuals for given set of states
         Note: for hirings and layoffs, will need to ensure the loss is zero when the policy is consistent: sep=0 => FOC<0, sep=1 => FOC>0 etc
         """
         #Get worker's search decisions and associated return
-        _, re, pc = self.getWorkerDecisions(EW_star)
         _, _, pc_d = self.getWorkerDecisions(EW_star + self.deriv_eps) 
-        re = torch.from_numpy(re)
-        pc = torch.from_numpy(pc)
-        #ve = torch.from_numpy(ve)
-        pc_d = torch.from_numpy(pc_d)
         log_diff = torch.zeros_like(EW_star)
         log_diff[:] = torch.nan
-        log_diff[pc > 0] = torch.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
-        focs = policies[:,0] - states[:,0] - EJ_star * log_diff / self.deriv_eps  #In the optimum this is zero
-
-        
-        return focs, re, pc
-
-    def wrapper(self,states, prod_states, policies, value_net):
-        #First calculate EW and EJ = ERho - rho_star * EW for each state
-        ERho_star, EJ_star, EW_star = self.future_values(prod_states, policies, value_net)
+        log_diff[pc > 0] = torch.log(pc_d[pc > 0]) - torch.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
+        focs = policies[:,0] - self.bounds_processor.denormalize(states[:,0]) - EJ_star * log_diff / self.deriv_eps  #In the optimum this is zero
+        return focs
+    def wrapper(self,states, prod_states, policies, EJ_star, EW_star, re, pc):
 
         #FOC loss for each state
-        focs, re, pc = self.FOC_loss(states, policies, EJ_star, EW_star)
+        focs = self.FOC_loss(states, policies, pc, EJ_star, EW_star)
 
         #Calculate value for each state
         values, worker_values = self.values(states, prod_states, EJ_star, EW_star, pc, re)
         
         return focs, values, worker_values
+    def initiation(self, prod_states, policies, value_net):
+        _, EJ_star, EW_star = self.future_values(prod_states, policies, value_net)
+        _, re, pc = self.getWorkerDecisions(EW_star)
+
+        return EJ_star, EW_star, re, pc        
 
 
 def simulate(starting_states, policy_net, value_net, bounds_processor, simulation_steps):
@@ -363,9 +360,9 @@ def simulate(starting_states, policy_net, value_net, bounds_processor, simulatio
         his_size_total+= B * (p.num_z**(t+1))
     #his_size_total = p.num_z ** (1+simulation_steps) #How many states we can reach in simulation_steps steps
     #discount = 1.0
-    S = torch.zeros(B*(his_size_total), starting_states.shape[1], dtype=type) #Vector all reached states
-    Pol = torch.zeros(B*(his_size_total), starting_states.shape[1], p.num_z, dtype=type) #Vector off all reached policies. It's just policies for each state (productivity alrdy included via P)
-    V = torch.zeros(B*(his_size_total), dtype=type) #Vector off all reached values. It's just values for each state (productivity alrdy included via P)
+    S = torch.zeros(his_size_total, starting_states.shape[1], dtype=type) #Vector all reached states
+    Pol = torch.zeros(his_size_total, starting_states.shape[1], p.num_z, dtype=type) #Vector off all reached policies. It's just policies for each state (productivity alrdy included via P)
+    V = torch.zeros(his_size_total, dtype=type) #Vector off all reached values. It's just values for each state (productivity alrdy included via P)
     P = torch.arange(S.shape[0]) % p.num_z #Vector off all production states
 
     his_start = 0
@@ -384,7 +381,7 @@ def simulate(starting_states, policy_net, value_net, bounds_processor, simulatio
         his_start = his_end
         his_end = his_start + his_size * p.num_z
         his_size = his_end - his_start
-
+    assert (his_start == S.shape[0])
     #Append P to S. That way, when I sample minibatches, I can just sample S and P together.
     S=torch.cat((S, P.unsqueeze(1)), dim=1)
 
@@ -418,7 +415,7 @@ def pre_training(optimizer_value,optimizer_policy,value_net,policy_net,foc_optim
         optimizer_policy.step()
     return value_net, policy_net, optimizer_value, optimizer_policy
 def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 20, 10], pre_training_steps=50, num_episodes=20, starting_points_per_iter=100, simulation_steps=5, 
-    minibatch_size=512,learning_rate=0.001, λ=1.0, p=None, cc=None, target_values=None, target_W=None):
+    minibatch_size=512,learning_rate=0.001, update_eq=1, p=None, cc=None, target_values=None, target_W=None):
     """
     Main training loop for value function approximation
     
@@ -444,8 +441,13 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
     optimizer_value = optim.Adam(value_net.parameters(), lr=learning_rate[0])
     optimizer_policy = optim.Adam(policy_net.parameters(), lr=learning_rate[1])
    
+    #Initialize a target network
+    target_value_net = copy.deepcopy(value_net)
+    # Ensure it's not updated by the optimizer
+    for param in target_value_net.parameters():
+        param.requires_grad = False
     # Initialize FOC computer
-    foc_optimizer = FOCresidual(bounds_processor, p, cc)    
+    foc_optimizer = FOCresidual(bounds_processor, p, cc=None)    
 
     #Step 0: basic guess
     value_net, policy_net, optimizer_value, optimizer_policy =pre_training(optimizer_value,optimizer_policy,value_net,policy_net,foc_optimizer,bounds_processor,pre_training_steps)   
@@ -457,11 +459,7 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
     # Training loop
     for episode in tqdm(range(num_episodes)):
 
-        # Generate uniform random starting states
-        if episode == 0:
-            states = bounds_processor.normalize(tensor(cc.rho_grid[0],dtype=type)).unsqueeze(1)
-        else:
-            states= torch.rand(starting_points_per_iter, state_dim,dtype=type).requires_grad_(True)
+        states= torch.rand(starting_points_per_iter, state_dim,dtype=type).requires_grad_(True)
 
         #Simulate the firm path using the policy network
         with torch.no_grad():
@@ -477,44 +475,47 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
         batch_index = 0
         for minibatch_X in minibatches:    
             batch_index += 1
-            FOC_resid, target_values, target_W = foc_optimizer.wrapper(states=minibatch_X[:,:-2], prod_states=minibatch_X[:,-2], policies=minibatch_X[:,-1].unsqueeze(1), value_net=value_net) #Get the FOC residuals for the states in the minibatch
-            FOC_loss = nn.MSELoss()(FOC_resid, torch.zeros_like(FOC_resid)) #Get the FOC loss for the states in the minibatch
-            
-            #Get the value function measure based on the policy (maybe get it from the FOC_loss function, too?)
             i = torch.arange(minibatch_X.shape[0])
-            pred_values = value_net(minibatch_X[:,:-2])
-            pred_values = pred_values[i,minibatch_X[:,-2].long()] #Get the values for the states in the minibatch
-            predicted_W = get_batch_gradients(minibatch_X[:,:-2], value_net,  range_tensor=bounds_processor.range)[:,:,0]
-            predicted_W = predicted_W[i,minibatch_X[:,-2].long()] #Get the values for the states in the minibatch
-            value_loss = nn.MSELoss()(pred_values, target_values) + nn.MSELoss()(predicted_W, target_W) #Get the value loss for the states in the minibatch
-            
-            #loss = value_loss + λ * FOC_loss
-            #loss.backward()
-            #optimizer_value.step()
-            #optimizer_policy.step()
-            #optimizer_value.zero_grad()
-            #optimizer_policy.zero_grad()
+            policies = policy_net(minibatch_X[:,:-2].requires_grad_(True))[i,minibatch_X[:,-2].long()]
+            EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!          
 
-            #Monotonicity loss will be complicated with more states so Imma drop it methinks? Bcs sorting will be a pain in the ass, essentially would have to sort for each promised value state
-            if ((episode+batch_index) % 4)==0:
+            if ((batch_index) % 4)==0:
+                FOC_resid = foc_optimizer.FOC_loss(states=minibatch_X[:,:-2], policies=policies.unsqueeze(1), pc=pc, EJ_star=EJ_star, EW_star=EW_star)
+                FOC_loss = nn.MSELoss()(FOC_resid, torch.zeros_like(FOC_resid))
                 loss = FOC_loss #Get the total loss for the states in the minibatch
                 loss.backward()
-                # now each optimizer only updates its own parameters
-                #optimizer_value.step()
                 optimizer_policy.step()
-                #optimizer_value.zero_grad()
                 optimizer_policy.zero_grad()
             else:
+                target_values, target_W = foc_optimizer.values(states=minibatch_X[:,:-2], prod_states=minibatch_X[:,-2], EJ_star=EJ_star, EW_star=EW_star, pc_star=pc, re_star=re)
+                pred_values = value_net(minibatch_X[:,:-2])
+                pred_values = pred_values[i,minibatch_X[:,-2].long()] #Get the values for the states in the minibatch
+                predicted_W = get_batch_gradients(minibatch_X[:,:-2], value_net,  range_tensor=bounds_processor.range)[:,:,0]
+                predicted_W = predicted_W[i,minibatch_X[:,-2].long()] #Get the values for the states in the minibatch
+                value_loss = nn.MSELoss()(pred_values, target_values) + nn.MSELoss()(predicted_W, target_W) #Get the value loss for the states in the minibatch
                 loss = value_loss
                 loss.backward()
                 optimizer_value.step()
                 optimizer_value.zero_grad()
 
-        
+        #Hard copy the target value at the end of every episode
+        target_value_net.load_state_dict(value_net.state_dict(), strict=True)
+
+        if update_eq:
+            if (episode % 10) == 0:
+                #Update the job search
+                #Estimate the value and gradient at the regular points
+                Rho = value_net(foc_optimizer.rho_normalized)
+                W = get_batch_gradients(foc_optimizer.rho_normalized, value_net,  range_tensor=bounds_processor.range)[:,:,0]
+                J = Rho - tensor(foc_optimizer.rho_grid[:,ax], dtype = type) * W        
+                #Matching function
+                P_xv = foc_optimizer.matching_function(J[:, p.z_0-1])
+                relax = 1 - np.power(1/(1+np.maximum(0,episode-p.eq_relax_margin)), p.eq_relax_power)
+                error_js = foc_optimizer.js.update(W[:, p.z_0-1].detach().numpy(), P_xv.detach().numpy(), type=1, relax=relax)
         # Print progress
         if (episode + 1) % (num_episodes/10) == 0 or episode == 0:
             print(f"Iteration {episode + 1}, Loss: {loss.item():.6f} , Value Loss: {value_loss.item():.6f}, FOC_loss: {FOC_loss.item():.6f}" )
-    
+
     return value_net, policy_net
 
 def evaluate_value_function(model, policy, p, lower_bounds,upper_bounds,cc,cc_Rho,cc_W,rho_star):
@@ -566,10 +567,10 @@ if __name__ == "__main__":
     STATE_DIM = 1  # Just one, continuous state, the promised value. Next step will be adding (discrete) y
     ACTION_DIM = 1  # Adjust based on your problem
     HIDDEN_DIMS = [64,64]  # Decreasing width architecture
-    λ = 1.0  # Relative loss importance across networks
+    update_eq = 1  # Relative loss importance across networks
     pref = Preferences(input_param=p)
     cc=ContinuousContract(p) 
-    cc_J,cc_W,cc_Wstar,rho_star = cc.J(0) 
+    cc_J,cc_W,cc_Wstar,rho_star = cc.J(update_eq) 
     target_values = tensor(cc_J + cc.rho_grid[ax,:] * cc_W, dtype=type)
     target_W = tensor(cc_W, dtype=type)
     #assert torch.all(target_W[:,1:] >= target_W[:,:-1]), "target_W is not increasing"
@@ -586,12 +587,12 @@ if __name__ == "__main__":
         action_dim=ACTION_DIM,
         hidden_dims=HIDDEN_DIMS,
         pre_training_steps=0,
-        num_episodes=2000,
-        starting_points_per_iter=1,
-        simulation_steps=6,
-        minibatch_size=256,
-        learning_rate=[0.001,0.001],
-        p=p, λ=λ,
+        num_episodes=10000,
+        starting_points_per_iter=10,
+        simulation_steps=4,
+        minibatch_size=300,
+        learning_rate=[0.01,0.01],
+        p=p, update_eq=update_eq,
         cc=cc, target_values=target_values.t(), target_W=target_W.t()
     )
     print("Training time:", time()-beg)
