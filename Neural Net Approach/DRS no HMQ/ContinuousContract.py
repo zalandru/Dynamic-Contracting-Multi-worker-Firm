@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 import opt_einsum as oe
 
-from primitives import Preferences
+from primitives_CRS import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
 from search import JobSearchArray
 from valuefunction2d import PowerFunctionGrid

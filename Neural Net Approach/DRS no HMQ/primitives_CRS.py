@@ -5,7 +5,6 @@
 import numpy as np
 import logging
 import json
-import torch
 
 class Parameters:
 
@@ -53,7 +52,7 @@ class Parameters:
         self.min_wage = 0 * self.u_bf_m
 
         #Utility shifter
-        self.util_shift = torch.tensor(1.0, dtype = torch.float32)
+        self.util_shift = 1.0
 
         # Utility Function Parameters
         #self.u_rho = 1.5      # Risk aversion coefficient, was 1.5
@@ -184,7 +183,7 @@ class Preferences:
         #aa = self.p.u_a * np.power(self.p.tax_tau, 1 - self.p.u_rho) 
         #return np.divide(aa * np.power( wage, self.p.tax_lambda * (1.0 - self.p.u_rho)) - self.p.u_b,
         #                 1 - self.p.u_rho)
-        return torch.log(self.p.util_shift * wage)
+        return np.log(self.p.util_shift * wage)
 
     def utility_gross(self, wage): #Standard CRRA utility
         """
@@ -194,7 +193,7 @@ class Preferences:
         """
         #return np.divide(self.p.u_a * np.power(wage, 1 - self.p.u_rho) - self.p.u_b,
         #                 1 - self.p.u_rho)
-        return torch.log(self.p.util_shift * wage)
+        return np.log(self.p.util_shift * wage)
 
     def inv_utility(self, value):
         """
@@ -205,7 +204,7 @@ class Preferences:
         #aa = self.p.u_a * np.power(self.p.tax_tau, 1.0 - self.p.u_rho) 
         #return np.power(np.divide((1.0 - self.p.u_rho) * value + self.p.u_b, aa),
         #                (np.divide(1.0, self.p.tax_lambda * (1.0 - self.p.u_rho))))
-        return torch.exp(value) / self.p.util_shift
+        return np.exp(value) / self.p.util_shift
 
     def utility_1d(self, wage):
         """
@@ -227,4 +226,4 @@ class Preferences:
         #return np.power( pow_arg, 1.0/( self.p.tax_lambda * (1 - self.p.u_rho) ) - 1.0) / ( self.p.tax_lambda * aa )
         #return np.power( pow_arg, -self.p.u_rho / ( 1 - self.p.u_rho )) / ( self.p.tax_lambda * aa )
         # return self.utility_1d(self.inv_utility(value))
-        return self.p.util_shift / torch.exp(value)
+        return self.p.util_shift / np.exp(value)
