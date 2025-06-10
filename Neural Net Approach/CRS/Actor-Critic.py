@@ -188,7 +188,7 @@ def get_expectation_gradients(states, value_model, P_mat,  range_tensor=None, cu
     num_y = P_mat.shape[0]
 
     # Detach any prior graph, ensure float precision
-    states = states.detach().requires_grad_(True)  # [B, D]
+    states = states.clone().requires_grad_(True)  # [B, D]
 
     # Wrap the model to handle single input vector s: [D]
     def model_single_input(s_vec):
@@ -455,7 +455,7 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
     print("Training...")
     # Training loop
     for episode in tqdm(range(num_episodes)):
-
+        #torch.autograd.set_detect_anomaly(True)
         states= torch.rand(starting_points_per_iter, state_dim,dtype=type).requires_grad_(True)
 
         #Simulate the firm path using the policy network
@@ -483,6 +483,11 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
                 loss.backward()
                 optimizer_policy.step()
                 optimizer_policy.zero_grad()
+                for name, param in policy_net.named_parameters():
+                    if param.grad is not None:
+                        print(f"{name} grad norm: {param.grad.norm().item()}")
+                    else:
+                        print(f"{name} grad is None!")
             else:
                 target_values, target_W = foc_optimizer.values(states=minibatch_X[:,:-2], prod_states=minibatch_X[:,-2], EJ_star=EJ_star, EW_star=EW_star, pc_star=pc, re_star=re)
                 pred_values = value_net(minibatch_X[:,:-2])
