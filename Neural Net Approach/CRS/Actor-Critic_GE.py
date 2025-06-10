@@ -186,10 +186,10 @@ def get_expectation_gradients(states, value_model, P_mat,  range_tensor=None, cu
 
     B, D = states.shape
     num_y = P_mat.shape[0]
-
+    #print(states.is_leaf)           # False
     # Detach any prior graph, ensure float precision
-    states = states.detach().requires_grad_(True)  # [B, D]
-
+    states = states.clone().requires_grad_(True)  # [B, D]
+    #states = states.requires_grad_(True)
     # Wrap the model to handle single input vector s: [D]
     def model_single_input(s_vec):
         s_in = s_vec.unsqueeze(0)        # [1, D]
@@ -475,18 +475,26 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
         batch_index = 0
         for minibatch_X in minibatches:    
             batch_index += 1
-            i = torch.arange(minibatch_X.shape[0])
-            policies = policy_net(minibatch_X[:,:-2].requires_grad_(True))[i,minibatch_X[:,-2].long()]
-            EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!          
+            i = torch.arange(minibatch_X.shape[0])    
 
             if ((batch_index) % 4)==0:
+                policies = policy_net(minibatch_X[:,:-2].requires_grad_(True))[i,minibatch_X[:,-2].long()].requires_grad_(True)
+                EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
                 FOC_resid = foc_optimizer.FOC_loss(states=minibatch_X[:,:-2], policies=policies.unsqueeze(1), pc=pc, EJ_star=EJ_star, EW_star=EW_star)
                 FOC_loss = nn.MSELoss()(FOC_resid, torch.zeros_like(FOC_resid))
                 loss = FOC_loss #Get the total loss for the states in the minibatch
                 loss.backward()
+                for name, param in policy_net.named_parameters():
+                    if param.grad is None:
+                    #    print(f"{name} grad norm: {param.grad.norm().item()}")
+                    #else:
+                        print(f"{name} grad is None!")
                 optimizer_policy.step()
                 optimizer_policy.zero_grad()
             else:
+                #with torch.no_grad():
+                policies = policy_net(minibatch_X[:,:-2].requires_grad_(True))[i,minibatch_X[:,-2].long()]
+                EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
                 target_values, target_W = foc_optimizer.values(states=minibatch_X[:,:-2], prod_states=minibatch_X[:,-2], EJ_star=EJ_star, EW_star=EW_star, pc_star=pc, re_star=re)
                 pred_values = value_net(minibatch_X[:,:-2])
                 pred_values = pred_values[i,minibatch_X[:,-2].long()] #Get the values for the states in the minibatch
@@ -495,9 +503,13 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
                 value_loss = nn.MSELoss()(pred_values, target_values) + nn.MSELoss()(predicted_W, target_W) #Get the value loss for the states in the minibatch
                 loss = value_loss
                 loss.backward()
+                for name, param in value_net.named_parameters():
+                    if param.grad is None:
+                        #print(f"{name} grad norm: {param.grad.norm().item()}")
+                    #else:
+                        print(f"{name} grad is None!")
                 optimizer_value.step()
                 optimizer_value.zero_grad()
-
         #Hard copy the target value at the end of every episode
         target_value_net.load_state_dict(value_net.state_dict(), strict=True)
 
@@ -567,7 +579,7 @@ if __name__ == "__main__":
     STATE_DIM = 1  # Just one, continuous state, the promised value. Next step will be adding (discrete) y
     ACTION_DIM = 1  # Adjust based on your problem
     HIDDEN_DIMS = [64,64]  # Decreasing width architecture
-    update_eq = 1  # Relative loss importance across networks
+    update_eq = 0  # Relative loss importance across networks
     pref = Preferences(input_param=p)
     cc=ContinuousContract(p) 
     cc_J,cc_W,cc_Wstar,rho_star = cc.J(update_eq) 

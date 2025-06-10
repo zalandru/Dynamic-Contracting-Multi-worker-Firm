@@ -185,6 +185,40 @@ This additional wage payment is incurred immediately upon hiring, allowing the r
 \[k = \min_{v} [w_v + \frac{c}{q_v}]\]
 This problem is now again completely independent of the firm's state, and thus the distribution of firms and workers no longer affects the tightness function $q_v$.\textcite{schaal2017} shows that, in a setting similar to mine, but with transferable utility between workers and firms, which he achieves due to the risk-neutral worker utility function, firms all have the same preferences across all the submarkets that they may post vacancies in. Then setting $\theta_v$ such that 
 \newpage
+\section{Quantitative Appendix}
+% Define colors
+\definecolor{statecolor}{RGB}{0,128,0}       % green
+\definecolor{ctrlcolor}{RGB}{255,140,0}      % orange
+\definecolor{excolor}{RGB}{255,0,255}        % magenta
+\definecolor{nextstatecolor}{RGB}{0,0,255}    % blue
+
+\subsection{Variables}
+\subsection*{\textcolor{statecolor}{Endogenous state variables}}
+\begin{align*}
+&\textcolor{statecolor}{n_{k,t}}, \textcolor{statecolor}{\rho_{k,t}}, \textcolor{statecolor}{z_{k,t}}
+\end{align*}
+\textbf{Code:} \texttt{states: size, rho, q}
+
+\subsection*{\textcolor{excolor}{Exogenous state variables}}
+\begin{align*}
+&\textcolor{excolor}{y_t}
+\end{align*}
+\textbf{Code:} \texttt{z}
+
+\subsection*{\textcolor{ctrlcolor}{Control variables}}
+\begin{align*}
+&\textcolor{ctrlcolor}{\tilde{n}}, \textcolor{ctrlcolor}{\rho^*_k}, \textcolor{ctrlcolor}{s_k}
+\end{align*}
+\textbf{Code:} \texttt{hiring, rho\_star, sep\_star}
+
+\subsection{Equations}
+Equations (1)--(21): \textcolor{statecolor}{states} in \textcolor{statecolor}{green}, \textcolor{ctrlcolor}{controls} in \textcolor{ctrlcolor}{orange}, next period \textcolor{excolor}{exogenous} in \textcolor{excolor}{magenta}, next period \textcolor{nextstatecolor}{controls} in \textcolor{nextstatecolor}{blue}, parameters in black.
+\begin{align}
+0&=\lambda_t-\frac{\nu_t}{C_t - b_{habit}C_{t-1}}+\beta b_{habit}E_t\bigl[\textcolor{excolor}{\tfrac{\nu_{t+1}}{C_{t+1}-b_{habit}C_t}}\bigr]\\
+% ... (rest of equations unchanged for brevity) ...
+\end{align}
+
+
 \section{Data Appendix}
 \
 \subsection{Wage Growth} \label{wagegrowthK}
