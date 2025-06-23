@@ -188,7 +188,7 @@ def get_expectation_gradients(states, value_model, P_mat,  range_tensor=None, cu
     num_y = P_mat.shape[0]
     #print(states.is_leaf)           # False
     # Detach any prior graph, ensure float precision
-    states = states.clone().requires_grad_(True)  # [B, D]
+    states = states.requires_grad_(True)  # [B, D]
     #states = states.requires_grad_(True)
     # Wrap the model to handle single input vector s: [D]
     def model_single_input(s_vec):
@@ -478,7 +478,8 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
             i = torch.arange(minibatch_X.shape[0])    
 
             if ((batch_index) % 4)==0:
-                policies = policy_net(minibatch_X[:,:-2].requires_grad_(True))[i,minibatch_X[:,-2].long()].requires_grad_(True)
+                optimizer_policy.zero_grad()
+                policies = policy_net(minibatch_X[:,:-2])[i,minibatch_X[:,-2].long()]
                 EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
                 FOC_resid = foc_optimizer.FOC_loss(states=minibatch_X[:,:-2], policies=policies.unsqueeze(1), pc=pc, EJ_star=EJ_star, EW_star=EW_star)
                 FOC_loss = nn.MSELoss()(FOC_resid, torch.zeros_like(FOC_resid))
@@ -493,7 +494,7 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
                 optimizer_policy.zero_grad()
             else:
                 #with torch.no_grad():
-                policies = policy_net(minibatch_X[:,:-2].requires_grad_(True))[i,minibatch_X[:,-2].long()]
+                policies = policy_net(minibatch_X[:,:-2])[i,minibatch_X[:,-2].long()].detach()
                 EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
                 target_values, target_W = foc_optimizer.values(states=minibatch_X[:,:-2], prod_states=minibatch_X[:,-2], EJ_star=EJ_star, EW_star=EW_star, pc_star=pc, re_star=re)
                 pred_values = value_net(minibatch_X[:,:-2])

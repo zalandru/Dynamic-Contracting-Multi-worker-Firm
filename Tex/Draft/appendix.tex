@@ -41,13 +41,13 @@ The original design of the problem would require solving promised values $v'_{y'
 \begin{equation*}
 \begin{split}
 \mathcal{P}(y,\{n_k,\rho_k,z_k\}) = &\inf_{\omega_k} \sup_{\tilde{n},\tilde{v},\{w_k,s_k,v'_k\}}  yF(n,z) - \sum_k n_kw_k - \kappa_f - \tilde{n}\frac{c}{q(\theta_{\tilde{v}})}   \\
-& + \sum_k\rho_kn_k(u(w_k)+\beta[s_kU+(1-s_k)R(v'_{k+1})] \\
-& -\beta\sum_k \omega_kn'_{k+1} v'_{k+1}+\beta E_{y'|y}\mathcal{P}(y',\{n'_k,\omega_k,z'_k\})    
+& + \sum_k\rho_k(u(w_k)+\beta[s_kU+(1-s_k)R(v'_{k+1})] \\
+& -\beta\sum_k \omega_k v'_{k+1}+\beta E_{y'|y}\mathcal{P}(y',\{n'_k,\omega_k,z'_k\})    
 \end{split}
 \end{equation*}
 
 where
-\[\mathcal{P}(y,\{n_k,\rho_k,z_k\}) \equiv \sup_{\{v_k\}} J(y,\{n_k,v_k,z_k\})+\sum_k \rho_k n_k v_k \]
+\[\mathcal{P}(y,\{n_k,\rho_k,z_k\}) \equiv \sup_{\{v_k\}} J(y,\{n_k,v_k,z_k\})+\sum_k \rho_k v_k \]
 The following proof (for $K\rightarrow\infty$ but the proof extends trivially to finite $K$) establishes its equivalence with the initial problem. It follows the steps of \textcite{balke2022}, extending it to the case of a multi-worker firm.
 \begin{proof}
 We have the following recursive formulation for $J$:
@@ -72,7 +72,7 @@ We have the following recursive formulation for $J$:
     \end{split}
 \end{equation*}
 Consider the Pareto problem
-\[\mathcal{P}(y,\{n_k,\rho_k,z_k\}) = \sup_{\{v_k\}} J(y,\{n_k,v_k,z_k\})+\sum_k \rho_k n_k v_k \]
+\[\mathcal{P}(y,\{n_k,\rho_k,z_k\}) = \sup_{\{v_k\}} J(y,\{n_k,v_k,z_k\})+\sum_k \rho_k v_k \]
 I first substitute the definition of $J$ together with its constraints into $\mathcal{P}$:
 \begin{equation*}
     \begin{split}
@@ -86,7 +86,7 @@ I first substitute the definition of $J$ together with its constraints into $\ma
     %Size
     -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
     %Expectation
-    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k \rho_k n_kv_k  \\
+    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k \rho_k v_k  \\
 (\lambda_k) \: & u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})=v_k] \; \forall k\leq K \\
 (\omega_k) \:   & v'_{k+1} = E_{y'|y} v'_{k+1,y'} \; \forall k\leq K \\
     & n'_{k+1} = n_k(1-s_k)(1-p(v'_{k+1}))+\tilde{n}\; \forall k\leq K \\
@@ -107,14 +107,14 @@ I now substitute in the promise-keeping constraint:
     %Size
     -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
     %Expectation
-    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k \rho_k n_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])  \\
+    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k \rho_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])  \\
 (\omega_k) \:    & v'_{k+1} = E_{y'|y} v'_{k+1,y'} \; \forall k\leq K \\
     & n'_{k+1} = n_k(1-s_k)(1-p(v'_{k+1}))+\tilde{n}\; \forall k\leq K \\
     & z'_{k+1} = min(\frac{z_k}{1-s_k},1)\; \forall k\leq K \\
     & n'_0 = \tilde{n}, v'_0 = \tilde{v}, z'_0 = z_0
     \end{split}
 \end{equation*}
-I introduce the $\omega_k$-constraints with weights $\beta n'_{k+1}$ into the problem:
+I introduce the $\omega_k$-constraints with weights $\beta$ into the problem:
 \begin{equation*}
     \begin{split}
  \mathcal{P}(y,\{n_k,\rho_k,z_k\}) =
@@ -127,8 +127,8 @@ I introduce the $\omega_k$-constraints with weights $\beta n'_{k+1}$ into the pr
     %Size
     -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
     %Expectation
-    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k \rho_k n_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])  \\
-    & + \sum_k \beta\omega_kn'_{k+1}(E_{y'|y}v'_{y',k+1}-v'_{k+1})\\
+    & +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k \rho_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])  \\
+    & + \sum_k \beta\omega_k(E_{y'|y}v'_{y',k+1}-v'_{k+1})\\
     & n'_{k+1} = n_k(1-s_k)(1-p(v'_{k+1}))+\tilde{n}\; \forall k\leq K \\
     & z'_{k+1} = min(\frac{z_k}{1-s_k},1)\; \forall k\leq K \\
     & n'_0 = \tilde{n}, v'_0 = \tilde{v}, z'_0 = z_0
@@ -147,8 +147,8 @@ I then rearrange the value function by moving $E_{y'|y}\sum_k \beta\omega_kn'_{k
     %Size
     -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
     %Expectation
-    & +\beta E_{y'|y} [J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k\omega_kn'_{k+1}v'_{y',k+1}]\\
-    & \sum_k \rho_k n_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])- \sum_k \beta\omega_kn'_{k+1}v'_{k+1}  
+    & +\beta E_{y'|y} [J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k\omega_kv'_{y',k+1}]\\
+    & \sum_k \rho_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])- \sum_k \beta\omega_kv'_{k+1}  
     \end{split}
 \end{equation*}
 Lastly, I split the sup:
@@ -164,11 +164,11 @@ Lastly, I split the sup:
     %Size
     -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f \\
     %Expectation
-    & +\beta E_{y'|y} [\sup_{v'_{y',k+1}}J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k\omega_kn'_{k+1}v'_{y',k+1}]\\
-    & \sum_k \rho_k n_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])- \sum_k \beta\omega_kn'_{k+1}v'_{k+1}     
+    & +\beta E_{y'|y} [\sup_{v'_{y',k+1}}J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k\omega_kv'_{y',k+1}]\\
+    & \sum_k \rho_k (u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})])- \sum_k \beta\omega_kv'_{k+1}     
     \end{split}
 \end{equation*}
-From this, one can note that, by definition of $\mathcal{P}$ \[\sup_{v'_{y',k+1}}J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k\omega_kn'_{k+1}v'_{y',k+1} = \mathcal{P}(y',\{n'_k,\omega_k,z'_k\}\]
+From this, one can note that, by definition of $\mathcal{P}$ \[\sup_{v'_{y',k+1}}J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) + \sum_k\omega_kv'_{y',k+1} = \mathcal{P}(y',\{n'_k,\omega_k,z'_k\})\]
 We thus arrive to the formulationof the problem as described at the beginning, not involving finding future state-specific promised values $v'_{y',k}$.
 \end{proof}
 \subsection{Block Recursivity} \label{blocrecur}
@@ -187,34 +187,41 @@ This problem is now again completely independent of the firm's state, and thus t
 \newpage
 \section{Quantitative Appendix}
 % Define colors
-\definecolor{statecolor}{RGB}{0,128,0}       % green
-\definecolor{ctrlcolor}{RGB}{255,140,0}      % orange
-\definecolor{excolor}{RGB}{255,0,255}        % magenta
-\definecolor{nextstatecolor}{RGB}{0,0,255}    % blue
+\definecolor{state}{RGB}{0,128,0}       % green
+\definecolor{ctrl}{RGB}{255,140,0}      % orange
+\definecolor{ex}{RGB}{255,0,255}        % magenta
+\definecolor{nextstate}{RGB}{0,0,255}    % blue
+\definecolor{value}{RGB}{128,128,0}    % yellow
 
 \subsection{Variables}
-\subsection*{\textcolor{statecolor}{Endogenous state variables}}
+\subsection*{\textcolor{state}{Endogenous state variables}}
 \begin{align*}
-&\textcolor{statecolor}{n_{k,t}}, \textcolor{statecolor}{\rho_{k,t}}, \textcolor{statecolor}{z_{k,t}}
+&\textcolor{state}{\{n_{k}\}_{k\leq K}}, \textcolor{state}{\{\rho_{k}}, \textcolor{state}{z_{k}\}_{1\leq k\leq K}}
 \end{align*}
 \textbf{Code:} \texttt{states: size, rho, q}
 
-\subsection*{\textcolor{excolor}{Exogenous state variables}}
+\subsection*{\textcolor{ex}{Exogenous state variables}}
 \begin{align*}
-&\textcolor{excolor}{y_t}
+&\textcolor{ex}{y}
 \end{align*}
 \textbf{Code:} \texttt{z}
 
-\subsection*{\textcolor{ctrlcolor}{Control variables}}
+\subsection*{\textcolor{ctrl}{Control variables}}
 \begin{align*}
-&\textcolor{ctrlcolor}{\tilde{n}}, \textcolor{ctrlcolor}{\rho^*_k}, \textcolor{ctrlcolor}{s_k}
+&\textcolor{ctrl}{\tilde{n}}, \textcolor{ctrl}{\{\rho'_k\}_{1\leq k\leq K}}, \textcolor{ctrl}{\{s_k\}_{k\leq K}}
 \end{align*}
 \textbf{Code:} \texttt{hiring, rho\_star, sep\_star}
 
+\subsection*{\textcolor{value}{Value function}}
+\begin{align*}
+&\textcolor{value}{\mathcal{P}(\textcolor{ex}y,\textcolor{state}{\{n_k,\rho_k,z_k\}})}
+\end{align*}
+\textbf{Code:} \texttt{ERho\_star, EJ\_star}
 \subsection{Equations}
-Equations (1)--(21): \textcolor{statecolor}{states} in \textcolor{statecolor}{green}, \textcolor{ctrlcolor}{controls} in \textcolor{ctrlcolor}{orange}, next period \textcolor{excolor}{exogenous} in \textcolor{excolor}{magenta}, next period \textcolor{nextstatecolor}{controls} in \textcolor{nextstatecolor}{blue}, parameters in black.
+Equations (1)--(21): \textcolor{value}{Value function in olive} (given by value and its gradient guesses from future states), \textcolor{state}{states in }\textcolor{state}{green} (given), \textcolor{ctrl}{controls} in \textcolor{ctrl}{orange} (given by policy guess from current states), next period \textcolor{ex}{exogenous states in magenta} (to be summed over), next period \textcolor{nextstate}{states in blue}, parameters in black.
 \begin{align}
-0&=\lambda_t-\frac{\nu_t}{C_t - b_{habit}C_{t-1}}+\beta b_{habit}E_t\bigl[\textcolor{excolor}{\tfrac{\nu_{t+1}}{C_{t+1}-b_{habit}C_t}}\bigr]\\
+%0&=\textcolor{ctrl}{\rho^*_{k+1}}-\textcolor{state}{\rho_k} - \eta(v'_{k+1})E\frac{\partial J(\textcolor{ex}{y'},\textcolor{nextstate}{\{n'_k,v'_{y',k},z'_k\})}}{\partial \textcolor{nextstate}{n'_{k+1}}} \\
+0&=\textcolor{ctrl}{\rho'_{k+1}}-\textcolor{state}{\rho_k} - \eta(E \frac{\partial P(\textcolor{ex}{y'},\textcolor{nextstate}{\{n'_k,\rho'_{k},z'_k\})}}{\partial \textcolor{nextstate}{\rho'_{k+1}}})E\frac{\partial \mathcal{P}(\textcolor{ex}{y'},\textcolor{nextstate}{\{n'_k,\rho'_{k},z'_k\})}}{\partial \textcolor{nextstate}{n'_{k+1}}} \\
 % ... (rest of equations unchanged for brevity) ...
 \end{align}
 

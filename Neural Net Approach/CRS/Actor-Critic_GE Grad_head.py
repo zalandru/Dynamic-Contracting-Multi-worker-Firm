@@ -415,7 +415,7 @@ def pre_training(optimizer_value,optimizer_policy,value_net,policy_net,foc_optim
         #Add gradient loss and monotonicity loss
         violation = torch.relu(predicted_grads[:-1,:] - predicted_grads[1:,:])
         mon_loss = (violation ** 2).mean() #This is the loss function that forces the gradient to be increasing
-        value_loss = nn.MSELoss()(predicted_values['values'], target_values) + mon_loss + nn.MSELoss()(predicted_grads, target_W) + nn.MSELoss()(predicted_values['grads'][...,0], target_W)
+        value_loss = nn.MSELoss()(predicted_values['values'], target_values) + mon_loss + nn.MSELoss()(predicted_values['grads'][...,0], target_W) #+ nn.MSELoss()(predicted_grads, target_W)
         #Policy loss: very specific here bcs its not a FOC loss. EVEN THOUGH I COULD MAKE IT A FOC LOSS.
         policy_loss = nn.MSELoss()(predicted_policy, target_policy)
         optimizer_value.zero_grad()
@@ -491,6 +491,7 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
             i = torch.arange(minibatch_X.shape[0])    
 
             if ((batch_index) % 4)==0:
+                optimizer_policy.zero_grad()
                 policies_out = policy_net(minibatch_X[:,:-2])
                 policies = policies_out[i,minibatch_X[:,-2].long()]
                 EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
@@ -506,16 +507,17 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
                 optimizer_policy.step()
                 optimizer_policy.zero_grad()
             else:
+                optimizer_value.zero_grad()
                 #with torch.no_grad():
-                policies = policy_net(minibatch_X[:,:-2])[i,minibatch_X[:,-2].long()]
+                policies = policy_net(minibatch_X[:,:-2])[i,minibatch_X[:,-2].long()].detach()
                 EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
                 target_values, target_W = foc_optimizer.values(states=minibatch_X[:,:-2], prod_states=minibatch_X[:,-2], EJ_star=EJ_star, EW_star=EW_star, pc_star=pc, re_star=re)
                 value_net_output = value_net(minibatch_X[:,:-2])
                 pred_values = value_net_output['values']
                 pred_values = pred_values[i,minibatch_X[:,-2].long()] #Get the values for the states in the minibatch
-                #predicted_W = get_batch_gradients(minibatch_X[:,:-2], value_net,  range_tensor=bounds_processor.range)[:,:,0]
-                #predicted_W = predicted_W[i,minibatch_X[:,-2].long()] #Get the values for the states in the minibatch
-                value_loss = nn.MSELoss()(pred_values, target_values) #+ nn.MSELoss()(predicted_W, target_W) #Get the value loss for the states in the minibatch
+                predicted_W_from_value = get_batch_gradients(minibatch_X[:,:-2], value_net,  range_tensor=bounds_processor.range)[:,:,0]
+                predicted_W_from_value = predicted_W_from_value[i,minibatch_X[:,-2].long()] #Get the values for the states in the minibatch
+                value_loss = nn.MSELoss()(pred_values, target_values)# + 0.5 * nn.MSELoss()(value_net_output['grads'][i,minibatch_X[:,-2].long(),0].detach(), predicted_W_from_value) #Get the value loss for the states in the minibatch
                 grad_loss = nn.MSELoss()(value_net_output['grads'][i,minibatch_X[:,-2].long(),:], target_W.unsqueeze(1)) #Get the gradient loss for the states in the minibatch
                 loss = value_loss + grad_loss
                 loss.backward()
@@ -614,7 +616,7 @@ if __name__ == "__main__":
         upper_bounds=UPPER_BOUNDS,
         action_dim=ACTION_DIM,
         hidden_dims=HIDDEN_DIMS,
-        pre_training_steps=100,
+        pre_training_steps=500,
         num_episodes=10000,
         starting_points_per_iter=10,
         simulation_steps=4,
