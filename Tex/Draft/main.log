@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.4.20)  21 MAY 2025 08:55
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.4.20)  18 JUN 2025 17:17
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -929,12 +929,12 @@ Underfull \hbox (badness 10000) in paragraph at lines 141--146
 [12]
 
 [13]
-Overfull \hbox (30.05983pt too wide) detected at line 116
+Overfull \hbox (17.90707pt too wide) detected at line 116
 []
  []
 
 
-Overfull \hbox (30.05983pt too wide) detected at line 136
+Overfull \hbox (17.90707pt too wide) detected at line 136
 []
  []
 
@@ -948,7 +948,7 @@ Overfull \hbox (30.05983pt too wide) detected at line 136
 <Wage growth across tenure under 30,cutoff 100.jpg, id=245, 5018.75pt x 3011.25pt>
 File: Wage growth across tenure under 30,cutoff 100.jpg Graphic file (type jpg)
 <use Wage growth across tenure under 30,cutoff 100.jpg>
-Package pdftex.def Info: Wage growth across tenure under 30,cutoff 100.jpg  used on input line 226.
+Package pdftex.def Info: Wage growth across tenure under 30,cutoff 100.jpg  used on input line 233.
 (pdftex.def)             Requested size: 352.31625pt x 211.36041pt.
 
 
@@ -966,18 +966,18 @@ Package logreq Info: Writing requests to 'main.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 31159 strings out of 469626
- 590985 string characters out of 5470494
- 1390501 words of memory out of 5000000
- 57447 multiletter control sequences out of 15000+600000
+ 31161 strings out of 469626
+ 590988 string characters out of 5470494
+ 1389501 words of memory out of 5000000
+ 57448 multiletter control sequences out of 15000+600000
  638897 words of font info for 89 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  84i,18n,91p,1560b,1254s stack positions out of 10000i,1000n,20000p,200000b,200000s
  <c:/Users/andre/.texlive2025/texmf-var/fonts/pk/ljfour/public/bbm/bbm12.600pk><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmti12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm0700.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1200.pfb>
-Output written on main.pdf (18 pages, 1280919 bytes).
+Output written on main.pdf (18 pages, 1279782 bytes).
 PDF statistics:
- 375 PDF objects out of 1000 (max. 8388607)
- 307 compressed objects within 4 object streams
- 84 named destinations out of 1000 (max. 500000)
+ 377 PDF objects out of 1000 (max. 8388607)
+ 309 compressed objects within 4 object streams
+ 85 named destinations out of 1000 (max. 500000)
  162 words of extra memory for PDF output out of 10000 (max. 10000000)
 

@@ -91,19 +91,31 @@ class ValueFunctionNN(nn.Module):
         # Build layers
         layers = []
         input_dim = state_dim
-        
-        for hidden_dim in hidden_dims:
-            layers.append(nn.Linear(input_dim, hidden_dim))
-            # Consider adding layer normalization for stability
-            #layers.append(nn.LayerNorm(hidden_dim))
-            layers.append(nn.ReLU())  # Softplus activation function: allows slightly negative values
-            input_dim = hidden_dim
-        
-        # Final layer: one output per discrete state y'
-        layers.append(nn.Linear(input_dim, num_y)) #was input_dim instead of 16
-        self.model = nn.Sequential(*layers)
+        # shared trunk
+        for h in hidden_dims:
+            layers.append(nn.Linear(input_dim, h))
+            layers.append(nn.Softplus())
+            input_dim = h
+        self.trunk = nn.Sequential(*layers)
+
+        # head for values: [B, num_y]
+        self.value_head = nn.Linear(input_dim, num_y)
+        # head for gradients: [B, num_y * state_dim], to be reshaped
+        self.grad_head  = nn.Linear(input_dim, num_y * state_dim)
+
+        self.state_dim = state_dim
+        self.num_y     = num_y
     def forward(self, x):
-        return self.model(x)
+        B = x.size(0)
+        features = self.trunk(x)                    # [B, hidden_dims[-1]]
+        values   = self.value_head(features)        # [B, num_y]
+
+        grad_flat = self.grad_head(features)        # [B, num_y * state_dim]
+        grads = grad_flat.view(B, self.num_y, self.state_dim)  # [B, num_y, state_dim]
+        return {
+            'values': values,
+            'grads': grads
+        }
 class ReLUPlusEps(nn.Module):
     def __init__(self, eps=1e-2):
         super().__init__()
@@ -217,7 +229,7 @@ def get_batch_gradients(states, value_model,  range_tensor=None):
     # Wrap the model to handle single input vector s: [D]
     def model_single_input(s_vec):
         s_in = s_vec.unsqueeze(0)        # [1, D]
-        return value_model(s_in).squeeze(0)  # [num_y]
+        return value_model(s_in)['values'].squeeze(0)  # [num_y]
 
     # Compute full Jacobian: [B, num_y, D]
     jac_fn = vmap(jacrev(model_single_input))
@@ -321,7 +333,7 @@ def get_expectation_gradients_vmap(states, value_model, P_mat,  range_tensor=Non
 
     return expectation_grads  # [B, y, D] or [B, D] if current_y is not None
 
-def get_expectation_gradients_autogr(states, value_model, P_mat, range_tensor=None, current_y=None):
+def get_expectation_gradients(states, value_model, P_mat, range_tensor=None, current_y=None):
     """
     Compute ∇_s E[V(y′|y, s)] by looping over y′ only (fast),
     using torch.autograd.grad and avoiding full jacobian().
@@ -362,7 +374,7 @@ def get_expectation_gradients_autogr(states, value_model, P_mat, range_tensor=No
 
     return expectation_grads
 
-def get_expectation_gradients(states, value_model, P_mat,  range_tensor=None, current_y=None):
+def get_expectation_gradients_fin_diff(states, value_model, P_mat,  range_tensor=None, current_y=None):
     """
     Computes per-sample gradient of E_{y'|y} V(y', s) for all y ∈ {0, 1, ..., num_y-1}
 
@@ -382,14 +394,14 @@ def get_expectation_gradients(states, value_model, P_mat,  range_tensor=None, cu
     #print(states.is_leaf)           # False
     # Detach any prior graph, ensure float precision
     #states = states.requires_grad_(True)
-    V_minus = value_model(states)  # [B, num_y]
     for dim in range(D):
         eps = 1e-3
         delta = torch.zeros_like(states)
         delta[:, dim] = eps
 
         V_plus = value_model(states + delta)
-        jacobian[:,:, dim] = (V_plus - V_minus) / ( eps)
+        V_minus = value_model(states - delta)
+        jacobian[:,:, dim] = (V_plus - V_minus) / (2 * eps)
 
     # Multiply by P^T to get: ∇_s E_{y'|y} V(y', s)
     # jacobian: [B, y', D];     P^T: [y', y]
@@ -406,6 +418,7 @@ def get_expectation_gradients(states, value_model, P_mat,  range_tensor=None, cu
 
     return expectation_grads  # [B, y, D] or [B, D] if current_y is not None
 
+
 #Class to compute the FOC residuals
 class FOCresidual:
     """Class to compute the FOC residual for the CRS model"""
@@ -413,7 +426,7 @@ class FOCresidual:
         self.bounds_processor = bounds_processor  # Store bounds_processor
         self. K = K
         self.p = p
-        self.deriv_eps = 1e-3 # step size for derivative
+        self.deriv_eps = 1e-2 # step size for derivative
         # Model preferences initialized by the same parameter object.
         self.pref = Preferences(input_param=self.p)
         # Worker and Match Productivity Heterogeneity in the Model
@@ -449,7 +462,14 @@ class FOCresidual:
             self.js.update(self.v_grid[:], self.prob_find_vx.numpy()) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
         else:
             self.js = cc.js
-
+    def take_expectation(self, x, prod_states):    
+        if x.ndim == 2:  # If x is [B, D]
+            x = torch.einsum("by,zy->bz", x, self.Z_trans_tensor)
+            x = x[self.i,prod_states.long()]
+        else:
+            x = torch.einsum("byd,zy->bzd", x, self.Z_trans_tensor)
+            x = x[self.i,prod_states.long(),:]            
+        return x
     def production(self,sum_n):
         return sum_n ** self.p.prod_alpha
     def production_1d_n(self,sum_n):
@@ -483,42 +503,39 @@ class FOCresidual:
                         (1))
 
         return lnorm.ppf(q=exp_z, s=self.p.prod_var_z)    
-    def future_values(self, states, prod_states, fut_states, rho_star, hiring, value_net):
+    def future_values(self, states, prod_states, fut_states, rho_star, fut_values, hiring, value_net):
         """Compute the expected value of the value function for the given states and policy"""
         #policies_norm[:,K_v] = self.bounds_processor.normalize(fut_states) #No need to normalize, these are already correct.
         #Need to attach policies to EW_star here. Use fut_states as a way to get future size here in the derivative. Alternatively, I can loop here a couple of times, updating size based on pc(EW_star) and then calling it again
-        fut_size = self.bounds_processor.denormalize_size(fut_states[:,:K_n])
-        fut_states_adj = torch.cat((hiring.unsqueeze(1),fut_size[:,1:K_n],rho_star * fut_size[:,1:K_n]),dim=-1)
-        fut_states_adj = self.bounds_processor.normalize(fut_states_adj)
-        EW_star = get_expectation_gradients(fut_states_adj, value_net, self.Z_trans_tensor, range_tensor=self.bounds_processor.range,current_y = prod_states)[:,K_n:]
-
+        self.i = torch.arange(fut_states.shape[0])
+        #fut_size = self.bounds_processor.denormalize_size(fut_states[:,:K_n])
+        #fut_states_adj = torch.cat((hiring.unsqueeze(1),fut_size[:,1:K_n],rho_star * fut_size[:,1:K_n]),dim=-1)
+        #fut_states_adj = self.bounds_processor.normalize(fut_states_adj)
+        #value_output = value_net(fut_states_adj) #This is the value function output
+        #EW_star = get_expectation_gradients(fut_states_adj, value_net, self.Z_trans_tensor, range_tensor=self.bounds_processor.range,current_y = prod_states)[:,K_n:]
+        EW_star = fut_values
         re, pc = self.getWorkerDecisions(EW_star)
         size = self.bounds_processor.denormalize_size(states[:,:K_n])
         n_1 = ((size[:,0]+size[:,1]) * pc.squeeze(1)).unsqueeze(1)
         #Now redo this to incorporate pc
         fut_states_adj = torch.cat((hiring.unsqueeze(1),n_1,rho_star * n_1),dim=-1)
         fut_states_adj = self.bounds_processor.normalize(fut_states_adj)
-        future_grad = get_expectation_gradients(fut_states_adj, value_net, self.Z_trans_tensor, range_tensor=self.bounds_processor.range,current_y = prod_states)        
-        # Above I am computng the gradient, that is EW_star * n1_star!!! ALTERNATIVELY, I could make 𝒫(y,n_k,ρ_k*n_k,z_k) to not have to deal with this. Should I? 
-        # YES!!! BECAUSE ONLY THAT WAY I CAN ACTUALLY TRACK EW_STAR AT CLOSE TO ZERO VALUES.
-        # NO!!!!!! Because then the states also gotta be this!! And how do I get rho when n is zero? Ultimately, it's just a question of where I transform/divide.
-        # But wait! We get states from policy!!! So we do know ρ from there! Just, when inputting it into the value function, gotta adjust
+        value_output = value_net(fut_states_adj) #This is the value function output
+        #future_grad = get_expectation_gradients(fut_states_adj, value_net, self.Z_trans_tensor, range_tensor=self.bounds_processor.range,current_y = prod_states)
+        future_grad = self.take_expectation(value_output['grads'],prod_states)
+        ERho_star = self.take_expectation(value_output['values'],prod_states) #This is the value function output
         #Should I update EW_star again? I think yes
-        EW_star = future_grad[:,K_n:]
-        re, pc = self.getWorkerDecisions(EW_star)
-        V_all = value_net(fut_states_adj)
-        ERho_star= torch.einsum("by,zy->bz", V_all, self.Z_trans_tensor) #Should this be transposed? Doesn't matter now but will later.
-        i=torch.arange(fut_states.shape[0])
-        ERho_star = ERho_star[i,prod_states.long()]
+        #EW_star = future_grad[:,K_n:]
+        #re, pc = self.getWorkerDecisions(EW_star)
         #n_1 = self.bounds_processor.denormalize_dim(fut_size,1)
         EJ_star = ERho_star.unsqueeze(1) - rho_star * n_1 * EW_star #This should all be policy shape
         #EW_star = EW_star / fut_size #Normalizing, because ∂ 𝒫(y,n_k,ρ_k,z_k)/∂ ρ_k = n_k W_k. So to get true W_k gotta divide by the size
-        return  EJ_star, EW_star, future_grad, re, pc   
+        return  EJ_star, EW_star, future_grad, re, pc, n_1
     def values(self, states, prod_states, EJ_star, EW_star, pc_star, re_star, hiring, future_grad):
         """Compute the value function for the given states and policy"""
-        s_pos = states[:,1] > 0 #For wages, look only at the cases where we have a positive number of seniors 
         states = self.bounds_processor.denormalize(states)
         size = states[:, :K_n]
+        s_pos = states[:,1] > 0 #For wages, look only at the cases where we have a positive number of seniors 
         rho_n = states[:,K_n:].squeeze(1)
         wages = torch.zeros(rho_n.shape[0],K_n) + 1e-2
         wages[s_pos,1] = tensor(np.interp((rho_n[s_pos]/size[s_pos,1]).detach().numpy(),self.rho_grid,self.w_grid),dtype = type)
@@ -553,9 +570,6 @@ class FOCresidual:
         # After computing pc and pc_d:
         assert not torch.isnan(pc).any(), "NaN in pc"
         assert not torch.isnan(pc_d).any(), "NaN in pc_d"
-        # Clamp pc and pc_d to avoid log(0)
-        pc = torch.clamp(pc, min=1e-8)
-        pc_d = torch.clamp(pc_d, min=1e-8)
         log_diff = torch.zeros_like(EW_star)
         #log_diff[:] = torch.nan
         log_diff[pc > 0] = torch.log(pc_d[pc > 0]) - torch.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
@@ -568,29 +582,37 @@ class FOCresidual:
         assert torch.all(inv_utility_1d > 0)
         # After computing inv_utility_1d:
         assert not torch.isnan(inv_utility_1d).any(), "NaN in inv_utility_1d"
-        # Clamp inv_utility_1d to avoid division by zero
-        inv_utility_1d = torch.clamp(inv_utility_1d, min=1e-8)
 
-        focs_rho_2ndpart = - self.bounds_processor.denormalize_rho(states[:, K_n:]) -   size[:,:1]  / inv_utility_1d #BIG NOTE: I am taking ρ_1 * n_1 directly here from states. As this is all that I need, I do not need ρ separately. BUT! I WILL NEED IT IN ALL THE OTHER STEPS!!! So I will need to either keep track of it or... remove cases where size is zero. I already did that in the VFI approach, too. That makes more sense tbh. Then I can deduce ρ=(ρ * n) / n. For this I will need to take a subset at some point. s = size[:,1:] > 0 or smth like that.                 
-        focs_rho = rho_star - EJ_deriv[:,0:] * (log_diff / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-        focs_rho = focs_rho*(size[ :,:1] + size[ :,1:]) + focs_rho_2ndpart    
+
+        focs_rho_2ndpart = - self.bounds_processor.denormalize_rho(states[:, K_n:]) - size[:,:1] / inv_utility_1d #BIG NOTE: I am taking ρ_1 * n_1 directly here from states. As this is all that I need, I do not need ρ separately. BUT! I WILL NEED IT IN ALL THE OTHER STEPS!!! So I will need to either keep track of it or... remove cases where size is zero. I already did that in the VFI approach, too. That makes more sense tbh. Then I can deduce ρ=(ρ * n) / n. For this I will need to take a subset at some point. s = size[:,1:] > 0 or smth like that.                 
+        focs_rho = rho_star - EJ_deriv * (log_diff / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
+        focs_rho = focs_rho * (size[ :,:1] + size[ :,1:]) + focs_rho_2ndpart    
         assert torch.all(~torch.isnan(focs_rho))
         assert not torch.isnan(focs_rho).any(), "NaN in inv_utility_1d"
 
         #Now hiring FOC
-        fg_hire = future_grad[:, 0].clamp(-1e2, 1e2)
-        focs_hire = self.p.beta * fg_hire - self.p.hire_c #Maybe Rho instead of J??? No, should be J I think.
-        focs_hire[hiring <= 0] = torch.relu(focs_hire[hiring <= 0]) #This is the case where the firm is not hiring. So we only keep the loss if the FOC is positive
-        assert not torch.isnan(focs_hire).any(), "NaN in inv_utility_1d"
-        return focs_rho, focs_hire
+        #fg_hire = future_grad[:, 0].clamp(-1e2, 1e2)
+        focs_hire = self.p.beta * future_grad[:, 0] - self.p.hire_c
 
-    def initiation(self, states, prod_states, fut_states, rho_star, hiring, value_net):
-        EJ_star, EW_star, future_grad, re, pc = self.future_values(states, prod_states, fut_states, rho_star, hiring, value_net)
+        # softplus makes the ReLU-type clamp itself smooth
+        focs_hire_sp = torch.relu(focs_hire)
+
+        # but we only “apply” it when hiring ≤ 0, otherwise zero out
+        FOC_hire_resid = torch.where(
+            hiring <= 0,
+            focs_hire_sp,
+            focs_hire,)
+        #focs_hire = (hiring > 0 ) * (self.p.beta * future_grad[:, 0] - self.p.hire_c) + ( hiring == 0) * torch.relu(self.p.beta * future_grad[:, 0] - self.p.hire_c)
+        #focs_hire[hiring <= 0] = torch.relu(focs_hire[hiring <= 0]) #This is the case where the firm is not hiring. So we only keep the loss if the FOC is positive
+        assert not torch.isnan(focs_hire).any(), "NaN in inv_utility_1d"
+        return focs_rho, FOC_hire_resid
+    def initiation(self, states, prod_states, fut_states, rho_star, values, hiring, value_net):
+        EJ_star, EW_star, future_grad, re, pc, n_1 = self.future_values(states, prod_states, fut_states, rho_star, values, hiring, value_net)
         # In FOC_loss method, after computing EW_star and re:
         assert not torch.isnan(EW_star).any(), "NaN in EW_star"
         assert not torch.isnan(re).any(), "NaN in re"
 
-        return EJ_star, EW_star, future_grad, re, pc        
+        return EJ_star, EW_star, future_grad, re, pc, n_1    
 
 
 def simulate(starting_states, policy_net, bounds_processor, simulation_steps):
@@ -657,9 +679,17 @@ def initialize(bounds_processor, state_dim, K_n, K_v, hidden_dims, learning_rate
     # Initialize value function neural network
     value_net = ValueFunctionNN(state_dim, p.num_z, hidden_dims)
     policy_net = PolicyNN(state_dim, p.num_z, K_v, hidden_dims, cc)
+    # 1. collect your two groups of parameters
+    sup_params = list(policy_net.trunk.parameters()) \
+           + list(policy_net.value_head.parameters()) \
+           + list(policy_net.hiring_head.parameters())
+    rho_params = list(policy_net.wage_head.parameters())
     # Initialize neural network optimizer
     optimizer_value = optim.Adam(value_net.parameters(), lr=learning_rate[0])
-    optimizer_policy = optim.Adam(policy_net.parameters(), lr=learning_rate[1])
+    optimizer_policy = optim.Adam([
+    { "params": sup_params, "lr": learning_rate[0] }, 
+    { "params": rho_params, "lr": learning_rate[0] * 1e-2 },    # a 100× smaller inf-LR
+    ])
 
     # Initialize FOC computer
     foc_optimizer = FOCresidual(bounds_processor, K=K_n, p=p, cc=None)    
@@ -679,7 +709,7 @@ def pre_training(optimizer_value,optimizer_policy,value_net,policy_net,foc_optim
     assert not torch.isnan(crs_Rho).any(), "NaN in crs_Rho"
     assert not torch.isnan(target_wages).any(), "NaN in target_wages"
     assert not torch.isnan(target_W).any(), "NaN in target_W"
-
+    grad_size = torch.zeros((crs_Rho.shape[0], crs_Rho.shape[1], K_n), dtype=type) #Gradient of the target W wrt size. Shape [B,num_y, K_n]
     #Multiply the target gradient by size
     #target_W_grad = target_W[...,ax] * size[:,ax,1:] #Careful about the dimensions here. At the end this should be [B,num_y, D], where D=K_n
     print("Pre-training...")
@@ -693,13 +723,19 @@ def pre_training(optimizer_value,optimizer_policy,value_net,policy_net,foc_optim
         states[:,K_n:] = bounds_processor.normalize_dim(tensor(cc.rho_grid,dtype=type) * size[:,1],-1).unsqueeze(1) # State is ρ_k n_k
         target_values = torch.zeros_like(crs_Rho,dtype=type)
         for k in range(K_n):
-            target_values += crs_Rho * size[:,ax,k] #final shape [B, num_y] 
-        predicted_values = value_net(states)
-        predicted_grads = get_batch_gradients(states, value_net,  range_tensor=bounds_processor.range)[:,:,K_n:] #These are gradients wrt rho_k forall k besides the bottom one
+            if k == 0:
+                target_values += crs_Rho[ax, 0, :] * size[:, ax, k] #Since the junior workers are at the bottom value
+                grad_size[:,:, k] = crs_Rho[ax, 0, :]
+            else:
+                grad_size[:,:, k] = crs_Rho
+                target_values += crs_Rho * size[:,ax,k] #final shape [B, num_y] 
+        predicted_values = value_net(states)['values']
+        predicted_W = value_net(states)['grads'][:,:,K_n:] #These are gradients wrt rho_k forall k besides the bottom one
+        predicted_grads_size = value_net(states)['grads'][:,:,:K_n] #These are gradients wrt size, i.e. ∂W/∂n_k
         #Add gradient loss and monotonicity loss
         #violation = torch.relu(predicted_grads[:-1,:] - predicted_grads[1:,:])
         #mon_loss = (violation ** 2).mean() #This is the loss function that forces the gradient to be increasing
-        value_loss = nn.MSELoss()(predicted_values, target_values) + nn.MSELoss()(predicted_grads, target_W[...,ax]) 
+        value_loss = nn.MSELoss()(predicted_values, target_values) + nn.MSELoss()(predicted_W, target_W[...,ax]) +  nn.MSELoss()(predicted_grads_size, grad_size)
         value_loss.backward() #Backpropagation
         optimizer_value.step() #Update the weights
         optimizer_value.zero_grad()
@@ -778,47 +814,84 @@ def train(state_dim, value_net, policy_net, optimizer_value, optimizer_policy, f
             prod_states = mb[..., -1, 2]
             batch_index += 1
             i = torch.arange(states.shape[0])
-            policies = policy_net(states.requires_grad_(True))
-            #Gotta now do wages, hiring, and values separately
-            rho_star = policies['wages'][i,prod_states.long(),:]
-            values = policies['values'][i,prod_states.long(),:]
-            hiring = policies['hiring'][i,prod_states.long()] 
-            EJ_star, EW_star, future_grad, re, pc = foc_optimizer.initiation(prod_states=prod_states, states = states, fut_states = fut_states, rho_star=rho_star, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
-
+            print_check = 0
             if ((batch_index) % 4)==0: #Policy Update
-                #optimizer_policy.zero_grad() SHould not be here, since then we immediately forget the impact on future_grad, for example
-                FOC_rho_resid,FOC_hire_resid = foc_optimizer.FOC_loss(states=states, rho_star=rho_star, hiring=hiring, pc=pc, re=re, EW_star=EW_star, future_grad=future_grad)
-                FOC_wage_loss = nn.MSELoss()(FOC_rho_resid, torch.zeros_like(FOC_rho_resid))
-                FOC_hire_loss =  nn.MSELoss()(FOC_hire_resid, torch.zeros_like(FOC_hire_resid))
-                fut_value_loss = nn.MSELoss()(values,EW_star.detach()) #Loss the predicted EW_star via values and the "actual" EW_star (keep in mind that, in calculating actual EW_star, we still keep in mind the size guess based on the fut_values guess, see Simulation())
+                print_check += 1
+                optimizer_value.zero_grad()
+                optimizer_policy.zero_grad()                
+                policies = policy_net(states)
+                #Gotta now do wages, hiring, and values separately
+                values = policies['values'][i,prod_states.long(),:]
+                hiring = policies['hiring'][i,prod_states.long()] 
+                with torch.no_grad():
+                    rho_star = policy_net(states)['wages'][i,prod_states.long(),:]
+                assert (~torch.isnan(rho_star)).all() and (~torch.isnan(values)).all() and (~torch.isnan(hiring)).all(), "policy returns NaN"
+                EJ_star, EW_star, future_grad, re, pc, _ = foc_optimizer.initiation(prod_states=prod_states, states = states, fut_states = fut_states, rho_star=rho_star, values = values, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
+                FOC_rho_resid,FOC_hire_resid = foc_optimizer.FOC_loss(states=states, rho_star=rho_star.detach(), hiring=hiring, pc=pc, re=re, EW_star=EW_star, future_grad=future_grad)
+                FOC_wage_loss = nn.MSELoss(reduction='mean')(FOC_rho_resid, torch.zeros_like(FOC_rho_resid))
+                FOC_hire_loss =  nn.MSELoss(reduction='mean')(FOC_hire_resid, torch.zeros_like(FOC_hire_resid))
+                sup_loss = FOC_wage_loss + FOC_hire_loss
+                sup_loss.backward()
+                torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
+                optimizer_policy.step()
+                optimizer_policy.zero_grad()
+                #Inf Loss: detach everything *except* rho_star
+                with torch.no_grad(): # compute all sup‐outputs
+                    pol = policy_net(states)
+                    values  = pol['values'][i,prod_states.long(),:]  
+                    hiring  = pol['hiring'][i,prod_states.long()]
+                rho_star = policy_net(states)['wages'][i,prod_states.long(),:]
+                _, _, future_grad, _, _, _ = foc_optimizer.initiation(prod_states=prod_states, states = states, fut_states = fut_states, rho_star=rho_star, values = values, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
+                #fut_states_adj = torch.cat((hiring.unsqueeze(1).detach(),n_1.detach(),rho_star * n_1.detach()),dim=-1)
+                #fut_states_adj = bounds_processor.normalize(fut_states_adj)
+                #value_output = target_value_net(fut_states_adj)['grads'] #Get the expected value of the wage from the value network
+                #EW_star_value = foc_optimizer.take_expectation(value_output[...,K_n:],prod_states)
+                inf_loss = nn.MSELoss(reduction='mean')(future_grad[:,K_n:], values)
+                #In this formulation, rho_star is not a control, but rather a future state that we're trying to predict. So we don't need to backpropagate the FOCs through it, but we do need a correct prediction of it. This is what fut_value_loss is for.
                 #Note that I detach EW_star so that other policies do not try to affect anything going on here.
-                policy_loss = FOC_wage_loss + FOC_hire_loss + fut_value_loss #Get the total loss for the states in the minibatch
-                if episode % 1000 == 0:
+                if (episode + 1) % (num_episodes/20) == 0 & print_check == 1:
                     print(f"EW* norm: {EW_star.norm().item():.4f}")
-                policy_loss.backward()
+                    print(f"EW* mean: {EW_star.mean().item():.4f}")
+                #torch.autograd.set_detect_anomaly(True)
+                assert rho_star.requires_grad
+                assert future_grad.requires_grad
+                inf_loss.backward()
                 # Clip gradients to prevent explosion
                 torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
                 optimizer_policy.step()
                 optimizer_policy.zero_grad()
+                optimizer_value.zero_grad()                
             else: #Value function update
-                #optimizer_value.zero_grad()
-                target_values, target_grad = foc_optimizer.values(states=states, prod_states=prod_states, EJ_star=EJ_star, EW_star=EW_star, re_star=re, hiring=hiring, pc_star = pc, future_grad=future_grad) 
-                pred_values = value_net(states)
+                optimizer_value.zero_grad()
+                with torch.no_grad():
+                    policies = policy_net(states)
+                    #Gotta now do wages, hiring, and values separately
+                    values = policies['values'][i,prod_states.long(),:]
+                    hiring = policies['hiring'][i,prod_states.long()] 
+                    rho_star = policies['wages'][i,prod_states.long(),:]
+                assert (~torch.isnan(rho_star)).all() and (~torch.isnan(values)).all() and (~torch.isnan(hiring)).all(), "policy returns NaN"
+                EJ_star, EW_star, future_grad, re, pc, _ = foc_optimizer.initiation(prod_states=prod_states, states = states, fut_states = fut_states, rho_star=rho_star, values = values, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
+                target_values, target_grad = foc_optimizer.values(states=states, prod_states=prod_states, EJ_star=EJ_star.detach(), EW_star=EW_star.detach(), re_star=re.detach(), hiring=hiring.detach(), pc_star = pc.detach(), future_grad=future_grad.detach()) 
+                value_output = value_net(states)
+                assert (~torch.isnan(value_output['values'])).all() and (~torch.isnan(value_output['grads'])).all(), "value returns NaN"
+                pred_values = value_output['values']
                 pred_values = pred_values[i,prod_states.long()] #Get the values for the states in the minibatch
-                predicted_grad = get_batch_gradients(states, value_net,  range_tensor=bounds_processor.range)[:,:,:]
+                #predicted_grad = get_batch_gradients(states, value_net,  range_tensor=bounds_processor.range)[:,:,:]
+                predicted_grad = value_output['grads'] #Get the gradients for the states in the minibatch
                 predicted_grad = predicted_grad[i,prod_states.long(),:] #Get the values for the states in the minibatch
-                value_loss = nn.MSELoss()(pred_values, target_values)
-                value_grad_loss = nn.MSELoss()(predicted_grad, target_grad) #Get the value loss for the states in the minibatch
+                value_loss = nn.MSELoss(reduction='mean')(pred_values, target_values)
+                value_grad_loss = nn.MSELoss(reduction='mean')(predicted_grad, target_grad) #Get the value loss for the states in the minibatch
                 tot_value_loss = value_loss + λ * value_grad_loss #Combine the losses
                 tot_value_loss.backward()
                 torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=1.0)
                 optimizer_value.step()
                 optimizer_value.zero_grad()
+                optimizer_policy.zero_grad()
         #Hard copy the target value at the end of every episode
         target_value_net.load_state_dict(value_net.state_dict(), strict=True)
         # Print progress
         if (episode + 1) % (num_episodes/20) == 0 or episode == 0:
-            print(f"Iteration {episode + 1}, Value Loss: {value_loss.item():.6f}, Value Grad Loss:  {value_grad_loss.item():.6f},FOC_wage_loss: {FOC_wage_loss.item():.6f}, FOC_hire_loss: {FOC_hire_loss.item():.6f} ,fut_value_loss: {fut_value_loss.item():.6f}" )
+            print(f"Iteration {episode + 1}, Value Loss: {value_loss.item():.6f}, Value Grad Loss:  {value_grad_loss.item():.6f},FOC_wage_loss: {FOC_wage_loss.item():.6f}, FOC_hire_loss: {FOC_hire_loss.item():.6f} ,inf_loss: {inf_loss.item():.6f}" )
     
     return value_net, policy_net
 
@@ -831,7 +904,7 @@ if __name__ == "__main__":
     K_q = K - 1 #K - 1 (ignoring bottom) quality states. Ignore them for now
     STATE_DIM = K_n + K_v # + K_q #Discrete prod-ty y as multiple outputs
     ACTION_DIM = K_v + 1 # + K_n  # rho_star + hiring + separations. BIG QUESTION: do I do my thing (firms internalizing finite K) first to check? And only then move on? That's longer, but def more safe
-    HIDDEN_DIMS = [64,64]  # Basic architecture. Basically every paper has 2 inner layers, can make them wider though
+    HIDDEN_DIMS = [128,128]  # Basic architecture. Basically every paper has 2 inner layers, can make them wider though
     λ = 1.0  # Relative loss importance across networks
 
     #pref = Preferences(input_param=p_crs)
@@ -842,19 +915,19 @@ if __name__ == "__main__":
     #assert torch.all(target_W[:,1:] >= target_W[:,:-1]), "target_W is not increasing"
     #NORMALIZE EVERYTHING!!!
     LOWER_BOUNDS = [0, 0 , 0 * cc.rho_grid[0]] # The state space is (y,n_0,n_1,ρ_1 * n_1). This is fine, since we don't actually care about the derivative wrt just ρ.
-    UPPER_BOUNDS = [20, 50, 50 * cc.rho_grid[-1]] #Ideally this should come from fun_prod.max. Either way, these are bounds ONLY for wage. Not for size.
+    UPPER_BOUNDS = [50, 100, 100 * cc.rho_grid[-1]] #Ideally this should come from fun_prod.max. Either way, these are bounds ONLY for wage. Not for size.
     
     #Initialize
     bounds_processor_wage = StateBoundsProcessor(LOWER_BOUNDS,UPPER_BOUNDS)
     value_net, policy_net, optimizer_value, optimizer_policy, foc_optimizer = initialize(bounds_processor_wage, STATE_DIM, K_n, K_v, HIDDEN_DIMS,
-                                                                                         learning_rate=[1e-4,1e-4],pre_training_steps=100)
+                                                                                         learning_rate=[1e-3,1e-3],pre_training_steps=0)
     
     # Train value function
     print("Training value function...")
     beg=time()
     trained_value, trained_policy = train(
     STATE_DIM, value_net, policy_net, optimizer_value, optimizer_policy, foc_optimizer, bounds_processor_wage,
-        num_episodes=20000,
+        num_episodes=50000,
         starting_points_per_iter=5,
         simulation_steps=6,
         minibatch_size=300, λ=λ,

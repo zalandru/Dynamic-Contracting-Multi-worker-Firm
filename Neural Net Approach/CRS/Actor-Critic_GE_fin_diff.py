@@ -340,7 +340,7 @@ class FOCresidual:
     def future_values(self, prod_states, policies, value_net):
         """Compute the expected value of the value function for the given states and policy"""
         policies_norm = self.bounds_processor.normalize(policies)
-        EW_star = get_expectation_gradients(policies_norm.detach(), value_net, self.Z_trans_tensor, range_tensor=self.bounds_processor.range,current_y = prod_states)[:,0]
+        EW_star = get_expectation_gradients(policies_norm, value_net, self.Z_trans_tensor, range_tensor=self.bounds_processor.range,current_y = prod_states)[:,0]
         V_all = value_net(policies_norm)   
         ERho_star= torch.einsum("by,zy->bz", V_all, self.Z_trans_tensor) #Should this be transposed? Doesn't matter now but will later.
         i=torch.arange(policies.shape[0])
@@ -521,6 +521,7 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
             i = torch.arange(minibatch_X.shape[0])    
 
             if ((batch_index) % 4)==0:
+                optimizer_policy.zero_grad()
                 policies = policy_net(minibatch_X[:,:-2].requires_grad_(True))[i,minibatch_X[:,-2].long()].requires_grad_(True)
                 EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
                 FOC_resid = foc_optimizer.FOC_loss(states=minibatch_X[:,:-2], policies=policies.unsqueeze(1), pc=pc, EJ_star=EJ_star, EW_star=EW_star)
@@ -536,7 +537,7 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
                 optimizer_policy.zero_grad()
             else:
                 #with torch.no_grad():
-                policies = policy_net(minibatch_X[:,:-2].requires_grad_(True))[i,minibatch_X[:,-2].long()]
+                policies = policy_net(minibatch_X[:,:-2])[i,minibatch_X[:,-2].long()].detach()
                 EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
                 target_values, target_W = foc_optimizer.values(states=minibatch_X[:,:-2], prod_states=minibatch_X[:,-2], EJ_star=EJ_star, EW_star=EW_star, pc_star=pc, re_star=re)
                 pred_values = value_net(minibatch_X[:,:-2])
