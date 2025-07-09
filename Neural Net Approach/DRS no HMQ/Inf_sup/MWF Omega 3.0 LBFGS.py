@@ -603,7 +603,7 @@ class FOCresidual:
         #To be fair though, the rest of the focs do not have size explicily, so maybe I just let them train regardless? 
         focs_rho[(size[:,-1]+size[:,-2]) <= 0, K_v-1:] = 0
         #Now hiring FOC
-        tol = 1e-4
+        tol = 1e-2
         #interior = (hiring > tol).float()
         focs_hire = self.p.beta * future_grad[:, 0] - self.p.hire_c
         focs_hire_sp = torch.relu(focs_hire)
@@ -722,27 +722,27 @@ def initialize(bounds_processor, bounds_processor_inf, state_dim, K_n, K_v, hidd
     #    num_warmup_iterations=int(0.05 * num_epochs),  # 5% of training
     #    logging_active=False  # no logging for now
     #)
-    #optimizer_sup = RangerOptimizer(
-    #    params=sup_net.parameters(),
-    #    lr=learning_rate[1],
-    #    weight_decay=weight_decay[1],
-    #    num_epochs=num_epochs,
-    #    num_batches_per_epoch= (minibatch_num / 3) - 1,
-    #    num_warmup_iterations=int(0.05 * num_epochs),  # 5% of training
-    #    logging_active=False  # no logging for now
-    #)
-    #optimizer_inf = RangerOptimizer(
-    #    params=inf_net.parameters(),
-    #    lr=learning_rate[2],
-    #    weight_decay=weight_decay[2],
-    #    num_epochs=num_epochs,
-    #    num_batches_per_epoch= 1,
-    #    num_warmup_iterations=int(0.05 * num_epochs),  # 5% of training
-    #    logging_active=False  # no logging for now
-    #)
+    optimizer_sup = RangerOptimizer(
+        params=sup_net.parameters(),
+        lr=learning_rate[1],
+        weight_decay=weight_decay[1],
+        num_epochs=num_epochs * (9/10), #Value net updates every ten episodes
+        num_batches_per_epoch= minibatch_num - 1,
+        num_warmup_iterations=int(0.05 * num_epochs),  # 5% of training
+        logging_active=False  # no logging for now
+    )
+    optimizer_inf = RangerOptimizer(
+        params=inf_net.parameters(),
+        lr=learning_rate[2],
+        weight_decay=weight_decay[2],
+        num_epochs=num_epochs * (9/10),
+        num_batches_per_epoch= 1,
+        num_warmup_iterations=int(0.05 * num_epochs),  # 5% of training
+        logging_active=False  # no logging for now
+    )
 
-    optimizer_sup = optim.AdamW(sup_net.parameters(), lr=learning_rate[1], weight_decay=weight_decay[1])
-    optimizer_inf = optim.AdamW(inf_net.parameters(), lr=learning_rate[2], weight_decay=weight_decay[2])    
+    #optimizer_sup = optim.AdamW(sup_net.parameters(), lr=learning_rate[1], weight_decay=weight_decay[1])
+    #optimizer_inf = optim.AdamW(inf_net.parameters(), lr=learning_rate[2], weight_decay=weight_decay[2])    
 
     # Initialize FOC computer
     foc_optimizer = FOCresidual(bounds_processor, bounds_processor_inf, K=K_n, p=p, cc=None)    
@@ -811,7 +811,58 @@ def pre_training(optimizer_value,optimizer_sup, optimizer_inf, value_net,sup_net
         optimizer_inf.zero_grad()
         optimizer_value.zero_grad()
     return value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf
-def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer, bounds_processor, bounds_processor_inf, num_episodes=20, starting_points_per_iter=100, simulation_steps=5, 
+def value_pre_training(value_net, target_value_net, sup_net, inf_net, bounds_processor, bounds_processor_inf, state_dim, starting_points_per_iter, simulation_steps, pre_training_steps):
+    for steps in range(pre_training_steps):    
+        #Starting states. First with a single junior and nothing else. State = (y, {1,0},{rho_min,rho_min})
+        state_start = torch.zeros(state_dim,dtype=type)
+        state_start[0] = bounds_processor.normalize_dim(1,0) # 1 junior worker
+        #Or if randomized. 
+        states= torch.rand(starting_points_per_iter, state_dim,dtype=type) 
+        #Add the starting state
+        states[0,:] = state_start
+        #Simulate the firm path using the sup network
+        with torch.no_grad():
+            states, prod_states, _  = simulate(states, sup_net, inf_net, bounds_processor, bounds_processor_inf, simulation_steps) #This is the set of states we will use to train the value function. 
+        #Now append future states to the states so that I can mini-batch them together.
+        states.clamp_(0.0, 1.0)
+        #OR, restrict attention to states that have positive size. Otherwise, can't rly learn anything:
+        sum_size = states.sum(dim=1) #This is the sum of all sizes in the batch
+        pos_size = sum_size > 0 #This is the case where we have positive size. Otherwise, can't rly learn anything.
+
+        states = states[pos_size, :]
+        prod_states = prod_states[pos_size]
+        i = torch.arange(states.shape[0])
+
+        def closure():
+                #nonlocal value_loss, value_grad_loss
+                optimizer_value.zero_grad()
+                with torch.no_grad():
+                    policies = sup_net(states)
+                    v_prime = policies['values'][i, prod_states.long(), :]
+                    hiring = policies['hiring'][i, prod_states.long()]
+                    fut_size, re, pc = foc_optimizer.get_fut_size(states, hiring, v_prime)
+                    states_inf = torch.cat((fut_size, v_prime), dim=1)
+                    states_inf = bounds_processor_inf.normalize(states_inf)
+                    omega = inf_net(states_inf)['omega'][i, prod_states.long(), :]
+                    EJ_star, future_grad = foc_optimizer.future_values(fut_size = fut_size, prod_states=prod_states, omega=omega, v_prime = v_prime,  i=i, value_net=target_value_net)
+                    target_values, target_grad = foc_optimizer.values(states=states, prod_states=prod_states, EJ_star=EJ_star, v_prime=v_prime, re=re, hiring=hiring, pc = pc, future_grad=future_grad, omega=omega)
+                value_output = value_net(states)
+                pred_values = value_output['values'][i, prod_states.long()]
+                predicted_grad = get_batch_gradients(states, value_net, policies['hiring'].shape[1], range_tensor=bounds_processor.range)
+                predicted_grad = predicted_grad[i, prod_states.long(), :]
+
+                value_loss = nn.MSELoss()(pred_values, target_values)
+                value_grad_loss = nn.MSELoss()(predicted_grad, target_grad)
+                λ = torch.exp(tensor(1/num_episodes)) #Here basically training ONLY on the value, not on the grad
+                tot_value_loss = (value_loss + λ * value_grad_loss) / (1 + λ)
+                tot_value_loss.backward()
+                return tot_value_loss
+
+        optimizer_value.step(closure)
+        soft_update(target_value_net, value_net, tau=0.005)   
+    return value_net, target_value_net, optimizer_value
+
+def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer, bounds_processor, bounds_processor_inf, num_episodes=20, pre_training_steps = 5, starting_points_per_iter=100, simulation_steps=5, 
     minibatch_num=8, λ=1.0, use_saved_nets = False):
     """
     Main training loop for value function approximation
@@ -851,10 +902,12 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
     value_grad_loss = torch.tensor(0.0)
     print("Training...")
     L_BFGS_INTERVAL = 10  # Every 10 episodes
+    #Pre-training the value net
+    value_net, target_value_net, optimizer_value = value_pre_training(value_net, target_value_net, sup_net, inf_net, bounds_processor, bounds_processor_inf, state_dim, starting_points_per_iter, simulation_steps, pre_training_steps)
     # Training loop
     for episode in tqdm(range(num_episodes)):
         ep = episode + 1
-        L_BFGS_MODE = (ep % L_BFGS_INTERVAL == 0) or (ep <= 1) #Pure value training first
+        L_BFGS_MODE = (ep % L_BFGS_INTERVAL == 0) #Pure value training first
         #torch.autograd.set_detect_anomaly(True)
         #Starting states. First with a single junior and nothing else. State = (y, {1,0},{rho_min,rho_min})
         state_start = torch.zeros(state_dim,dtype=type)
@@ -974,7 +1027,7 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                 if ((episode + 1) % (num_episodes/20) == 0) & (print_check <= 1):
                     #print(f"EW* norm: {EW_star.norm().item():.4f}")
                     print(f"EW* mean: {v_prime.mean().item():.4f}")      
-        if ((ep) % (10) == 0) and (ep > 1):
+        if ((ep) % (10) == 0) and (ep > 10):
             # Collect your raw loss scalars
             losses = {
             'value':       value_loss.item(),
@@ -985,7 +1038,7 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
             }
             # One line hides all the plotting mess
             plotter.update(ep, losses)
-        #Hard copy the target value at the end of every episode
+        #Soft update the target value at the end of every episode
         soft_update(target_value_net, value_net, tau=0.005)
         #target_value_net.load_state_dict(value_net.state_dict(), strict=True)
         #target_sup_net.load_state_dict(sup_net.state_dict(), strict=True)
@@ -1090,14 +1143,14 @@ if __name__ == "__main__":
     bounds_processor_inf = StateBoundsProcessor_inf(LOWER_BOUNDS_inf,UPPER_BOUNDS_inf)
 
     value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer = initialize(bounds_processor_sup, bounds_processor_inf, STATE_DIM, 
-    K_n, K_v, HIDDEN_DIMS, learning_rate=[1e-2,1e-6,1e-8], weight_decay = [1e-2, 1e-2, 1e-2], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
+    K_n, K_v, HIDDEN_DIMS, learning_rate=[1e-2,1e-2,1e-4], weight_decay = [1e-2, 1e-2, 1e-2], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
     
     # Train value function
     print("Training value function...")
     beg=time()
     trained_value, trained_sup, trained_inf = train(
     STATE_DIM, value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer, bounds_processor_sup,bounds_processor_inf, 
-        num_episodes=num_episodes,
+        num_episodes=num_episodes, pre_training_steps=5,
         starting_points_per_iter=5,
         simulation_steps=7,
         minibatch_num=minibatch_num, λ=25.0,

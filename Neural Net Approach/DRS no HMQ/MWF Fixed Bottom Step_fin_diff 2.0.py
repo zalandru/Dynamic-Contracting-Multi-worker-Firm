@@ -155,15 +155,20 @@ class PolicyNN(nn.Module):
         # hiring head: probability of hiring per discrete state y
         self.hiring_head = nn.Sequential(
             nn.Linear(input_dim, num_y),
-            nn.ReLU()
+            nn.Softplus()
         )
     def _init_weights(self):
         # 1) Trunk: He/Kaiming
-        for seq in (self.trunk, self.value_head, self.wage_head, self.hiring_head):
-         for layer in seq:
-            if isinstance(layer, nn.Linear):
-                nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.01)
+        for seq in (self.trunk, self.value_adapter, self.hiring_adapter, self.hiring_head, self.value_head):
+            for layer in seq:
+                if isinstance(layer, nn.Linear):
+                    nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
+                    nn.init.constant_(layer.bias, 0.01)
+        # 2) Hiring_head: Xavier/Glorot
+        for layer in self.hiring_head:
+                if isinstance(layer, nn.Linear):
+                    nn.init.xavier_uniform_(layer.weight, gain=1.0)
+                    nn.init.constant_(layer.bias, 0.01)
     def forward(self, x):
         # x: [B, state_dim]
         B = x.size(0)
@@ -511,7 +516,7 @@ class FOCresidual:
         #Now hiring FOC
         #fg_hire = future_grad[:, 0].clamp(-1e2, 1e2)
         focs_hire = self.p.beta * future_grad[:, 0] - self.p.hire_c #Maybe Rho instead of J??? No, should be J I think.
-        focs_hire[hiring <= 0] = torch.relu(focs_hire[hiring <= 0]) #This is the case where the firm is not hiring. So we only keep the loss if the FOC is positive
+        focs_hire[hiring <= 1e-2] = torch.relu(focs_hire[hiring <= 1e-2]) #This is the case where the firm is not hiring. So we only keep the loss if the FOC is positive
         assert not torch.isnan(focs_hire).any(), "NaN in inv_utility_1d"
         return focs_rho, focs_hire
     def initiation(self, states, prod_states, fut_states, rho_star, hiring, value_net):
@@ -577,7 +582,16 @@ def simulate(starting_states, policy_net, bounds_processor, simulation_steps):
     #S=torch.cat((S, P.unsqueeze(1)), dim=1)
 
     return S, P, Fut_states #Doing values here may be not as efficient since some of them may not even be sampled.
-
+def soft_update(target_net, source_net, tau=0.005):
+    """
+    θ_tgt ← τ·θ_src + (1–τ)·θ_tgt
+    Args:
+        target_net: torch.nn.Module whose params will be updated in-place
+        source_net: torch.nn.Module, the “online” network
+        tau (float): interpolation factor (small, e.g. 0.005)
+    """
+    for tgt_param, src_param in zip(target_net.parameters(), source_net.parameters()):
+        tgt_param.data.copy_(tau * src_param.data + (1.0 - tau) * tgt_param.data)
 def initialize(bounds_processor, state_dim, K_n, K_v, hidden_dims, learning_rate, weight_decay, pre_training_steps, num_epochs, minibatch_num):
     #Initializations:
     
@@ -742,19 +756,21 @@ def train(state_dim, value_net, policy_net, optimizer_value, optimizer_policy, f
                     print(f"EW* norm: {EW_star.norm().item():.4f}")
                 policy_loss.backward()
                 # Clip gradients to prevent explosion
-                torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
+                #torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
                 optimizer_policy.step()
                 optimizer_policy.zero_grad()
             else: #Value function update
-                #optimizer_value.zero_grad()
-                target_values, target_grad = foc_optimizer.values(states=states, prod_states=prod_states, EJ_star=EJ_star, EW_star=EW_star, re=re, hiring=hiring, pc = pc, rho_star=rho_star, future_grad=future_grad) 
+                optimizer_value.zero_grad()
+                with torch.no_grad():
+                    target_values, target_grad = foc_optimizer.values(states=states, prod_states=prod_states, EJ_star=EJ_star, EW_star=EW_star, re=re, hiring=hiring, pc = pc, rho_star=rho_star, future_grad=future_grad) 
                 pred_values = value_net(states)
                 predicted_grad = get_batch_gradients(states, value_net,  num_y = pred_values.shape[1], range_tensor=bounds_processor.range)[:,:,:]
                 pred_values = pred_values[i,prod_states.long()] #Get the values for the states in the minibatch
                 predicted_grad = predicted_grad[i,prod_states.long(),:] #Get the values for the states in the minibatch
                 value_loss = nn.MSELoss()(pred_values, target_values)
                 value_grad_loss = nn.MSELoss()(predicted_grad, target_grad) #Get the value loss for the states in the minibatch
-                tot_value_loss = 1e-1 * value_loss + λ * value_grad_loss #Combine the losses
+                λ = torch.exp(tensor(ep/num_episodes))
+                tot_value_loss = (value_loss + λ * value_grad_loss)/(1+λ) #Combine the losses
                 tot_value_loss.backward()
                 torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=1.0)
                 optimizer_value.step()
@@ -772,7 +788,7 @@ def train(state_dim, value_net, policy_net, optimizer_value, optimizer_policy, f
         plotter.update(ep, losses)
         
         #Hard copy the target value at the end of every episode
-        target_value_net.load_state_dict(value_net.state_dict(), strict=True)
+        soft_update(target_value_net, value_net, tau=0.005)
         # Print progress
         if (episode + 1) % (num_episodes/20) == 0 or episode == 0:
             print(f"Iteration {episode + 1}, Value Loss: {value_loss.item():.6f}, Value Grad Loss:  {value_grad_loss.item():.6f},FOC_wage_loss: {FOC_wage_loss.item():.6f}, FOC_hire_loss: {FOC_hire_loss.item():.6f} ,fut_value_loss: {fut_value_loss.item():.6f}" )
@@ -805,7 +821,7 @@ if __name__ == "__main__":
     #Initialize
     bounds_processor_wage = StateBoundsProcessor(LOWER_BOUNDS,UPPER_BOUNDS)
     value_net, policy_net, optimizer_value, optimizer_policy, foc_optimizer = initialize(bounds_processor_wage, STATE_DIM, K_n, K_v, HIDDEN_DIMS,
-                                                                                         learning_rate=[1e-5,1e-5], weight_decay = [1e-2, 1e-2] ,pre_training_steps=0, num_epochs=num_episodes, minibatch_num=1000)
+                                                                                         learning_rate=[1e-2,1e-4], weight_decay = [1e-2, 1e-2] ,pre_training_steps=0, num_epochs=num_episodes, minibatch_num=1000)
     
     # Train value function
     print("Training value function...")

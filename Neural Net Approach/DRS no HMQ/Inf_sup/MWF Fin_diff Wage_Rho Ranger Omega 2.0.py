@@ -147,7 +147,7 @@ class ValueFunctionNN(nn.Module):
         for layer in self.trunk:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.0)
+                nn.init.constant_(layer.bias, 0.01)
     def forward(self, x):
         B = x.size(0)
         features = self.trunk(x)                    # [B, hidden_dims[-1]]
@@ -188,7 +188,7 @@ class PolicyNN(nn.Module):
         # future value v' head: output num_y * num_Kv values, then reshape
         self.value_head = nn.Sequential(
             nn.Linear(input_dim, num_y * self.K_v),
-            nn.Softplus()
+            nn.ReLU()
         )
         #NOTE: I use this value to directly get EW_star, so that I do not need to call a gradient during the simulation stage
         #Instead, I can use this during the simulation and train it based on the MSE between this and the actual gradient
@@ -208,18 +208,18 @@ class PolicyNN(nn.Module):
         self._init_weights()
     def _init_weights(self):
         # 1) Trunk: He/Kaiming
-        for seq in (self.trunk, self.value_adapter, self.hiring_adapter):
+        for seq in (self.trunk, self.value_adapter, self.hiring_adapter, self.value_head):
             for layer in seq:
                 if isinstance(layer, nn.Linear):
                     nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                    nn.init.constant_(layer.bias, 0.0)
+                    nn.init.constant_(layer.bias, 0.01)
 
         # 2) value & hiring_head: Xavier/Glorot
-        for seq in (self.value_head, self.hiring_head):
+        for seq in ( self.hiring_head):
             for layer in seq:
                 if isinstance(layer, nn.Linear):
                     nn.init.xavier_uniform_(layer.weight, gain=1.0)
-                    nn.init.constant_(layer.bias, 0.1)
+                    nn.init.constant_(layer.bias, 0.01)
     def forward(self, x):
         # x: [B, state_dim]
         B = x.size(0)
@@ -264,7 +264,7 @@ class infNN(nn.Module):
         # wage head: output num_y * num_Kv wage values, then reshape
         self.wage_head = nn.Sequential(
             nn.Linear(input_dim, num_y * self.K_v),
-            nn.Softplus()
+            nn.ReLU()
         )
         # Apply activation‐specific initialization
         self._init_weights()
@@ -275,17 +275,13 @@ class infNN(nn.Module):
         #lin.bias.data.fill_(0.1)
         # ------------------------
     def _init_weights(self):
-        # 1) Trunk: He/Kaiming
-        for layer in self.trunk:
+        # 1) He/Kaiming
+        for seq in (self.trunk,self.wage_head):
+         for layer in seq:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.0)
+                nn.init.constant_(layer.bias, 0.01)
 
-        # 2) omega_head: Xavier/Glorot
-        for layer in self.wage_head:
-                if isinstance(layer, nn.Linear):
-                    nn.init.xavier_uniform_(layer.weight, gain=1.0)
-                    nn.init.constant_(layer.bias, 0.1)
     def forward(self, x):
         # x: [B, state_dim]
         B = x.size(0)
@@ -618,7 +614,7 @@ class FOCresidual:
 
         # but we only “apply” it when hiring ≤ 0, otherwise zero out
         FOC_hire_resid = torch.where(
-            hiring <= 0,
+            hiring <= 1e-2, #reLU when hiring is low enough
             focs_hire_sp,
             focs_hire,)
         #focs_hire = (hiring > 0 ) * (self.p.beta * future_grad[:, 0] - self.p.hire_c) + ( hiring == 0) * torch.relu(self.p.beta * future_grad[:, 0] - self.p.hire_c)
@@ -699,7 +695,16 @@ def simulate(starting_states, policy_net, inf_net, bounds_processor, bounds_proc
     #S=torch.cat((S, P.unsqueeze(1)), dim=1)
 
     return S, P, Fut_states #Doing values here may be not as efficient since some of them may not even be sampled.
-
+def soft_update(target_net, source_net, tau=0.005):
+    """
+    θ_tgt ← τ·θ_src + (1–τ)·θ_tgt
+    Args:
+        target_net: torch.nn.Module whose params will be updated in-place
+        source_net: torch.nn.Module, the “online” network
+        tau (float): interpolation factor (small, e.g. 0.005)
+    """
+    for tgt_param, src_param in zip(target_net.parameters(), source_net.parameters()):
+        tgt_param.data.copy_(tau * src_param.data + (1.0 - tau) * tgt_param.data)
 def initialize(bounds_processor, bounds_processor_inf, state_dim, K_n, K_v, hidden_dims, learning_rate, weight_decay, pre_training_steps, num_epochs):
     #Initializations:
     
@@ -903,8 +908,8 @@ def train(state_dim, value_net, policy_net, inf_net, optimizer_value, optimizer_
                 assert (~torch.isnan(omega)).all() and (~torch.isnan(v_prime)).all() and (~torch.isnan(hiring)).all(), "policy returns NaN"
                 _, v_prime, future_grad, re, _, _ = foc_optimizer.initiation(prod_states=prod_states, states = states, fut_states = fut_states, omega=omega, v_prime = v_prime, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
                 FOC_rho_resid,FOC_hire_resid = foc_optimizer.FOC_loss(states=states, omega=omega, hiring=hiring, pc=pc, re=re, v_prime=v_prime, future_grad=future_grad)
-                FOC_wage_loss = nn.SmoothL1Loss()(FOC_rho_resid, torch.zeros_like(FOC_rho_resid))
-                FOC_hire_loss =  nn.SmoothL1Loss()(FOC_hire_resid, torch.zeros_like(FOC_hire_resid))
+                FOC_wage_loss = nn.MSELoss()(FOC_rho_resid, torch.zeros_like(FOC_rho_resid))
+                FOC_hire_loss =  nn.MSELoss()(FOC_hire_resid, torch.zeros_like(FOC_hire_resid))
                 assert not torch.isnan(FOC_rho_resid).any(), "NaN in FOC_wage_loss"
                 assert not torch.isinf(FOC_rho_resid).any(), "inf in FOC_wage_loss"                                
                 assert not torch.isnan(FOC_hire_resid).any(), "NaN in FOC_hire_loss"
@@ -925,9 +930,9 @@ def train(state_dim, value_net, policy_net, inf_net, optimizer_value, optimizer_
                     states_inf = torch.cat((states, hiring.unsqueeze(1), v_prime), dim=1) # [B, D + K_v + 1]
                     states_inf = bounds_processor_inf.normalize(states_inf) # Normalize the states
                     omega = inf_net(states_inf)['omega'][i,prod_states.long(),:]
-                assert (~torch.isnan(omega)).all() and (~torch.isnan(v_prime)).all() and (~torch.isnan(hiring)).all(), "policy returns NaN"
-                EJ_star, v_prime, future_grad, re, pc, _ = foc_optimizer.initiation(prod_states=prod_states, states = states, fut_states = fut_states, omega=omega, v_prime = v_prime, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
-                target_values, target_grad = foc_optimizer.values(states=states, prod_states=prod_states, EJ_star=EJ_star.detach(), v_prime=v_prime.detach(), re_star=re.detach(), hiring=hiring.detach(), pc_star = pc.detach(), future_grad=future_grad.detach(), omega=omega.detach()) #Get the target values and gradients
+                    assert (~torch.isnan(omega)).all() and (~torch.isnan(v_prime)).all() and (~torch.isnan(hiring)).all(), "policy returns NaN"
+                    EJ_star, v_prime, future_grad, re, pc, _ = foc_optimizer.initiation(prod_states=prod_states, states = states, fut_states = fut_states, omega=omega, v_prime = v_prime, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
+                    target_values, target_grad = foc_optimizer.values(states=states, prod_states=prod_states, EJ_star=EJ_star.detach(), v_prime=v_prime.detach(), re_star=re.detach(), hiring=hiring.detach(), pc_star = pc.detach(), future_grad=future_grad.detach(), omega=omega.detach()) #Get the target values and gradients
                 value_output = value_net(states)
                 assert (~torch.isnan(value_output['values'])).all(), "value returns NaN"
                 pred_values = value_output['values']
@@ -935,15 +940,15 @@ def train(state_dim, value_net, policy_net, inf_net, optimizer_value, optimizer_
                 #predicted_grad = get_batch_gradients(states, value_net,  range_tensor=bounds_processor.range)[:,:,:]
                 predicted_grad = get_batch_gradients(states, value_net, policies['hiring'].shape[1], range_tensor=bounds_processor.range)
                 predicted_grad = predicted_grad[i,prod_states.long(),:] #Get the values for the states in the minibatch
-                value_loss = nn.SmoothL1Loss()(pred_values, target_values)
-                value_grad_loss = nn.SmoothL1Loss()(predicted_grad, target_grad) #Get the value loss for the states in the minibatch
+                value_loss = nn.MSELoss()(pred_values, target_values)
+                value_grad_loss = nn.MSELoss()(predicted_grad, target_grad) #Get the value loss for the states in the minibatch
                 tot_value_loss = value_loss + λ * value_grad_loss #Combine the losses
                 tot_value_loss.backward()
                 optimizer_value.step()
         #Hard copy the target value at the end of every episode
-        target_value_net.load_state_dict(value_net.state_dict(), strict=True)
-        target_policy_net.load_state_dict(policy_net.state_dict(), strict=True)
-        target_inf_net.load_state_dict(inf_net.state_dict(), strict=True)        
+        soft_update(target_value_net, value_net, tau=0.005)
+        #target_policy_net.load_state_dict(policy_net.state_dict(), strict=True)
+        #target_inf_net.load_state_dict(inf_net.state_dict(), strict=True)        
         # Print progress
         if (episode + 1) % (num_episodes/20) == 0 or episode == 0:
             print(f"Iteration {episode + 1}, Value Loss: {value_loss.item():.6f}, Value Grad Loss:  {value_grad_loss.item():.6f},FOC_wage_loss: {FOC_wage_loss.item():.6f}, FOC_hire_loss: {FOC_hire_loss.item():.6f} ,inf_loss: {inf_loss.item():.6f}" )
