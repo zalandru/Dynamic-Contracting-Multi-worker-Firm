@@ -101,9 +101,9 @@ A decision problem $J(y,n,P(v))$ of a firm of age $K$ can be equivalently repres
     %Size
     & -\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f
     %Expectation
-    +\beta E_{y'|y} J(y',\{n'_k,v'_k\}_{k\leq K+1}) \\
+    +\beta E_{y'|y} J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1}) \\
      s.t. \: & u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})=v_k] \; \forall k\leq K \\
-    & v'_{k+1} = E_{y'|y} v'_{k+1,y'} \; \forall k\leq K \\
+    & v'_{k+1} = E_{y'|y} v'_{y',k+1} \; \forall k\leq K \\
     & n'_{k+1} = n_k(1-s_k)(1-p(v'_{k+1}))+\tilde{n}\; \forall k\leq K \\
     & n'_0 = \tilde{n}, v'_0 = \tilde{v}
     \end{split}
@@ -114,10 +114,10 @@ This tenure-based formulation of the problem allows me to work with a discrete, 
 \newline
 %I adapt the Proposition 3 from \textcite{balke2022}, which establishes that wages in each match track a "target wage", to my model with a continuum of contracts. 
 To show that the wages converge, I start by characterizing the wage growth.
-\begin{proposition}
+\begin{proposition} \label{prop:wagegrowth}
   For any current state $(y,\{n_k,v_k,z_k\})$, wages change according to the following relationship:
-\begin{equation} \label{prop:wagegrowth}
-    \frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} = \eta(v'_{k+1}) E_{y'|y} \frac{\partial J(y',\{n'_k,v'_k,z'_k\})}{\partial n'_{k+1}}
+\begin{equation} 
+    \frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} = \eta(v'_{k+1}) E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k}\})}{\partial n'_{k+1}}
 \end{equation}
 where $\eta(v'_{k+1}) = \frac{\partial log(1-p(v'))}{\partial v'}$ is the semi-elasticity of the job-finding probability with respect to the promised value $v'_{k+1}$.
 \end{proposition}
@@ -200,14 +200,14 @@ I first characterize the FOC for layoffs:
 \begin{proposition} \label{prop:layoffs}
   Fix a firm state $(y,\{n_k,v_k,z_k\})$. Layoffs are characterized by the following first-order condition:
   \begin{equation}
-    -E_{y'|y}\frac{\partial J'}{\partial n'_{k+1}}(1-p(v'_{k+1}))+E_{y'|y}\frac{\partial J'}{\partial z'_{k+1}}\frac{\partial z'_{k+1}}{\partial s_k} - \frac{R(v'_{k+1})-U}{u'(w_k)}\leq 0
+    -E_{y'|y}\frac{\partial J'}{\partial n'_{k+1}}(1-p(v'_{k+1}))+E_{y'|y}\frac{\partial J'}{\partial z'_{k+1}}\frac{\partial z'_{k+1}}{\partial s_k}\frac{1}{n_k} - \frac{R(v'_{k+1})-U}{u'(w_k)}\leq 0
   \end{equation}
   and $s_k \geq 0$ with complementary slackness.
 \end{proposition}
 \begin{proof}
   See Appendix \ref{proof:layoffs}
 \end{proof}
-Just like wages, the trade-off for layoffs primarily revolves around the value of the marginal worker $E_{y'|y}\frac{\partial J'}{\partial n'_{k+1}}$ and the cost of having to compensate the worker $\frac{R(v'_{k+1})-U}{u'(w_k)}$. The truly unique component to layoffs is the quality effect $E_{y'|y}\frac{\partial J'}{\partial z'_{k+1}}\frac{\partial z'_{k+1}}{\partial s_k}$. \\
+Just like wages, the trade-off for layoffs primarily revolves around the value of the marginal worker $E_{y'|y}\frac{\partial J'}{\partial n'_{k+1}}$ and the cost of having to compensate the worker $\frac{R(v'_{k+1})-U}{u'(w_k)}$. The truly unique component to layoffs is the quality effect $E_{y'|y}\frac{\partial J'}{\partial z'_{k+1}}\frac{\partial z'_{k+1}}{\partial s_k}\frac{1}{n_k}$. \\
 Though not obvious from this condition, workers on higher values are less likely to be laid off: even absent heterogeneity in quality, the cost of firing rises faster in promised value than the value of the marginal worker falls. \\
 I now connect the layoffs and wage cuts:
 \begin{proposition} \label{prop:wage_cuts}
@@ -215,6 +215,13 @@ Let $K_s\equiv \{k\leq K|s_k>0\}$. In states where $K_s$ is non-empty:
   \[w'_{k+1}-w_k>w'_{k'+1}-w_{k'} \: \forall k\in K_s,k'\notin K_s\]
 \end{proposition}
 \begin{proof}
-  \textcolor{red}{Envelope Theorem Application}
+ Start with the wage growth equation from Proposition \ref{prop:wagegrowth}, extended to the case of heterogeneous matches. 
+     \[\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} = \eta(v'_{k+1}) E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}}\]
+     One can now apply the Envelope Theorem to extend the RHS of the equation:
+     \begin{align*}
+     E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}}  = & E_{y'|y}\Big[y'\frac{\partial F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k+1}} - w'_{k+1} + \\
+     & \beta (1-p(v''_{k+2}))(1-s'_{k+1})E_{y''|y'} \frac{\partial J(y'',\{n''_k,v''_{y'',k},z''_k\})}{\partial n''_{k+2}})\Big]      
+     \end{align*}
+     One can note that the production derivative $\frac{\partial F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k+1}}$ is increasing in $z'_{k+1}$. And, moreover, that $\frac{\partial^2 F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k+1} \partial z'_{k+1}}> \frac{\partial^2 F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k'} \partial z'_{k+1}}, k'\neq k+1$. This implies that, the workers in steps $k \in K_s$ will experience the largest rise in marginal productivity. \textcolor{red}{This doesn't mean that they are at the highest marginal productivity though! Part of my intuition is predicated on the fact that the other workers, ones not fired, are already quite close to their target wages! Otherwise those guys would still have the best wage growth. Essentially, my intuition is that the fired cohorts receive a spike in marginal productivity, so, if they're on the similar-ish wage path to the other cohorts, they should get the best wage growth. But this needs to be formalized some more.}
 \end{proof}
 The intuition behind this result is that layoffs give a second-order push-up effect on wages: since the remaining workers are now of higher quality, there is less incentive to cut those workers' wages. And, although higher tenure steps may be of even higher quality, because their quality effect has already had to be internalized in wages, their wage cuts will in fact be larger than the cuts of just recently fired workers.

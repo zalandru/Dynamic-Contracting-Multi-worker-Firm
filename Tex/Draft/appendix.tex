@@ -2,8 +2,31 @@
 \section{Model Appendix} 
 \subsection{Proofs}
 \subsubsection*{Proof of Proposition \ref{prop:wagegrowth}} \label{proof:wagegrowth}
+The proposition is derived from the first-order conditions of the firm's problem.
+\begin{proof}
+    Consider the problem from Lemma \ref{lemma_tenure}.
+    The FOC for $v'_{k_1}$ yields (denote $\rho_k$ the shadow cost of $PK_k$ and $\omega_k$ the shadow cost of the expectation condition):
+    \[\rho_k\beta(1-s_k)(1-p(v'_{k+1}))-\omega_k+\beta n_k(1-s_k)\frac{\partial (1-v(v'_{k+1}))}{\partial v'_{k+1}}E_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial n'_{k+1}}=0\]
+    To develop this further, I use the FOC for $w_k$:
+    \[-n_k + \rho_k u'(w_k)=0 \iff \rho_k=\frac{n_k}{u'(w_k)}\]
+    One can similarly develop $\omega_k$ by applying the FOC for $v'_{y',k+1}$:
+    \[ \beta Pr_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial v'_{y',k+1}}+ Pr_{y'|y} \omega_k=0 \iff \omega_k = - \beta \frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial v'_{y',k+1}} \forall y'\]
+    Applying the envelope theorem one can then note that 
+    \[- \frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial v'_{y',k+1}} =  \frac{n'_{k+1}}{u'(w'_{k+1})}\]
+    Putting all this together, we get
+    \[\frac{n_k}{u'(w_k)}\beta(1-s_k)(1-p(v'_{k+1}))-\beta \frac{n'_{k+1}}{u'(w'_{k+1})}+\beta n_k(1-s_k)\frac{\partial (1-v(v'_{k+1}))}{\partial v'_{k+1}}E_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial n'_{k+1}}=0\]
+    All that is left is to note that $n'_{k+1}=n_k(1-s_k)(1-p(v'_{k+1}))$, divide by the common terms ($\beta n'_{k+1}$) and rearrange.
+    \[ \frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} = \eta(v'_{k+1}) E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k}\})}{\partial n'_{k+1}} \]
+\end{proof}
 \subsubsection*{Proof of Proposition \ref{prop:targetwage}} \label{proof:targetwage}
 \subsubsection*{Proof of Proposition \ref{prop:layoffs}} \label{proof:layoffs}
+This is a straightforward application of the FOC with respect to the layoffs.
+\begin{proof}
+    Consider the case where $s_k>0$. Then
+  \[-\beta n_k (1-p(v'_{k+1}))E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}} + \beta E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial z'_{k+1}} \frac{\partial z'_{k+1}}{\partial s_k}- \rho_k \beta (U-R(v'_{k+1}))=0\]  
+  Note that the FOC with respect to $w_k$ yields $\rho_k = \frac{n_k}{u'(w_k)}$ and divide by $\beta n_k$ to finalize the proof.
+\end{proof}
+
 \subsection{Tenure-specific Severance Payments} \label{severance}
 I allow the firm to offer tenure-specific severance payments $sev_k$ to its workers. The severance is constant over time and paid perpetually upon firing and before finding a new job. I show that the severance structure involves higher payments for longer tenured workers (if those workers are on a higher promised value). 
 \begin{proposition}
