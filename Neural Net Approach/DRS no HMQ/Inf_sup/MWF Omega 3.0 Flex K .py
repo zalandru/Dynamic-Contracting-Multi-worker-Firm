@@ -130,7 +130,7 @@ class ValueFunctionNN(nn.Module):
         for layer in self.trunk:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.01)
+                nn.init.constant_(layer.bias, 0.1)
     def forward(self, x):
         B = x.size(0)
         features = self.trunk(x)                    # [B, hidden_dims[-1]]
@@ -261,7 +261,7 @@ class infNN(nn.Module):
          for layer in seq:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.05)
+                nn.init.constant_(layer.bias, 0.1)
     def forward(self, x):
         # x: [B, state_dim]
         B = x.size(0)
@@ -311,7 +311,7 @@ def get_batch_gradients(states, value_model, num_y, range_tensor=None):
     """
     states = states.requires_grad_(True)
     B, D = states.shape
-    eps = 1e-3
+    eps = 1e-2
     # [B, D] → [B, 1, D], then broadcast-add an eye matrix [1, D, D]*eps → [B, D, D]
     eye = torch.eye(D, device=states.device) * eps        # [D, D]
     perturbs = states.unsqueeze(1) + eye.unsqueeze(0)      # [B, D, D]
@@ -348,7 +348,7 @@ def get_expectation_gradients(states, value_model, P_mat,  i, range_tensor=None,
     states = states.requires_grad_(True)
     B, D = states.shape
     num_y = P_mat.shape[0]
-    eps = 1e-3
+    eps = 1e-2
     # [B, D] → [B, 1, D], then broadcast-add an eye matrix [1, D, D]*eps → [B, D, D]
     eye = torch.eye(D, device=states.device) * eps        # [D, D]
     perturbs = states.unsqueeze(1) + eye.unsqueeze(0)      # [B, D, D]
