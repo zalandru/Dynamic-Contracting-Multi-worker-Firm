@@ -111,6 +111,58 @@
       \field{pages}{1425\bibrangedash 1462}
       \range{pages}{38}
     \endentry
+    \entry{Cho1987}{article}{}{}
+      \name{author}{2}{}{%
+        {{un=0,uniquepart=base,hash=503497931b6d76375c7a27b280c7602c}{%
+           family={Cho},
+           familyi={C\bibinitperiod},
+           given={In-Koo},
+           giveni={I\bibinithyphendelim K\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=6d5c6824b3d5f70b654a2f85953e2033}{%
+           family={Kreps},
+           familyi={K\bibinitperiod},
+           given={David\bibnamedelima M.},
+           giveni={D\bibinitperiod\bibinitdelim M\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{103cf431469e2bde0a0f1fbe2be08ba9}
+      \strng{fullhash}{103cf431469e2bde0a0f1fbe2be08ba9}
+      \strng{fullhashraw}{103cf431469e2bde0a0f1fbe2be08ba9}
+      \strng{bibnamehash}{103cf431469e2bde0a0f1fbe2be08ba9}
+      \strng{authorbibnamehash}{103cf431469e2bde0a0f1fbe2be08ba9}
+      \strng{authornamehash}{103cf431469e2bde0a0f1fbe2be08ba9}
+      \strng{authorfullhash}{103cf431469e2bde0a0f1fbe2be08ba9}
+      \strng{authorfullhashraw}{103cf431469e2bde0a0f1fbe2be08ba9}
+      \field{sortinit}{C}
+      \field{sortinithash}{4d103a86280481745c9c897c925753c0}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{abstract}{Games in which one party conveys private information to a second through messages typically admit large numbers of sequential equilibria, as the second party may entertain a wealth of beliefs in response to out-of-equilibrium messages. By restricting those out-of-equilibrium beliefs, one can sometimes eliminate many unintuitive equilibria. We present a number of formal restrictions of this sort, investigate their behavior in specific examples, and relate these restrictions to Kohlberg and Mertens' notion of stability.}
+      \field{issn}{0033-5533}
+      \field{journaltitle}{The Quarterly Journal of Economics}
+      \field{month}{05}
+      \field{number}{2}
+      \field{title}{Signaling Games and Stable Equilibria*}
+      \field{volume}{102}
+      \field{year}{1987}
+      \field{pages}{179\bibrangedash 221}
+      \range{pages}{43}
+      \verb{doi}
+      \verb 10.2307/1885060
+      \endverb
+      \verb{eprint}
+      \verb https://academic.oup.com/qje/article-pdf/102/2/179/5441738/102-2-179.pdf
+      \endverb
+      \verb{urlraw}
+      \verb https://doi.org/10.2307/1885060
+      \endverb
+      \verb{url}
+      \verb https://doi.org/10.2307/1885060
+      \endverb
+    \endentry
     \entry{mccrary2022}{article}{}{}
       \name{author}{1}{}{%
         {{un=0,uniquepart=base,hash=8110254f2a80dbae080de3fd5f279535}{%
@@ -246,8 +298,56 @@
       \field{pages}{1675\bibrangedash 1721}
       \range{pages}{47}
     \endentry
+    \entry{Sun2009}{article}{}{}
+      \name{author}{2}{}{%
+        {{un=0,uniquepart=base,hash=6bc3f6966a4f8165c5b12d6185ccfb51}{%
+           family={Sun},
+           familyi={S\bibinitperiod},
+           given={Yeneng},
+           giveni={Y\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=83df903863e9465f1ca50ef35acf8e09}{%
+           family={Zhang},
+           familyi={Z\bibinitperiod},
+           given={Yongchao},
+           giveni={Y\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{36fe0104dc1b5ed1533651ec196ab9bc}
+      \strng{fullhash}{36fe0104dc1b5ed1533651ec196ab9bc}
+      \strng{fullhashraw}{36fe0104dc1b5ed1533651ec196ab9bc}
+      \strng{bibnamehash}{36fe0104dc1b5ed1533651ec196ab9bc}
+      \strng{authorbibnamehash}{36fe0104dc1b5ed1533651ec196ab9bc}
+      \strng{authornamehash}{36fe0104dc1b5ed1533651ec196ab9bc}
+      \strng{authorfullhash}{36fe0104dc1b5ed1533651ec196ab9bc}
+      \strng{authorfullhashraw}{36fe0104dc1b5ed1533651ec196ab9bc}
+      \field{sortinit}{S}
+      \field{sortinithash}{b164b07b29984b41daf1e85279fbc5ab}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{abstract}{Many economic models include random shocks imposed on a large number (continuum) of economic agents with individual risk. In this context, an exact law of large numbers and its converse is presented in [Y.N. Sun, The exact law of large numbers via Fubini extension and characterization of insurable risks, J. Econ. Theory 126 (2006) 31–69] to characterize the cancellation of individual risk via aggregation. However, it is well known that the Lebesgue unit interval is not suitable for modeling a continuum of agents in the particular setting. The purpose of this paper is to show that an extension of the Lebesgue unit interval does work well as an agent space with various desirable properties associated with individual risk.}
+      \field{issn}{0022-0531}
+      \field{journaltitle}{Journal of Economic Theory}
+      \field{number}{1}
+      \field{title}{Individual risk and Lebesgue extension without aggregate uncertainty}
+      \field{volume}{144}
+      \field{year}{2009}
+      \field{pages}{432\bibrangedash 443}
+      \range{pages}{12}
+      \verb{doi}
+      \verb https://doi.org/10.1016/j.jet.2008.05.001
+      \endverb
+      \verb{urlraw}
+      \verb https://www.sciencedirect.com/science/article/pii/S0022053108000768
+      \endverb
+      \verb{url}
+      \verb https://www.sciencedirect.com/science/article/pii/S0022053108000768
+      \endverb
+      \keyw{No aggregate uncertainty,Independence,Exact law of large numbers,Fubini extension,Lebesgue measure}
+    \endentry
   \enddatalist
-  \missing{schaal2017)}
 \endrefsection
 \endinput
 
