@@ -149,7 +149,7 @@ def get_batch_gradients(states, value_model,  range_tensor=None):
     #num_y = P_mat.shape[0]
 
     # Detach any prior graph, ensure float precision
-    states = states.detach().requires_grad_(True)  # [B, D]
+    #states = states.detach().requires_grad_(True)  # [B, D]
 
     # Wrap the model to handle single input vector s: [D]
     def model_single_input(s_vec):
@@ -188,7 +188,7 @@ def get_expectation_gradients(states, value_model, P_mat,  range_tensor=None, cu
     num_y = P_mat.shape[0]
     #print(states.is_leaf)           # False
     # Detach any prior graph, ensure float precision
-    states = states.requires_grad_(True)  # [B, D]
+    #states = states.requires_grad_(True)  # [B, D]
     #states = states.requires_grad_(True)
     # Wrap the model to handle single input vector s: [D]
     def model_single_input(s_vec):
@@ -386,7 +386,16 @@ def simulate(starting_states, policy_net, value_net, bounds_processor, simulatio
     S=torch.cat((S, P.unsqueeze(1)), dim=1)
 
     return S,V,Pol #Doing values here may be not as efficient since some of them may not even be sampled.
-
+def soft_update(target_net, source_net, tau=0.005):
+    """
+    θ_tgt ← τ·θ_src + (1–τ)·θ_tgt
+    Args:
+        target_net: torch.nn.Module whose params will be updated in-place
+        source_net: torch.nn.Module, the “online” network
+        tau (float): interpolation factor (small, e.g. 0.005)
+    """
+    for tgt_param, src_param in zip(target_net.parameters(), source_net.parameters()):
+        tgt_param.data.copy_(tau * src_param.data + (1.0 - tau) * tgt_param.data)
 def pre_training(optimizer_value,optimizer_policy,value_net,policy_net,foc_optimizer,bounds_processor,pre_training_steps):
     states = bounds_processor.normalize(tensor(cc.rho_grid,dtype=type)).unsqueeze(1)
     assert torch.all(states[1:] > states[:-1]), "States are not increasing"
@@ -459,7 +468,7 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
     # Training loop
     for episode in tqdm(range(num_episodes)):
 
-        states= torch.rand(starting_points_per_iter, state_dim,dtype=type).requires_grad_(True)
+        states= torch.rand(starting_points_per_iter, state_dim,dtype=type)
 
         #Simulate the firm path using the policy network
         with torch.no_grad():
@@ -493,10 +502,11 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
                 optimizer_policy.step()
                 optimizer_policy.zero_grad()
             else:
-                #with torch.no_grad():
-                policies = policy_net(minibatch_X[:,:-2])[i,minibatch_X[:,-2].long()].detach()
-                EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
-                target_values, target_W = foc_optimizer.values(states=minibatch_X[:,:-2], prod_states=minibatch_X[:,-2], EJ_star=EJ_star, EW_star=EW_star, pc_star=pc, re_star=re)
+                optimizer_value.zero_grad()
+                with torch.no_grad():
+                    policies = policy_net(minibatch_X[:,:-2])[i,minibatch_X[:,-2].long()].detach()
+                    EJ_star, EW_star, re, pc = foc_optimizer.initiation(prod_states=minibatch_X[:,-2], policies=policies.unsqueeze(1), value_net=target_value_net)  #Note that I am using the target value here!!!      
+                    target_values, target_W = foc_optimizer.values(states=minibatch_X[:,:-2], prod_states=minibatch_X[:,-2], EJ_star=EJ_star, EW_star=EW_star, pc_star=pc, re_star=re)
                 pred_values = value_net(minibatch_X[:,:-2])
                 pred_values = pred_values[i,minibatch_X[:,-2].long()] #Get the values for the states in the minibatch
                 predicted_W = get_batch_gradients(minibatch_X[:,:-2], value_net,  range_tensor=bounds_processor.range)[:,:,0]
@@ -512,8 +522,9 @@ def train(state_dim,lower_bounds,upper_bounds,action_dim=5,hidden_dims=[40, 30, 
                 optimizer_value.step()
                 optimizer_value.zero_grad()
         #Hard copy the target value at the end of every episode
-        target_value_net.load_state_dict(value_net.state_dict(), strict=True)
-
+        #target_value_net.load_state_dict(value_net.state_dict(), strict=True)
+        #Soft update target value at the end of every episode
+        soft_update(target_value_net, value_net, tau=0.005)
         if update_eq:
             if (episode % 10) == 0:
                 #Update the job search

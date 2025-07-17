@@ -19,7 +19,7 @@ import math
 import copy
 from ranger21 import Ranger21 as RangerOptimizer
 from plotter import LossPlotter
-
+import torch.nn.functional as F
 
 p = Parameters()
 tensor = torch.tensor
@@ -120,25 +120,56 @@ class StateBoundsProcessor_inf:
         return normalized_states * self.range[dim] + self.lower_bounds[dim] #Check: 0.5 * 10 + 10= 15. 
     
 #Neural Nets. Note: alternatively, I could code give them the same trunk. Either way, this is called an Actor-Critic architecture.
+class MonotonicLinear(nn.Module):
+    def __init__(self, in_features, out_features, input_monotonicity):
+        super().__init__()
+        assert len(input_monotonicity) == in_features, "Length of input_monotonicity must match in_features"
+        self.in_features = in_features
+        self.out_features = out_features
+
+        # Register as buffer so it moves with the model
+        self.register_buffer("sign", torch.tensor(input_monotonicity, dtype=torch.float32))
+
+        self.raw_W = nn.Parameter(torch.Tensor(out_features, in_features))
+        self.bias = nn.Parameter(torch.Tensor(out_features))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.raw_W, nonlinearity='relu')
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x):
+        sign = self.sign.to(x.device)
+        sp = F.softplus(self.raw_W)
+
+        W = torch.where(sign[None, :] > 0,  +sp,
+            torch.where(sign[None, :] < 0, -sp, self.raw_W))
+        return F.linear(x, W, self.bias)
+
 class ValueFunctionNN(nn.Module):
     """Neural network to approximate the value function"""
-    def __init__(self, state_dim, num_y, hidden_dims=[40, 30, 20, 10]):
+    def __init__(self, state_dim, num_y, hidden_dims=[40, 30, 20, 10], monotonicity_list=[0,0,1]):
         super(ValueFunctionNN, self).__init__()
         
         # Build layers
         layers = []
         input_dim = state_dim
+        #Initial monotonic layer
+        layers.append(MonotonicLinear(input_dim, hidden_dims[0],
+                input_monotonicity=monotonicity_list))
+        layers.append(nn.ReLU())
+        input_dim = hidden_dims[0]
         # shared trunk
-        for h in hidden_dims:
-            layers.append(nn.Linear(input_dim, h))
-            # Consider adding layer normalization for stability
-            #layers.append(nn.LayerNorm(h))
+        for h in hidden_dims[1:]:
+            #layers.append(nn.Linear(input_dim, h))
+            layers.append(MonotonicLinear(input_dim, h,
+                input_monotonicity=[+1]*(input_dim)))
             layers.append(nn.ReLU())
             input_dim = h
         self.trunk = nn.Sequential(*layers)
 
         # head for values: [B, num_y]
-        self.value_head = nn.Linear(input_dim, num_y)
+        self.value_head =  MonotonicLinear(input_dim, num_y, input_monotonicity=[+1]*(input_dim))
 
         self._init_weights()
         self.state_dim = state_dim
@@ -148,7 +179,7 @@ class ValueFunctionNN(nn.Module):
         for layer in self.trunk:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.1)
+                nn.init.constant_(layer.bias, 0.0)
     def forward(self, x):
         B = x.size(0)
         features = self.trunk(x)                    # [B, hidden_dims[-1]]
@@ -160,7 +191,7 @@ class ValueFunctionNN(nn.Module):
             'values': values
         }
 
-class PolicyNN(nn.Module):
+class PolicyNN(nn.Module): #No hard monotonicity here because different policies have different monotonicities. So, unless I break off hiring, which seems like a bad idea, I should stick to the soft monotonicity
     """Neural network to approximate a multi-dimensional sup:
        - values: multiple values per productivity state y across a predefined set of K_v
        - hiring decision: probability per productivity state y
@@ -184,7 +215,7 @@ class PolicyNN(nn.Module):
         # ✨ Extra “adapter” for the value head
         self.value_adapter = nn.Sequential(
             nn.Linear(input_dim, input_dim),
-            nn.ReLU(),
+            nn.ReLU()
         )
         # future value v' head: output num_y * num_Kv values, then reshape
         self.value_head = nn.Sequential(
@@ -195,7 +226,7 @@ class PolicyNN(nn.Module):
         # hiring head: hiring measure per discrete state y
         self.hiring_adapter = nn.Sequential(
             nn.Linear(input_dim, input_dim),
-            nn.ReLU(),
+            nn.ReLU()
         )        
         
         self.hiring_head = nn.Sequential(
@@ -241,43 +272,44 @@ class infNN(nn.Module):
        - omega: multiple values per productivity state y across a predefined set of K_v
        - hiring decision: probability per productivity state y
     """
-    def __init__(self, state_dim, num_y, K_v, hidden_dims=[40, 30, 20, 10], cc=None):
+    def __init__(self, state_dim, num_y, K_v, hidden_dims=[40, 30, 20, 10], cc=None, monotonicity_list=[0,0,1]):
         super(infNN, self).__init__()
         self.K_v = K_v #Number of Value-related policies
         self.num_y = num_y
         #state_dim = state_dim + K_v + 1 #add policies as extra states
         #States are: n'_0,n'_1,v'_1. That's the only thing we need
         # shared trunk
+        # Build layers
         layers = []
         input_dim = state_dim
-        for hidden_dim in hidden_dims:
-            layers.append(nn.Linear(input_dim, hidden_dim))
-            # Consider adding layer normalization for stability
-            #layers.append(nn.LayerNorm(hidden_dim))
+        #Initial monotonic layer
+        layers.append(MonotonicLinear(input_dim, hidden_dims[0],
+                input_monotonicity=monotonicity_list))
+        layers.append(nn.ReLU())
+        input_dim = hidden_dims[0]
+        # shared trunk
+        for h in hidden_dims[1:]:
+            #layers.append(nn.Linear(input_dim, h))
+            layers.append(MonotonicLinear(input_dim, h,
+                input_monotonicity=[+1]*(input_dim)))
             layers.append(nn.ReLU())
-            input_dim = hidden_dim
+            input_dim = h
         self.trunk = nn.Sequential(*layers)
 
         # wage head: output num_y * num_Kv wage values, then reshape
         self.wage_head = nn.Sequential(
-            nn.Linear(input_dim, num_y * self.K_v),
-            nn.ReLU()
-        )
+            MonotonicLinear(input_dim, num_y, input_monotonicity=[+1]*(input_dim)),
+            ReLUPlusEps(eps=cc.rho_grid[0])
+            )
         # Apply activation‐specific initialization
         self._init_weights()
-        # ---- add this block ----
-        # He‐init the Linear, small positive bias to “turn on” the ReLU
-       # lin = self.wage_head[0]
-        #nn.init.kaiming_uniform_(lin.weight, nonlinearity='relu')
-        #lin.bias.data.fill_(0.1)
-        # ------------------------
     def _init_weights(self):
         # 1) Trunk: He/Kaiming
         for seq in (self.trunk,self.wage_head):
          for layer in seq:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.1)
+                nn.init.constant_(layer.bias, 0.0)
 
         # 2) omega_head: Xavier/Glorot
         #for layer in self.wage_head:
@@ -295,7 +327,12 @@ class infNN(nn.Module):
         return {
             'omega': omega
         }
-
+class ReLUPlusEps(nn.Module):
+    def __init__(self, eps=1e-2):
+        super().__init__()
+        self.eps = eps
+    def forward(self, x):
+        return torch.relu(x) + self.eps
 #Function to create mini-batches
 def random_mini_batches(X, minibatch_size=64, seed=0):
     """Generate random minibatches from X."""
@@ -875,9 +912,9 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                     states_inf = bounds_processor_inf.normalize(states_inf) # Normalize the states
                     omega = inf_net(states_inf)['omega'][i,prod_states.long(),:]
                     _, future_grad = foc_optimizer.future_values(n_1 = n_1, prod_states=prod_states, fut_states = fut_states, omega=omega, v_prime = v_prime, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
-                    states_eps = states_inf + 1e-2 * tensor([0,0,1])
-                    mon_loss_omega = torch.relu( - (inf_net(states_eps)['omega'] - inf_net(states_inf)['omega'])).pow(2).mean()
-                    inf_loss = nn.MSELoss()(future_grad[:,K_n:], v_prime * n_1) + 1e-2 * mon_loss_omega
+                    #states_eps = states_inf + 1e-2 * tensor([0,0,1])
+                    #mon_loss_omega = torch.relu( - (inf_net(states_eps)['omega'] - inf_net(states_inf)['omega'])).pow(2).mean()
+                    inf_loss = nn.MSELoss()(future_grad[:,K_n:], v_prime * n_1) #+ 1e-2 * mon_loss_omega
                     assert omega.requires_grad
                     assert future_grad.requires_grad
                     inf_loss.backward()
@@ -907,10 +944,10 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                 #Add monotonicity losses:
                 states_eps = states + 1e-2 * tensor([0,0,1])
                 #states_eps[:,-1] = states_eps[:,-1] + 1e-2
-                policies_eps = sup_net(states_eps)
-                mon_loss_values = torch.relu( - (policies_eps['values'] - policies['values'])).pow(2).mean()
-                mon_loss_hiring = torch.relu( policies_eps['hiring'] - policies['hiring']).pow(2).mean()
-                sup_loss = FOC_wage_loss + FOC_hire_loss + 1e-2 * (mon_loss_values + mon_loss_hiring)
+                #policies_eps = sup_net(states_eps)
+                #mon_loss_values = torch.relu( - (policies_eps['values'] - policies['values'])).pow(2).mean()
+                #mon_loss_hiring = torch.relu( policies_eps['hiring'] - policies['hiring']).pow(2).mean()
+                sup_loss = FOC_wage_loss + FOC_hire_loss #+ 1e-2 * (mon_loss_values + mon_loss_hiring)
                 sup_loss.backward()
                 optimizer_sup.step()
                 if ((episode + 1) % (num_episodes/20) == 0) & (print_check <= 1):
@@ -1062,7 +1099,7 @@ if __name__ == "__main__":
     K_q = K - 1 #K - 1 (ignoring bottom) quality states. Ignore them for now
     STATE_DIM = K_n + K_v # + K_q #Discrete prod-ty y as multiple outputs
     ACTION_DIM = K_v + 1 # + K_n  # omega + hiring + separations. 
-    HIDDEN_DIMS = [32,32]  # Basic architecture. Basically every paper has 2 inner layers, can make them wider though
+    HIDDEN_DIMS = [128,128]  # Basic architecture. Basically every paper has 2 inner layers, can make them wider though
 
     #pref = Preferences(input_param=p_crs)
     cc=ContinuousContract(p_crs()) 
@@ -1090,7 +1127,7 @@ if __name__ == "__main__":
     STATE_DIM, value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer, bounds_processor_sup,bounds_processor_inf, 
         num_episodes=num_episodes,
         starting_points_per_iter=1,
-        simulation_steps=20,
+        simulation_steps=10,
         minibatch_num=minibatch_num, λ=5.0,
         target_values=target_values.t(), target_W=target_W.t(), use_saved_nets = False
     )

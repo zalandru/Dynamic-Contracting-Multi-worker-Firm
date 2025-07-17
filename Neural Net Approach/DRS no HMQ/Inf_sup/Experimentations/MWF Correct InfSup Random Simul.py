@@ -19,7 +19,7 @@ import math
 import copy
 from ranger21 import Ranger21 as RangerOptimizer
 from plotter import LossPlotter
-
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 p = Parameters()
 tensor = torch.tensor
@@ -85,7 +85,7 @@ class StateBoundsProcessor:
         #return 0.5 * (normalized_states + 1) * self.range + self.lower_bounds
         return normalized_states * self.range[ax,:K_n] + self.lower_bounds[ax,:K_n] #Check: 0.5 * 10 + 10= 15.
 
-class StateBoundsProcessor_inf:
+class StateBoundsProcessor_sup:
     def __init__(self, lower_bounds, upper_bounds):
         """
         Initialize with lower and upper bounds for each state dimension
@@ -261,7 +261,7 @@ class infNN(nn.Module):
         # wage head: output num_y * num_Kv wage values, then reshape
         self.wage_head = nn.Sequential(
             nn.Linear(input_dim, num_y * self.K_v),
-            nn.ReLU()
+            ReLUPlusEps(eps=cc.rho_grid[0])
         )
         # Apply activation‐specific initialization
         self._init_weights()
@@ -295,7 +295,13 @@ class infNN(nn.Module):
         return {
             'omega': omega
         }
+class ReLUPlusEps(nn.Module):
+    def __init__(self, eps=1e-2):
+        super().__init__()
+        self.eps = eps
 
+    def forward(self, x):
+        return torch.relu(x) + self.eps
 #Function to create mini-batches
 def random_mini_batches(X, minibatch_size=64, seed=0):
     """Generate random minibatches from X."""
@@ -444,11 +450,12 @@ def get_expectation_gradients_loop(states, value_model, P_mat,  range_tensor=Non
         expectation_grads = expectation_grads / range_tensor  # broadcast over D
 
     return expectation_grads  # [B, y, D] or [B, D] if current_y is not None
+
 class FOCresidual:
     """Class to compute the FOC residual for the CRS model"""
-    def __init__(self, bounds_processor, bounds_processor_inf, K, p, cc):
+    def __init__(self, bounds_processor, bounds_processor_sup, K, p, cc):
         self.bounds_processor = bounds_processor  # Store bounds_processor
-        self.bounds_processor_inf = bounds_processor_inf
+        self.bounds_processor_sup = bounds_processor_sup
         self. K = K
         self.p = p
         self.deriv_eps = 1e-3 # step size for derivative
@@ -621,7 +628,7 @@ class FOCresidual:
         
         return n_1, re, pc
 
-def simulate(starting_states, sup_net, inf_net, bounds_processor, bounds_processor_inf, simulation_steps):
+def simulate(starting_states, sup_net, inf_net, bounds_processor, bounds_processor_sup, Z_trans_tensor,simulation_steps, random_paths = 5):
     """Simulate the firm path using the sup and inf networks
     Track the reached states and the corresponding values (values may be too hard to track)
     Output: set of (reached) states and corresponding values
@@ -632,51 +639,51 @@ def simulate(starting_states, sup_net, inf_net, bounds_processor, bounds_process
         sup_net:      neural net mapping [B, D] → [B, num_y]
         simulation_steps: number of steps to simulate
     """
-    B = starting_states.shape[0] #initial batch size
-    D = starting_states.shape[1] #number of state variables
-    his_size_total=0
-    for t in range(simulation_steps):
-        his_size_total+= B * (p.num_z**(t+1)) #How many states we can reach in simulation_steps steps
-
-    S = torch.zeros(his_size_total, D, dtype=type) #Vector of all reached states
-    Fut_states = torch.zeros(his_size_total, D, dtype=type) #Vector off all future states (we know them all besides y'). It's just policies for each state 
-    #V = torch.zeros(his_size_total, dtype=type) #Vector off all reached values. It's just values for each state (productivity alrdy included via P)
-    P = torch.arange(S.shape[0]) % p.num_z #Vector off all production states
-
-    his_start = 0
-    his_end = his_start + p.num_z * B
-    his_size = his_end - his_start
+    B = starting_states.shape[0]  # batch size
+    D = starting_states.shape[1]  # state dimension
+    starting_states = starting_states.repeat(random_paths, 1)
+    B_idx = torch.arange(starting_states.shape[0])
     states = starting_states
+    all_states = [states]
+    all_P = []
+    #for _ in range(random_paths): #We want to simulate more than just a single random path
     for t in range(simulation_steps):
-        #    S[his_start:his_end,:] = states.repeat(p.num_z, 1) #We repeat the sup from the previous step   
-        S[his_start:his_end,:] = states.repeat(p.num_z, 1)
-        sup = sup_net(states) 
-        hiring = sup['hiring'] #Shape [B,num_y]
-        v_prime = sup['values']
+        # === RANDOM DRAW of productivity state for each sample ===
+        if t==0:
+            y_idx = torch.randint(0, p.num_z, (B * random_paths,), device=states.device)  # shape [B]
+        else:
+            curr_prod_states = y_idx
+            next_prod_probs = Z_trans_tensor[curr_prod_states,:]
+            y_idx = torch.multinomial(next_prod_probs, num_samples=1).squeeze(1)
+        all_P.append(y_idx)
 
-        y_idx      = torch.arange(p.num_z,device=states.device).repeat(states.shape[0])
+        omega = inf_net(states)['omega'][B_idx, y_idx, :]  # shape [B, K_v]
+        states_sup = bounds_processor_sup.normalize(torch.cat([states, omega], dim=1))
 
-        _, pc = foc_optimizer.getWorkerDecisions(v_prime.view(his_size,K_v))
-        sizes = bounds_processor.denormalize_size(states[:,:K_n])
-        tot_size = sizes[:,0]+sizes[:,1] #This is ok only if the sizes have the same range. So gotta be careful here
-        #Set up new states
-        states = torch.zeros(his_size, D, dtype= type)
-        states[:,1:K_n] = ((tot_size.repeat(p.num_z)) * pc.squeeze(1)).unsqueeze(1)#Future size, based on n'= n * pc(v') * (1 - s). Extreme case here as n'_1=(n'_0+n'_1) * pc
-        states[:,0] = hiring.view(-1) #Future jun size, based on hiring
-        states_inf = bounds_processor_inf.normalize((torch.cat([states[:,:K_n],v_prime.view(his_size,K_v)],dim=1)))
-        omega = inf_net(states_inf)['omega'][torch.arange(states.shape[0]),y_idx,:]
-        states[:,K_n:] =  omega # state ω_1 = ρ_1*n_1
-        # In simulate(), after updating states:
-        assert not torch.isnan(states).any(), "NaN in simulated states"
-        assert torch.all(states[:, K_n:] >= 0), "Negative rho*n in states"
-        states = bounds_processor.normalize(states) #Now all the states are normalized together
-        Fut_states[his_start:his_end,:] = states
-        his_start = his_end
-        his_end = his_start + his_size * p.num_z
-        his_size = his_end - his_start
-    assert (his_start == S.shape[0])
-    #Append P to S. That way, when I sample minibatches, I can just sample S and P together.
-    #S=torch.cat((S, P.unsqueeze(1)), dim=1)
+        sup = sup_net(states_sup)
+        hiring = sup['hiring'][B_idx, y_idx]
+        v_prime = sup['values'][B_idx, y_idx, :]  # shape [B, K_v]
+
+        _, pc = foc_optimizer.getWorkerDecisions(v_prime)
+
+        sizes = bounds_processor.denormalize_size(states[:, :K_n])
+        tot_size = sizes[:, 0] + sizes[:, 1]
+
+        next_state = torch.zeros(starting_states.shape[0], D, dtype=states.dtype, device=states.device)
+        next_state[:, 1:K_n] = (tot_size * pc.squeeze(1)).unsqueeze(1)
+        next_state[:, 0] = hiring
+        next_state[:, K_n:] = omega
+
+        assert not torch.isnan(next_state).any(), "NaN in simulated states"
+        assert torch.all(next_state[:, K_n:] >= 0), "Negative rho*n in states"
+
+        next_state = bounds_processor.normalize(next_state)
+        all_states.append(next_state)
+        states = next_state  # move to next time step
+
+    S = torch.cat(all_states[:-1], dim=0)  # all input states
+    Fut_states = torch.cat(all_states[1:], dim=0)  # corresponding future states
+    P = torch.cat(all_P, dim=0)  # productivity states drawn
 
     return S, P, Fut_states #Doing values here may be not as efficient since some of them may not even be sampled.
 def soft_update(target_net, source_net, tau=0.005):
@@ -689,48 +696,31 @@ def soft_update(target_net, source_net, tau=0.005):
     """
     for tgt_param, src_param in zip(target_net.parameters(), source_net.parameters()):
         tgt_param.data.copy_(tau * src_param.data + (1.0 - tau) * tgt_param.data)
-def initialize(bounds_processor, bounds_processor_inf, state_dim, K_n, K_v, hidden_dims, learning_rate, weight_decay, pre_training_steps, num_epochs, minibatch_num):
+def initialize(bounds_processor, bounds_processor_sup, state_dim, K_n, K_v, hidden_dims, learning_rate, weight_decay, pre_training_steps, num_epochs, minibatch_num):
     #Initializations:
     
     # Initialize value function neural network
     value_net = ValueFunctionNN(state_dim, p.num_z, hidden_dims)
-    sup_net = PolicyNN(state_dim, p.num_z, K_v, hidden_dims, cc)
+    sup_net = PolicyNN(state_dim+K_v, p.num_z, K_v, hidden_dims, cc)
     inf_net = infNN(state_dim, p.num_z, K_v, hidden_dims, cc)
     # 1. collect your two groups of parameters
     # Initialize neural network optimizer
-    # Use Ranger21 for all three networks:
-    optimizer_value = RangerOptimizer(
-        params=value_net.parameters(),
-        lr=learning_rate[0],
-        weight_decay=weight_decay[0],
-        num_epochs=num_epochs,       # for built‑in warmup + scheduler
-        num_batches_per_epoch=minibatch_num * (3/4),
-        num_warmup_iterations=int(0.05 * num_epochs)  # 5% of training
-    )
-    optimizer_sup = RangerOptimizer(
-        params=sup_net.parameters(),
-        lr=learning_rate[1],
-        weight_decay=weight_decay[1],
-        num_epochs=num_epochs,
-        num_batches_per_epoch= (minibatch_num / 4) - 1,
-        num_warmup_iterations=int(0.05 * num_epochs)
-    )
-    optimizer_inf = RangerOptimizer(
-        params=inf_net.parameters(),
-        lr=learning_rate[2],
-        weight_decay=weight_decay[2],
-        num_epochs=num_epochs,
-        num_batches_per_epoch= 1,
-        num_warmup_iterations=int(0.05 * num_epochs)
-    )
+    optimizer_value = optim.AdamW(value_net.parameters(), lr=learning_rate[0], weight_decay=weight_decay[0])
+    optimizer_sup = optim.AdamW(sup_net.parameters(), lr=learning_rate[1], weight_decay=weight_decay[1])
+    optimizer_inf = optim.AdamW(inf_net.parameters(), lr=learning_rate[2], weight_decay=weight_decay[2])
 
+    #LR Scheduler
+    scheduler_value = CosineAnnealingWarmRestarts(optimizer_value, T_0=10, T_mult=1, eta_min=learning_rate[0] * 1e-2)
+    scheduler_sup   = CosineAnnealingWarmRestarts(optimizer_sup,   T_0=10, T_mult=1, eta_min=learning_rate[1] * 1e-2)
+    scheduler_inf   = CosineAnnealingWarmRestarts(optimizer_inf,   T_0=10, T_mult=1, eta_min=learning_rate[2] * 1e-2)
     # Initialize FOC computer
-    foc_optimizer = FOCresidual(bounds_processor, bounds_processor_inf, K=K_n, p=p, cc=None)    
+    foc_optimizer = FOCresidual(bounds_processor, bounds_processor_sup, K=K_n, p=p, cc=None)    
 
     #Step 0: basic guess
-    value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf = pre_training(optimizer_value,optimizer_sup,optimizer_inf,value_net,sup_net,inf_net,foc_optimizer,bounds_processor, bounds_processor_inf, K_n, K_v, pre_training_steps)   
+    if pre_training_steps > 0:
+        value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf = pre_training(optimizer_value,optimizer_sup,optimizer_inf,value_net,sup_net,inf_net,foc_optimizer,bounds_processor, bounds_processor_sup, K_n, K_v, pre_training_steps)   
 
-    return value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer
+    return value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, scheduler_value, scheduler_sup, scheduler_inf, foc_optimizer
 def pre_training(optimizer_value,optimizer_sup, optimizer_inf, value_net,sup_net,inf_net, foc_optimizer,bounds_processor, bounds_processor_inf, K_n, K_v, pre_training_steps):
     rho_states = bounds_processor.normalize_rho(tensor(cc.rho_grid[:,ax],dtype=type))
     assert torch.all(rho_states[1:] > rho_states[:-1]), "States are not increasing"
@@ -791,7 +781,7 @@ def pre_training(optimizer_value,optimizer_sup, optimizer_inf, value_net,sup_net
         optimizer_inf.zero_grad()
         optimizer_value.zero_grad()
     return value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf
-def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer, bounds_processor, bounds_processor_inf, num_episodes=20, starting_points_per_iter=100, simulation_steps=5, 
+def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, scheduler_value, scheduler_sup, scheduler_inf, foc_optimizer, bounds_processor, bounds_processor_sup, num_episodes=20, starting_points_per_iter=100, simulation_steps=5, random_paths = 5, 
     minibatch_num=8, λ=1.0, target_values=None, target_W=None, use_saved_nets = False):
     """
     Main training loop for value function approximation
@@ -836,9 +826,10 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
         states[0,:] = state_start
         #Simulate the firm path using the sup network
         #Let the simulation steps increase over time
-        sim_steps_ep = np.ceil(simulation_steps * (ep/num_episodes) + 3).astype(int)
+        sim_steps_ep = np.floor(5 + simulation_steps * (ep/num_episodes)).astype(int)
+        random_paths = np.floor(200 + 10 * (ep/num_episodes)).astype(int)
         with torch.no_grad():
-            states, prod_states, fut_states  = simulate(states, sup_net, inf_net, bounds_processor, bounds_processor_inf, sim_steps_ep) #This is the set of states we will use to train the value function. 
+            states, prod_states, fut_states  = simulate(states, sup_net, inf_net, bounds_processor, bounds_processor_sup, foc_optimizer.Z_trans_tensor, sim_steps_ep, random_paths) #This is the set of states we will use to train the value function. 
         #Now append future states to the states so that I can mini-batch them together.
         states.clamp_(0.0, 1.0)
         #Restrict attention to states that have positive size. Otherwise, can't rly learn anything:
@@ -864,37 +855,39 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                 #print("Inf update")
                 print_check += 1
                 #Inf Loss: detach everything *except* omega
-                with torch.no_grad(): # compute all sup‐outputs
-                    pol = sup_net(states)
-                    v_prime  = pol['values'][i,prod_states.long(),:]  
-                    hiring  = pol['hiring'][i,prod_states.long()]
-                    n_1,_,_= foc_optimizer.get_fut_size(states, v_prime)
-                for it_inf in range(1):
-                    optimizer_inf.zero_grad()
-                    states_inf = torch.cat((hiring.unsqueeze(1), n_1, v_prime), dim=1) # [B, D]
-                    states_inf = bounds_processor_inf.normalize(states_inf) # Normalize the states
-                    omega = inf_net(states_inf)['omega'][i,prod_states.long(),:]
-                    _, future_grad = foc_optimizer.future_values(n_1 = n_1, prod_states=prod_states, fut_states = fut_states, omega=omega, v_prime = v_prime, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
-                    states_eps = states_inf + 1e-2 * tensor([0,0,1])
-                    mon_loss_omega = torch.relu( - (inf_net(states_eps)['omega'] - inf_net(states_inf)['omega'])).pow(2).mean()
-                    inf_loss = nn.MSELoss()(future_grad[:,K_n:], v_prime * n_1) + 1e-2 * mon_loss_omega
-                    assert omega.requires_grad
-                    assert future_grad.requires_grad
-                    inf_loss.backward()
-                    optimizer_inf.step()    
+                optimizer_inf.zero_grad()
+
+                omega = inf_net(states)['omega'][i,prod_states.long(),:]
+                states_sup = torch.cat((states, omega), dim=1) # [B, D]
+                states_sup = bounds_processor_sup.normalize(states_sup) # Normalize the states
+                pol = sup_net(states_sup)
+                v_prime  = pol['values'][i,prod_states.long(),:]  
+                hiring  = pol['hiring'][i,prod_states.long()]
+                n_1,_,_= foc_optimizer.get_fut_size(states, v_prime)
+                _, future_grad = foc_optimizer.future_values(n_1 = n_1, prod_states=prod_states, fut_states = fut_states, omega=omega, v_prime = v_prime, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
+                
+                #states_eps = states_inf + 1e-2 * tensor([0,0,1])
+                #mon_loss_omega = torch.relu( - (inf_net(states_eps)['omega'] - inf_net(states_inf)['omega'])).pow(2).mean()
+                inf_loss = nn.MSELoss()(future_grad[:,K_n:], v_prime * n_1) #+ 1e-2 * mon_loss_omega
+                assert omega.requires_grad
+                assert future_grad.requires_grad
+                inf_loss.backward()
+                optimizer_inf.step()    
             else:
-             if ((batch_index) % 4)==0: #Sup update
+             if ((batch_index) % 3)==0: #Sup update
+                #First fix the inf policy
+                with torch.no_grad():
+                    omega = inf_net(states)['omega'][i,prod_states.long(),:]
                 #Sup loss: FOC residuals
                 optimizer_sup.zero_grad()   
-                policies = sup_net(states)
+                states_sup = torch.cat((states, omega), dim=1) # [B, D]
+                states_sup = bounds_processor_sup.normalize(states_sup) # Normalize the states                
+                policies = sup_net(states_sup)
                 #Gotta now do wages, hiring, and values separately
                 v_prime = policies['values'][i,prod_states.long(),:]
                 hiring = policies['hiring'][i,prod_states.long()] 
                 n_1,_,_ = foc_optimizer.get_fut_size(states, v_prime)
-                #with torch.no_grad():
-                states_inf = torch.cat((hiring.unsqueeze(1), n_1, v_prime), dim=1) # [B, D]
-                states_inf = bounds_processor_inf.normalize(states_inf) # Normalize the states
-                omega = inf_net(states_inf)['omega'][i,prod_states.long(),:]             
+
                 assert (~torch.isnan(omega)).all() and (~torch.isnan(v_prime)).all() and (~torch.isnan(hiring)).all(), "sup returns NaN"
                 _, future_grad = foc_optimizer.future_values(n_1 = n_1, prod_states=prod_states, fut_states = fut_states, omega=omega, v_prime = v_prime, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
                 FOC_rho_resid,FOC_hire_resid = foc_optimizer.FOC_loss(states=states, omega=omega, hiring=hiring, v_prime=v_prime, future_grad=future_grad)
@@ -905,12 +898,11 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                 assert not torch.isnan(FOC_hire_resid).any(), "NaN in FOC_hire_loss"
                 assert not torch.isinf(FOC_hire_resid).any(), "inf in FOC_hire_loss"
                 #Add monotonicity losses:
-                states_eps = states + 1e-2 * tensor([0,0,1])
-                #states_eps[:,-1] = states_eps[:,-1] + 1e-2
-                policies_eps = sup_net(states_eps)
-                mon_loss_values = torch.relu( - (policies_eps['values'] - policies['values'])).pow(2).mean()
-                mon_loss_hiring = torch.relu( policies_eps['hiring'] - policies['hiring']).pow(2).mean()
-                sup_loss = FOC_wage_loss + FOC_hire_loss + 1e-2 * (mon_loss_values + mon_loss_hiring)
+                #states_eps = states + 1e-2 * tensor([0,0,1])
+                #policies_eps = sup_net(states_eps)
+                #mon_loss_values = torch.relu( - (policies_eps['values'] - policies['values'])).pow(2).mean()
+                #mon_loss_hiring = torch.relu( policies_eps['hiring'] - policies['hiring']).pow(2).mean()
+                sup_loss = FOC_wage_loss + FOC_hire_loss #+ 1e-2 * (mon_loss_values + mon_loss_hiring)
                 sup_loss.backward()
                 optimizer_sup.step()
                 if ((episode + 1) % (num_episodes/20) == 0) & (print_check <= 1):
@@ -919,15 +911,15 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
              else: #Value function update
                 optimizer_value.zero_grad()
                 with torch.no_grad():
-                    policies = sup_net(states)
+                    omega = inf_net(states)['omega'][i,prod_states.long(),:]
+                    states_sup = torch.cat((states, omega), dim=1) # [B, D]
+                    states_sup = bounds_processor_sup.normalize(states_sup) # Normalize the states
+                    policies = sup_net(states_sup)
                     #Gotta now do wages, hiring, and values separately
                     v_prime = policies['values'][i,prod_states.long(),:]
                     hiring = policies['hiring'][i,prod_states.long()] 
                     n_1,re,pc= foc_optimizer.get_fut_size(states, v_prime)
-                    #with torch.no_grad():
-                    states_inf = torch.cat((hiring.unsqueeze(1), n_1, v_prime), dim=1) # [B, D]                    
-                    states_inf = bounds_processor_inf.normalize(states_inf) # Normalize the states
-                    omega = inf_net(states_inf)['omega'][i,prod_states.long(),:]
+                    
                     assert (~torch.isnan(omega)).all() and (~torch.isnan(v_prime)).all() and (~torch.isnan(hiring)).all(), "sup returns NaN"
                     EJ_star, future_grad = foc_optimizer.future_values(n_1 = n_1, prod_states=prod_states, fut_states = fut_states, omega=omega, v_prime = v_prime, hiring=hiring, value_net=target_value_net)  #Note that I am using the target value here!!!          
                     target_values, target_grad = foc_optimizer.values(states=states, prod_states=prod_states, EJ_star=EJ_star, v_prime=v_prime, re=re, hiring=hiring, pc = pc, future_grad=future_grad, omega=omega) #Get the target values and gradients
@@ -966,7 +958,9 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                 tot_value_loss = (value_loss + λ * value_grad_loss) / (1+λ)# + 1e-2 * hessian_penalty #Combine the losses
                 tot_value_loss.backward()
                 optimizer_value.step()
-        
+        scheduler_value.step(episode)  # or just .step(episode)
+        scheduler_sup.step(episode)
+        scheduler_inf.step(episode)
         # Collect your raw loss scalars
         losses = {
         'value':       value_loss.item(),
@@ -986,10 +980,10 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
         if (episode + 1) % (num_episodes/20) == 0 or episode == 0:
             print(f"Iteration {episode + 1}, Value Loss: {value_loss.item():.6f}, Value Grad Loss:  {value_grad_loss.item():.6f},FOC_wage_loss: {FOC_wage_loss.item():.6f}, FOC_hire_loss: {FOC_hire_loss.item():.6f} ,inf_loss: {inf_loss.item():.6f}" )
         if (episode + 1) % (num_episodes/10) == 0:            
-            evaluate_plot_sup(value_net, sup_net, inf_net, bounds_processor, bounds_processor_inf, num_samples=1000)                
+            evaluate_plot_sup(value_net, sup_net, inf_net, bounds_processor, bounds_processor_sup, num_samples=1000)                
     return value_net, sup_net, inf_net
 
-def evaluate_plot_sup(value_net, sup_net, inf_net, bounds_processor, bounds_processor_inf, num_samples=1000):
+def evaluate_plot_sup(value_net, sup_net, inf_net, bounds_processor, bounds_processor_sup, num_samples=1000):
     """Evaluate the sup by sampling random states and plotting the results"""
 
     #states = bounds_processor.normalize(states)
@@ -998,15 +992,12 @@ def evaluate_plot_sup(value_net, sup_net, inf_net, bounds_processor, bounds_proc
     with torch.no_grad():
         # Sample random states
         states = torch.rand(num_samples, bounds_processor.lower_bounds.shape[0], dtype=type)
-        policies = sup_net(states)
+        omega = inf_net(states)['omega'][:,1,:]
+        states_sup = torch.cat((states, omega), dim=1) # [B, D]
+        policies = sup_net(states_sup)
         prom_values = policies['values'][:,1,:]
         hiring = policies['hiring'][:,1]
-        re, pc = foc_optimizer.getWorkerDecisions(prom_values)
-        size = bounds_processor.denormalize_size(states[:,:K_n])
-        n_1 = ((size[:,0]+size[:,1]) * pc.squeeze(1)).unsqueeze(1)
-        states_inf = torch.cat((hiring.unsqueeze(1), n_1, prom_values), dim=1) # [B, D]
-        states_inf = bounds_processor_inf.normalize(states_inf) # Normalize the states
-        omega = inf_net(states_inf)['omega'][:,1,:]
+
         values = value_net(states)['values']
         grads = get_batch_gradients(states, value_net, policies['hiring'].shape[1], range_tensor=bounds_processor.range)
 
@@ -1062,7 +1053,7 @@ if __name__ == "__main__":
     K_q = K - 1 #K - 1 (ignoring bottom) quality states. Ignore them for now
     STATE_DIM = K_n + K_v # + K_q #Discrete prod-ty y as multiple outputs
     ACTION_DIM = K_v + 1 # + K_n  # omega + hiring + separations. 
-    HIDDEN_DIMS = [32,32]  # Basic architecture. Basically every paper has 2 inner layers, can make them wider though
+    HIDDEN_DIMS = [64,64]  # Basic architecture. Basically every paper has 2 inner layers, can make them wider though
 
     #pref = Preferences(input_param=p_crs)
     cc=ContinuousContract(p_crs()) 
@@ -1072,32 +1063,32 @@ if __name__ == "__main__":
     #NORMALIZE EVERYTHING!!!
     LOWER_BOUNDS = [0, 0 , cc.rho_grid[0]] # The state space is (y,n_0,n_1,ρ_1).
     UPPER_BOUNDS = [20, 40, cc.rho_grid[-1]]
-    LOWER_BOUNDS_inf = [0, 0 , cc.v_grid[0]] #states are n'_0,n'_1,v'_1
-    UPPER_BOUNDS_inf = [20, 40, cc.v_grid[-1]]
+    LOWER_BOUNDS_sup = [0, 0 , cc.rho_grid[0], cc.rho_grid[0]] #states are the usual states + the inf controls
+    UPPER_BOUNDS_sup = [20, 40, cc.rho_grid[-1], cc.rho_grid[-1]]
     num_episodes= 20000
-    minibatch_num = 12
+    minibatch_num = 6
     #Initialize
-    bounds_processor_sup = StateBoundsProcessor(LOWER_BOUNDS,UPPER_BOUNDS)
-    bounds_processor_inf = StateBoundsProcessor_inf(LOWER_BOUNDS_inf,UPPER_BOUNDS_inf)
+    bounds_processor = StateBoundsProcessor(LOWER_BOUNDS,UPPER_BOUNDS)
+    bounds_processor_sup = StateBoundsProcessor_sup(LOWER_BOUNDS_sup,UPPER_BOUNDS_sup)
 
-    value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer = initialize(bounds_processor_sup, bounds_processor_inf, STATE_DIM, 
-    K_n, K_v, HIDDEN_DIMS, learning_rate=[5e-4,3e-4,1e-4], weight_decay = [1e-2, 1e-2, 1e-2], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
+    value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, scheduler_value, scheduler_sup, scheduler_inf, foc_optimizer = initialize(bounds_processor, bounds_processor_sup, STATE_DIM, 
+    K_n, K_v, HIDDEN_DIMS, learning_rate=[5e-4,3e-4,1e-4], weight_decay = [1e-3, 1e-3, 1e-3], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
     
     # Train value function
     print("Training value function...")
     beg=time()
     trained_value, trained_sup, trained_inf = train(
-    STATE_DIM, value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer, bounds_processor_sup,bounds_processor_inf, 
+    STATE_DIM, value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, scheduler_value, scheduler_sup, scheduler_inf,foc_optimizer, bounds_processor,bounds_processor_sup, 
         num_episodes=num_episodes,
         starting_points_per_iter=1,
-        simulation_steps=20,
+        simulation_steps=20, random_paths = 100,
         minibatch_num=minibatch_num, λ=5.0,
         target_values=target_values.t(), target_W=target_W.t(), use_saved_nets = False
     )
     print("Training time:", time()-beg)
 
     # Evaluate trained model
-    evaluate_plot_sup(trained_value, trained_sup, trained_inf, bounds_processor_sup, bounds_processor_inf, num_samples=1000)
+    evaluate_plot_sup(trained_value, trained_sup, trained_inf, bounds_processor_sup, bounds_processor_sup, num_samples=1000)
     #evaluate_value_function(trained_value, trained_sup, p, LOWER_BOUNDS, UPPER_BOUNDS,cc,target_values,cc_W,omega)
 
     # Save the model
