@@ -133,7 +133,7 @@ class ValueFunctionNN(nn.Module):
             layers.append(nn.Linear(input_dim, h))
             # Consider adding layer normalization for stability
             #layers.append(nn.LayerNorm(h))
-            layers.append(nn.ReLU())
+            layers.append(nn.SiLU())
             input_dim = h
         self.trunk = nn.Sequential(*layers)
 
@@ -144,11 +144,11 @@ class ValueFunctionNN(nn.Module):
         self.state_dim = state_dim
         self.num_y     = num_y
     def _init_weights(self):
-        # 1) Trunk: He/Kaiming
+        # 1) Trunk: Lecun
         for layer in self.trunk:
             if isinstance(layer, nn.Linear):
-                nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.1)
+                    nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
+                    nn.init.constant_(layer.bias, 0.01)
     def forward(self, x):
         B = x.size(0)
         features = self.trunk(x)                    # [B, hidden_dims[-1]]
@@ -177,14 +177,14 @@ class PolicyNN(nn.Module):
             layers.append(nn.Linear(input_dim, hidden_dim))
             # Consider adding layer normalization for stability
             #layers.append(nn.LayerNorm(hidden_dim))
-            layers.append(nn.ReLU())
+            layers.append(nn.SiLU())
             input_dim = hidden_dim
         self.trunk = nn.Sequential(*layers)
 
         # ✨ Extra “adapter” for the value head
         self.value_adapter = nn.Sequential(
             nn.Linear(input_dim, input_dim),
-            nn.ReLU(),
+            nn.SiLU(),
         )
         # future value v' head: output num_y * num_Kv values, then reshape
         self.value_head = nn.Sequential(
@@ -195,7 +195,7 @@ class PolicyNN(nn.Module):
         # hiring head: hiring measure per discrete state y
         self.hiring_adapter = nn.Sequential(
             nn.Linear(input_dim, input_dim),
-            nn.ReLU(),
+            nn.SiLU(),
         )        
         
         self.hiring_head = nn.Sequential(
@@ -205,17 +205,17 @@ class PolicyNN(nn.Module):
         # Apply activation‐specific initialization
         self._init_weights()
     def _init_weights(self):
-        # 1) Trunk: He/Kaiming
-        for seq in (self.trunk, self.value_adapter, self.hiring_adapter, self.hiring_head, self.value_head):
-            for layer in seq:
+        # 1) All but value head:
+        for seq in (self.trunk, self.value_adapter, self.hiring_adapter, self.value_head):
+         for layer in seq:
                 if isinstance(layer, nn.Linear):
                     nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                    nn.init.constant_(layer.bias, 0.1)
+                    nn.init.constant_(layer.bias, 0.01)
         # 2) Hiring_head: Xavier/Glorot
         for layer in self.hiring_head:
                 if isinstance(layer, nn.Linear):
                     nn.init.xavier_uniform_(layer.weight, gain=1.0)
-                    nn.init.constant_(layer.bias, 0.1)
+                    nn.init.constant_(layer.bias, 0.01)
     def forward(self, x):
         # x: [B, state_dim]
         B = x.size(0)
@@ -254,36 +254,24 @@ class infNN(nn.Module):
             layers.append(nn.Linear(input_dim, hidden_dim))
             # Consider adding layer normalization for stability
             #layers.append(nn.LayerNorm(hidden_dim))
-            layers.append(nn.ReLU())
+            layers.append(nn.SiLU())
             input_dim = hidden_dim
         self.trunk = nn.Sequential(*layers)
 
         # wage head: output num_y * num_Kv wage values, then reshape
         self.wage_head = nn.Sequential(
             nn.Linear(input_dim, num_y * self.K_v),
-            nn.ReLU()
+            ReLUPlusEps(eps=cc.rho_grid[0])
         )
         # Apply activation‐specific initialization
         self._init_weights()
-        # ---- add this block ----
-        # He‐init the Linear, small positive bias to “turn on” the ReLU
-       # lin = self.wage_head[0]
-        #nn.init.kaiming_uniform_(lin.weight, nonlinearity='relu')
-        #lin.bias.data.fill_(0.1)
-        # ------------------------
     def _init_weights(self):
-        # 1) Trunk: He/Kaiming
-        for seq in (self.trunk,self.wage_head):
+        # 2) omega_head: He/Kaiming
+        for seq in (self.trunk, self.wage_head):
          for layer in seq:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.1)
-
-        # 2) omega_head: Xavier/Glorot
-        #for layer in self.wage_head:
-        #        if isinstance(layer, nn.Linear):
-        #            nn.init.xavier_uniform_(layer.weight, gain=1.0)
-        #            nn.init.constant_(layer.bias, 0.1)
+                nn.init.constant_(layer.bias, 0.01)
     def forward(self, x):
         # x: [B, state_dim]
         B = x.size(0)
@@ -295,7 +283,13 @@ class infNN(nn.Module):
         return {
             'omega': omega
         }
+class ReLUPlusEps(nn.Module):
+    def __init__(self, eps=1e-2):
+        super().__init__()
+        self.eps = eps
 
+    def forward(self, x):
+        return torch.relu(x) + self.eps
 #Function to create mini-batches
 def random_mini_batches(X, minibatch_size=64, seed=0):
     """Generate random minibatches from X."""
@@ -836,7 +830,7 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
         states[0,:] = state_start
         #Simulate the firm path using the sup network
         #Let the simulation steps increase over time
-        sim_steps_ep = np.ceil(simulation_steps * (ep/num_episodes) + 3).astype(int)
+        sim_steps_ep = np.ceil((simulation_steps - 3)* (ep/num_episodes) + 3).astype(int)
         with torch.no_grad():
             states, prod_states, fut_states  = simulate(states, sup_net, inf_net, bounds_processor, bounds_processor_inf, sim_steps_ep) #This is the set of states we will use to train the value function. 
         #Now append future states to the states so that I can mini-batch them together.
@@ -1062,7 +1056,7 @@ if __name__ == "__main__":
     K_q = K - 1 #K - 1 (ignoring bottom) quality states. Ignore them for now
     STATE_DIM = K_n + K_v # + K_q #Discrete prod-ty y as multiple outputs
     ACTION_DIM = K_v + 1 # + K_n  # omega + hiring + separations. 
-    HIDDEN_DIMS = [32,32]  # Basic architecture. Basically every paper has 2 inner layers, can make them wider though
+    HIDDEN_DIMS = [128,128]  # Basic architecture. Basically every paper has 2 inner layers, can make them wider though
 
     #pref = Preferences(input_param=p_crs)
     cc=ContinuousContract(p_crs()) 
@@ -1081,7 +1075,7 @@ if __name__ == "__main__":
     bounds_processor_inf = StateBoundsProcessor_inf(LOWER_BOUNDS_inf,UPPER_BOUNDS_inf)
 
     value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer = initialize(bounds_processor_sup, bounds_processor_inf, STATE_DIM, 
-    K_n, K_v, HIDDEN_DIMS, learning_rate=[5e-4,3e-4,1e-4], weight_decay = [1e-2, 1e-2, 1e-2], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
+    K_n, K_v, HIDDEN_DIMS, learning_rate=[5e-5,3e-5,1e-5], weight_decay = [1e-4, 1e-4, 1e-4], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
     
     # Train value function
     print("Training value function...")
@@ -1090,7 +1084,7 @@ if __name__ == "__main__":
     STATE_DIM, value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, foc_optimizer, bounds_processor_sup,bounds_processor_inf, 
         num_episodes=num_episodes,
         starting_points_per_iter=1,
-        simulation_steps=20,
+        simulation_steps=10,
         minibatch_num=minibatch_num, λ=5.0,
         target_values=target_values.t(), target_W=target_W.t(), use_saved_nets = False
     )
