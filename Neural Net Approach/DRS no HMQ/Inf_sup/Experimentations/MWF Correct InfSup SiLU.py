@@ -131,7 +131,7 @@ class ValueFunctionNN(nn.Module):
             layers.append(nn.Linear(input_dim, h))
             # Consider adding layer normalization for stability
             #layers.append(nn.LayerNorm(h))
-            layers.append(nn.ReLU())
+            layers.append(nn.SiLU())
             input_dim = h
         self.trunk = nn.Sequential(*layers)
 
@@ -142,11 +142,11 @@ class ValueFunctionNN(nn.Module):
         self.state_dim = state_dim
         self.num_y     = num_y
     def _init_weights(self):
-        # 1) Trunk: He/Kaiming
+        # 1) Trunk: Lecun
         for layer in self.trunk:
             if isinstance(layer, nn.Linear):
-                nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.1)
+                    nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
+                    nn.init.constant_(layer.bias, 0.0)
     def forward(self, x):
         B = x.size(0)
         features = self.trunk(x)                    # [B, hidden_dims[-1]]
@@ -175,25 +175,25 @@ class PolicyNN(nn.Module):
             layers.append(nn.Linear(input_dim, hidden_dim))
             # Consider adding layer normalization for stability
             #layers.append(nn.LayerNorm(hidden_dim))
-            layers.append(nn.ReLU())
+            layers.append(nn.SiLU())
             input_dim = hidden_dim
         self.trunk = nn.Sequential(*layers)
 
         # ✨ Extra “adapter” for the value head
         self.value_adapter = nn.Sequential(
             nn.Linear(input_dim, input_dim),
-            nn.ReLU(),
+            nn.SiLU(),
         )
         # future value v' head: output num_y * num_Kv values, then reshape
         self.value_head = nn.Sequential(
             nn.Linear(input_dim, num_y * self.K_v),
-            nn.ReLU()
+            nn.SiLU()
         )
 
         # hiring head: hiring measure per discrete state y
         self.hiring_adapter = nn.Sequential(
             nn.Linear(input_dim, input_dim),
-            nn.ReLU(),
+            nn.SiLU(),
         )        
         
         self.hiring_head = nn.Sequential(
@@ -203,17 +203,17 @@ class PolicyNN(nn.Module):
         # Apply activation‐specific initialization
         self._init_weights()
     def _init_weights(self):
-        # 1) Trunk: He/Kaiming
-        for seq in (self.trunk, self.value_adapter, self.hiring_adapter, self.hiring_head, self.value_head):
-            for layer in seq:
+        # 1) All but value head:
+        for seq in (self.trunk, self.value_adapter, self.hiring_adapter, self.value_head):
+         for layer in seq:
                 if isinstance(layer, nn.Linear):
                     nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                    nn.init.constant_(layer.bias, 0.1)
+                    nn.init.constant_(layer.bias, 0.0)
         # 2) Hiring_head: Xavier/Glorot
         for layer in self.hiring_head:
                 if isinstance(layer, nn.Linear):
                     nn.init.xavier_uniform_(layer.weight, gain=1.0)
-                    nn.init.constant_(layer.bias, 0.1)
+                    nn.init.constant_(layer.bias, 0.0)
     def forward(self, x):
         # x: [B, state_dim]
         B = x.size(0)
@@ -252,7 +252,7 @@ class infNN(nn.Module):
             layers.append(nn.Linear(input_dim, hidden_dim))
             # Consider adding layer normalization for stability
             #layers.append(nn.LayerNorm(hidden_dim))
-            layers.append(nn.ReLU())
+            layers.append(nn.SiLU())
             input_dim = hidden_dim
         self.trunk = nn.Sequential(*layers)
 
@@ -263,25 +263,13 @@ class infNN(nn.Module):
         )
         # Apply activation‐specific initialization
         self._init_weights()
-        # ---- add this block ----
-        # He‐init the Linear, small positive bias to “turn on” the ReLU
-       # lin = self.wage_head[0]
-        #nn.init.kaiming_uniform_(lin.weight, nonlinearity='relu')
-        #lin.bias.data.fill_(0.1)
-        # ------------------------
     def _init_weights(self):
-        # 1) Trunk: He/Kaiming
-        for seq in (self.trunk,self.wage_head):
+        # 2) omega_head: He/Kaiming
+        for seq in (self.trunk, self.wage_head):
          for layer in seq:
             if isinstance(layer, nn.Linear):
                 nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-                nn.init.constant_(layer.bias, 0.1)
-
-        # 2) omega_head: Xavier/Glorot
-        #for layer in self.wage_head:
-        #        if isinstance(layer, nn.Linear):
-        #            nn.init.xavier_uniform_(layer.weight, gain=1.0)
-        #            nn.init.constant_(layer.bias, 0.1)
+                nn.init.constant_(layer.bias, 0.00)
     def forward(self, x):
         # x: [B, state_dim]
         B = x.size(0)
@@ -300,6 +288,7 @@ class ReLUPlusEps(nn.Module):
 
     def forward(self, x):
         return torch.relu(x) + self.eps
+
 #Function to create mini-batches
 def random_mini_batches(X, minibatch_size=64, seed=0):
     """Generate random minibatches from X."""
@@ -612,9 +601,11 @@ class FOCresidual:
 
         # but we only “apply” it when hiring ≤ 0 (approximately, since we're working with Softplus activation), otherwise zero out
         FOC_hire_resid = torch.where(
-            hiring <= 1e-2,
+            hiring <= 1e-3,
             focs_hire_sp,
             focs_hire,)
+        fraction_near_zero = (hiring < 1e-3).float().mean().item()
+        print(f"Fraction of firms with hiring ≈ 0: {fraction_near_zero:.2%}")
         #focs_hire = (hiring > 0 ) * (self.p.beta * future_grad[:, 0] - self.p.hire_c) + ( hiring == 0) * torch.relu(self.p.beta * future_grad[:, 0] - self.p.hire_c)
         #focs_hire[hiring <= 0] = torch.relu(focs_hire[hiring <= 0]) #This is the case where the firm is not hiring. So we only keep the loss if the FOC is positive
         assert not torch.isnan(focs_hire).any()

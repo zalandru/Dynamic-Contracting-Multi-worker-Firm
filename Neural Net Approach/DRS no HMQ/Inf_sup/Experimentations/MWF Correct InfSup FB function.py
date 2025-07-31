@@ -300,6 +300,8 @@ class ReLUPlusEps(nn.Module):
 
     def forward(self, x):
         return torch.relu(x) + self.eps
+
+
 #Function to create mini-batches
 def random_mini_batches(X, minibatch_size=64, seed=0):
     """Generate random minibatches from X."""
@@ -605,20 +607,18 @@ class FOCresidual:
         focs_rho[size[:,0]+size[:,1] <= 0, :] = 0 #If size is zero, then the FOC is zero. This is because we do not have any production and no hiring, so the FOC is zero.
 
         #Now hiring FOC
-        #fg_hire = future_grad[:, 0].clamp(-1e2, 1e2)
-        focs_hire = self.p.beta * future_grad[:, 0] - self.p.hire_c
-        #For the case where hiring=0, the loss should be zero if the foc is negative
-        focs_hire_sp = torch.relu(focs_hire)
+        #Set up using an Fischer-Burmeiser function. For KKT problems of the type
+        # A>=0, H>=0, A*H=0
+        # For my case, A=hiring, H = - foc_hire
+        #Ψ(a,h) = a + h - √( a^2 + h^2) = 0
+        a = hiring
+        h = 1 - self.p.beta * future_grad[:, 0] / self.p.hire_c
+        Ψ = a + h - torch.sqrt(a**2 + h**2)
+        fraction_near_zero = (hiring < 1e-3).float().mean().item()
 
-        # but we only “apply” it when hiring ≤ 0 (approximately, since we're working with Softplus activation), otherwise zero out
-        FOC_hire_resid = torch.where(
-            hiring <= 1e-2,
-            focs_hire_sp,
-            focs_hire,)
-        #focs_hire = (hiring > 0 ) * (self.p.beta * future_grad[:, 0] - self.p.hire_c) + ( hiring == 0) * torch.relu(self.p.beta * future_grad[:, 0] - self.p.hire_c)
-        #focs_hire[hiring <= 0] = torch.relu(focs_hire[hiring <= 0]) #This is the case where the firm is not hiring. So we only keep the loss if the FOC is positive
-        assert not torch.isnan(focs_hire).any()
-        return focs_rho, FOC_hire_resid
+        #print(f"Fraction of firms with hiring ≈ 0: {fraction_near_zero:.2%}")
+        #print(f"Lowest hiring: {hiring.min().item():.4f}, Highest hiring: {hiring.max().item():.4f}")
+        return focs_rho, Ψ
     def get_fut_size(self, states, v_prime):
         re, pc = self.getWorkerDecisions(v_prime)
         size = self.bounds_processor.denormalize_size(states[:,:K_n])
@@ -867,7 +867,7 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                 
                 states_eps = states + 1e-2 * tensor([0,0,1])
                 mon_loss_omega = torch.relu( - (inf_net(states_eps)['omega'] - inf_net(states)['omega'])).pow(2).mean()
-                inf_loss = nn.MSELoss()(future_grad[:,K_n:], v_prime * n_1) + 1e-2 * mon_loss_omega
+                inf_loss = nn.MSELoss()(future_grad[:,K_n:], v_prime * n_1) #+ 1e-2 * mon_loss_omega
                 assert omega.requires_grad
                 assert future_grad.requires_grad
                 inf_loss.backward()
@@ -900,7 +900,7 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                 policies_eps = sup_net(states_eps)
                 mon_loss_values = torch.relu( - (policies_eps['values'] - policies['values'])).pow(2).mean()
                 mon_loss_hiring = torch.relu( policies_eps['hiring'] - policies['hiring']).pow(2).mean()
-                sup_loss = FOC_wage_loss + FOC_hire_loss + 1e-2 * (mon_loss_values + mon_loss_hiring)
+                sup_loss = FOC_wage_loss + FOC_hire_loss #+ 1e-2 * (mon_loss_values + mon_loss_hiring)
                 sup_loss.backward()
                 optimizer_sup.step()
                 if ((episode + 1) % (num_episodes/20) == 0) & (print_check <= 1):
@@ -977,7 +977,7 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
         # Print progress
         if (episode + 1) % (num_episodes/20) == 0 or episode == 0:
             print(f"Iteration {episode + 1}, Value Loss: {value_loss.item():.6f}, Value Grad Loss:  {value_grad_loss.item():.6f},FOC_wage_loss: {FOC_wage_loss.item():.6f}, FOC_hire_loss: {FOC_hire_loss.item():.6f} ,inf_loss: {inf_loss.item():.6f}" )
-        if (episode + 1) % (num_episodes/10) == 0:            
+        if (episode + 1) % (num_episodes/5) == 0 or episode == 300:            
             evaluate_plot_sup(value_net, sup_net, inf_net, bounds_processor, bounds_processor_sup, num_samples=1000)                
     return value_net, sup_net, inf_net
 
@@ -1069,9 +1069,9 @@ if __name__ == "__main__":
     target_W = tensor(cc_W, dtype=type)
     #NORMALIZE EVERYTHING!!!
     LOWER_BOUNDS = [0, 0 , cc.rho_grid[0]] # The state space is (y,n_0,n_1,ρ_1).
-    UPPER_BOUNDS = [20, 40, cc.rho_grid[-1]]
+    UPPER_BOUNDS = [30, 60, cc.rho_grid[-1]]
     LOWER_BOUNDS_sup = [0, 0 , cc.rho_grid[0], cc.rho_grid[0]] #states are the usual states + the inf controls
-    UPPER_BOUNDS_sup = [20, 40, cc.rho_grid[-1], cc.rho_grid[-1]]
+    UPPER_BOUNDS_sup = [30, 60, cc.rho_grid[-1], cc.rho_grid[-1]]
     num_episodes= 20000
     minibatch_num = 6
     #Initialize
@@ -1079,7 +1079,7 @@ if __name__ == "__main__":
     bounds_processor_sup = StateBoundsProcessor_sup(LOWER_BOUNDS_sup,UPPER_BOUNDS_sup)
 
     value_net, sup_net, inf_net, optimizer_value, optimizer_sup, optimizer_inf, scheduler_value, scheduler_sup, scheduler_inf, foc_optimizer = initialize(bounds_processor, bounds_processor_sup, STATE_DIM, 
-    K_n, K_v, HIDDEN_DIMS, learning_rate=[5e-4,3e-4,1e-4], weight_decay = [1e-3, 1e-3, 1e-3], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
+    K_n, K_v, HIDDEN_DIMS, learning_rate=[5e-3,3e-3,1e-3], weight_decay = [1e-3, 1e-3, 1e-3], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
     
     # Train value function
     print("Training value function...")
