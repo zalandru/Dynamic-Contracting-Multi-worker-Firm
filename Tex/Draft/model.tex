@@ -125,22 +125,56 @@ where $\eta(v'_{k+1}) = \frac{\partial log(1-p(v'))}{\partial v'}$ is the semi-e
   See Appendix \ref{proof:wagegrowth}.
 \end{proof}
 The relationship is at the core of the firm's insurance vs incentive provision trade-off: while the marginal value of the worker $\frac{\partial J(y',\{n'_k,v'_k,z'_k\})}{\partial n'_{k+1}}$ is positive, the firm is intent on keeping its workers, and thus chooses to backload wages, thus incentivizing the workers to stay at the cost of higher total wage payments. On the flip side, if the marginal worker value is negative, the firm will choose to lower wages, incentivizing workers to leave. This brings us to the result on contract convergence:
-\begin{proposition} \label{prop:targetwage}
- Fix firm's state $(y,\{n_k,v_k\})\equiv (y,n,P(v))$ and define $v^*$ such that \\ 
- $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v^*)}=0$. Then
-  \[ |w'_{k+1}-w^*_{v^*}|<|w_k-w^*_{v^*}| \; \forall k\]
- Moreover, defining $\bar{k}\equiv arg\max_k v_k$,
- \[ w'_{\bar{k}+1}-w'_{k+1}<w_{\bar{k}}-w_k \; \forall k\neq\bar{K}\]
+%\begin{proposition} \label{prop:targetwage}
+% Fix firm's state $(y,\{n_k,v_k\})\equiv (y,n,P(v))$ and define $v^*$ such that \\ 
+% $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v^*)}=0$. Then
+%  \[ |w'_{k+1}-w^*_{v^*}|<|w_k-w^*_{v^*}| \; \forall k\]
+% Moreover, defining $\bar{k}\equiv arg\max_k v_k$,
+% \[ w'_{\bar{k}+1}-w'_{k+1}<w_{\bar{k}}-w_k \; \forall k\neq\bar{K}\]
  
-%Consider workers at tenure step $k$. Their wages will rise as long as $\frac{\partial J(y',\{n'_k,v'_k,z'_k\})}{\partial n'_{k+1}}>0$ and until $\frac{\partial J(y',\{n'_k,v'_k,z'_k\})}{\partial n'_{k+1}}=0$. Absent quality heterogeneity ($z_0=0$ or $z_0=1$), 
-%\[\forall k: $w_k \rightarrow w^*_y$\]
-%Where \frac{}
+
+ \begin{definition} 
+  The target wage for cohort $k, w^*_k(y,\{n_k,v_k\}/v_k)$ is defined as the wage associated with the promised value $v^*_k(y,\{n_k,v_k\}/v_k)$, for which $M(y,\{n_k\},v_0,...,v^*_k,...)=0$, where
+  \[M(y,\{n_k\},v_0,...,v_k,...) = \max_{v'_{y',k}} E_{y'|y}\frac{\partial J(y',\{n'_k\},v'_0,...v'_{y',k},...)}{\partial n'_k}\]
+  \[s.t. \: \: v_k = E_{y'|y} v'_{y',k}\]
+  And is equal to:
+  \[ w^*_k (y,\{n_k,v_k\}/v_k) = u^{'-1}\Big( - \frac{n'_k}{\partial J(y',\{n'_k\},v'_0,...v'_{y',k},...)/\partial v'_{y',k}} )\]
+ \end{definition}
+The target wage captures the point where the marginal profit of a cohort $k$ reaches zero, thus making the firm indifferent between keeping or losing these workers to poaching ( it may still want to lose the low quality matches within the cohort and keep the high quality ones). I use the target wage to show convergence of wages across cohorts:
+\begin{proposition} \label{prop:targetwage}
+ For each firm state $(y,\{n_k,v_k\})$ and cohort $k$ there exists a target wage $w^*_k$. To first-order:
+  \begin{enumerate}
+    \item Wage in each cohort chases the corresponding target wage: 
+    \[ w_k \leq w^*_k  \implies w_k \leq w'_{k+1} \leq w^*_k\]
+    \[w_k \geq w^*_k  \implies w^*_k \leq w'_{k+1} \leq w_k\]
+    \item Wage growth is faster the further wage is from the target wage: \textcolor{red}{Recheck} 
+    \[|w_k-w^*_k|\geq|w_{k'}-w^*_{k'}|\: \implies |w'_{k+1}-w_k|\geq|w'_{k'+1}-w'_{k'}| \]
+
+  \end{enumerate}
 \end{proposition}
 \begin{proof}
   See Appendix~\ref{proof:targetwage} \\
 
 \end{proof}
-This proposition states that, across all tenure steps, wages change in the direction of the target wage $w^*_{v^*}$. Moreover, they do so in a way that contracts the incumbent wage space, lowering the difference between the highest and all other wages. Then, for workers that have been at the firm for long enough, this process of constant movement towards the target wage will result in convergence of wages. \\
+At any state and cohort, the wage adjusts towards $w^*_k$. This allows me to show that, fixing a quality of the cohort, the wages will indeed converge.
+\begin{corollary}
+  Cohorts with the same average quality have the same target wage:
+  \[z_k=z'_{k'} \implies w^*_k=w^*_{k'} \: \forall k,k'\leq K\]
+\end{corollary}
+Cohorts of the same quality have the same target wage. Results 1 and 2 from Proposition~\ref{prop:targetwage} then tell us that, no matter their promised values $v_k,v_{k'}$, the two cohorts will converge towards the same wage, with the cohort farther behind catching up over time. To confirm that wages converge in all cohorts, inclding of different qualities, I show that the qualities across cohorts also converge.
+\begin{proposition} \label{prop:qualityconv}
+ Consider a firm state $(y,\{n_k,v_k\})$ and a cohort $k, z_k<1$. To first-order:
+  \begin{enumerate}
+    \item Cohorts with low promised value are more subject to layoffs: 
+    \[ v_k \leq v_{k'} \implies s_k \geq s_{k'} \: \forall k,k'\leq K, z_k,z_{k'}<1\]
+    \item Target wage increases in $z_k$, but does not change in $z_{k'},k'\neq k$.
+    \item All target wages change the same in response to all the other state variables:
+    \[\frac{\partial w^*_k}{\partial s} = \frac{\partial w^*_{k'}}{\partial s}\:  \forall k,k', s\neq z_k,z_{k'}\]
+  \end{enumerate}
+\end{proposition}
+Together, this implies convergence in both quality and wage: lower quality cohorts will converge towards a lower target wage. This makes these cohorts suffer more layoffs than cohorts of higher wage, thus making them catch up in quality and, over time, in wage. 
+
+%This proposition states that, across all tenure steps, wages change in the direction of the target wage $w^*_{v^*}$. Moreover, they do so in a way that contracts the incumbent wage space, lowering the difference between the highest and all other wages. Then, for workers that have been at the firm for long enough, this process of constant movement towards the target wage will result in convergence of wages. \\
 Empirically, I show in Appendix \ref{wagegrowthK} that wage growth in France stagnates after about 10 years of tenure.  This allows me to restrict attention to finite and constant $K$ for all the firms in my quantitative exploration. Note that this is only an approximation since, as $K\rightarrow\infty$, the model approaches the problem described in Lemma \ref{lemma_tenure}.
 \newline
 \textbf{Introducing Heterogeneity}  I stick to the theoretical formulation in Lemma \ref{lemma_tenure} and introduce heterogeneity in match quality. With $0<z_0<1$, matches employed by the firm may be of both high and low quality. I do not allow the firm to choose quality-contingent wages, thus the firm can only influence match quality via layoffs \footnote{I show in Appendix \ref{microfoundation} that, under a sufficiently low elasticity of on-the-job search, this is in fact an outcome of the firm's optimal information allocation problem.}. \\

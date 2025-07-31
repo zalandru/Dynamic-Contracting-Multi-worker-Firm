@@ -118,7 +118,9 @@ class StateBoundsProcessor_sup:
         """Convert normalized states back to original range"""
         #return 0.5 * (normalized_states + 1) * self.range + self.lower_bounds
         return normalized_states * self.range[dim] + self.lower_bounds[dim] #Check: 0.5 * 10 + 10= 15. 
-    
+    def normalize_omega(self, states):
+        """Scale states from [lower_bound, upper_bound] to [0, 1]"""
+        return (states - self.lower_bounds[ax, K_n+K_v:]) / self.range[ax, K_n+K_v:] #Note: this will need to be adjusted at multiple steps    
 #Neural Nets. Note: alternatively, I could code give them the same trunk. Either way, this is called an Actor-Critic architecture.
 class ValueFunctionNN(nn.Module):
     """Neural network to approximate the value function"""
@@ -658,7 +660,7 @@ def simulate(starting_states, sup_net, inf_net, bounds_processor, bounds_process
         all_P.append(y_idx)
 
         omega = inf_net(states)['omega'][B_idx, y_idx, :]  # shape [B, K_v]
-        states_sup = bounds_processor_sup.normalize(torch.cat([states, omega], dim=1))
+        states_sup = torch.cat([states, bounds_processor_sup.normalize_omega(omega)], dim=1)
 
         sup = sup_net(states_sup)
         hiring = sup['hiring'][B_idx, y_idx]
@@ -858,8 +860,8 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                 optimizer_inf.zero_grad()
 
                 omega = inf_net(states)['omega'][i,prod_states.long(),:]
-                states_sup = torch.cat((states, omega), dim=1) # [B, D]
-                states_sup = bounds_processor_sup.normalize(states_sup) # Normalize the states
+                states_sup = torch.cat((states, bounds_processor_sup.normalize_omega(omega)), dim=1) 
+
                 pol = sup_net(states_sup)
                 v_prime  = pol['values'][i,prod_states.long(),:]  
                 hiring  = pol['hiring'][i,prod_states.long()]
@@ -880,8 +882,7 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                     omega = inf_net(states)['omega'][i,prod_states.long(),:]
                 #Sup loss: FOC residuals
                 optimizer_sup.zero_grad()   
-                states_sup = torch.cat((states, omega), dim=1) # [B, D]
-                states_sup = bounds_processor_sup.normalize(states_sup) # Normalize the states                
+                states_sup = torch.cat((states, bounds_processor_sup.normalize_omega(omega)), dim=1)            
                 policies = sup_net(states_sup)
                 #Gotta now do wages, hiring, and values separately
                 v_prime = policies['values'][i,prod_states.long(),:]
@@ -912,8 +913,8 @@ def train(state_dim, value_net, sup_net, inf_net, optimizer_value, optimizer_sup
                 optimizer_value.zero_grad()
                 with torch.no_grad():
                     omega = inf_net(states)['omega'][i,prod_states.long(),:]
-                    states_sup = torch.cat((states, omega), dim=1) # [B, D]
-                    states_sup = bounds_processor_sup.normalize(states_sup) # Normalize the states
+                    states_sup = torch.cat((states, bounds_processor_sup.normalize_omega(omega)), dim=1) 
+
                     policies = sup_net(states_sup)
                     #Gotta now do wages, hiring, and values separately
                     v_prime = policies['values'][i,prod_states.long(),:]
@@ -993,7 +994,7 @@ def evaluate_plot_sup(value_net, sup_net, inf_net, bounds_processor, bounds_proc
         # Sample random states
         states = torch.rand(num_samples, bounds_processor.lower_bounds.shape[0], dtype=type)
         omega = inf_net(states)['omega'][:,1,:]
-        states_sup = torch.cat((states, omega), dim=1) # [B, D]
+        states_sup = torch.cat((states, bounds_processor_sup.normalize_omega(omega)), dim=1) 
         policies = sup_net(states_sup)
         prom_values = policies['values'][:,1,:]
         hiring = policies['hiring'][:,1]
@@ -1016,6 +1017,15 @@ def evaluate_plot_sup(value_net, sup_net, inf_net, bounds_processor, bounds_proc
     plt.title("Policy Evaluation: Wages vs State")
     plt.xlabel("State (normalized)")
     plt.ylabel("Wages")
+    plt.grid()
+    plt.show()
+
+    # Plotting the results
+    plt.figure(figsize=(10, 6))
+    plt.scatter(states[:, 2].detach().numpy(), hiring.detach().numpy(), alpha=0.5)
+    plt.title("Policy Evaluation: Hiring vs State")
+    plt.xlabel("State (normalized)")
+    plt.ylabel("Hiring")
     plt.grid()
     plt.show()
 

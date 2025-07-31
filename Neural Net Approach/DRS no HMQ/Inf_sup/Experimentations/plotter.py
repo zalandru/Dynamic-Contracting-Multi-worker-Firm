@@ -1,9 +1,9 @@
 # plotter.py
 import matplotlib.pyplot as plt
-
+import matplotlib
 class LossPlotter:
-    def __init__(self, loss_names, pause=0.001, update_interval=1, ma_window=1,
-                 show_raw=True, show_ma=True):
+    def __init__(self, loss_names, pause=0.0001, update_interval=1, ma_window=1,
+                 show_raw=True, show_ma=True, background=True):
         """
         loss_names: list of str, keys you’ll use in update()
         pause: float, seconds for plt.pause() to let GUI refresh
@@ -18,9 +18,28 @@ class LossPlotter:
         self.ma_window = max(1, ma_window)
         self.show_raw = show_raw
         self.show_ma = show_ma
+        self.background = background
 
         plt.ion()
         self.fig, self.ax = plt.subplots()
+
+        if self.background:
+            manager = plt.get_current_fig_manager()
+            backend = matplotlib.get_backend()
+            try:
+                if 'Qt' in backend:
+                    from PyQt5 import QtCore
+                    flags = manager.window.windowFlags()
+                    manager.window.setWindowFlags(flags | QtCore.Qt.WindowStaysOnBottomHint)
+                    manager.window.show()
+                elif backend.startswith('Tk'):
+                    manager.window.attributes('-topmost', False)
+                else:
+                    manager.window.lower()
+            except Exception:
+                pass
+
+
         self.lines = {}
         self.ma_lines = {}
         self.data = {'iter': []}
@@ -75,3 +94,4 @@ class LossPlotter:
             self.ax.legend()
             self.fig.canvas.draw()
             plt.pause(self.pause)
+    
