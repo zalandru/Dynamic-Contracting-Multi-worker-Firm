@@ -10,8 +10,9 @@ import matplotlib.pyplot as plt
 from scipy.special import logsumexp
 from tqdm import tqdm
 import gc
-from scipy.interpolate import RegularGridInterpolator
-
+#from scipy.interpolate import RegularGridInterpolator
+from pyfixest import feols
+from scipy.ndimage import map_coordinates
 def bool_index_combine(I,B):
     """ returns an index where elements of I have been updated using B
     I,B are boolean, and len(B)==I.sum() """
@@ -27,6 +28,32 @@ class Event:
     e2u = 3
     j2j = 4
 
+class RegularGridInterpolator:
+    def __init__(self, points, values, method='linear'):
+        self.limits = np.array([[min(x), max(x)] for x in points])
+        self.values = np.asarray(values, dtype=float)
+        self.order = {'linear': 1, 'cubic': 3, 'quintic': 5}[method]
+
+    def __call__(self, xi):
+        """
+        `xi` here is an array-like (an array or a list) of points.
+
+        Each "point" is an ndim-dimensional array_like, representing
+        the coordinates of a point in ndim-dimensional space.
+        """
+        # transpose the xi array into the ``map_coordinates`` convention
+        # which takes coordinates of a point along columns of a 2D array.
+        xi = np.asarray(xi).T
+
+        # convert from data coordinates to pixel coordinates
+        ns = self.values.shape
+        coords = [(n-1)*(val - lo) / (hi - lo)
+                  for val, n, (lo, hi) in zip(xi, ns, self.limits)]
+
+        # interpolate
+        return map_coordinates(self.values, coords,
+                               order=self.order,
+                               cval=np.nan,mode='nearest')  # fill_value
 
 def create_year_lag(df,colnames,lag):
     """ the table should be index by i,year
@@ -215,7 +242,7 @@ class Simulator:
             redraw_zhist=redraw_zhist,
             ignore=ignore))
 
-    def simulate_val(self,ni=int(1e3),nf=100,nt=40,burn=20,nl=100,redraw_zhist=True,ignore=[]):
+    def simulate_val(self,ni=int(1e3),nf=20,nt=40,burn=20,nl=100,redraw_zhist=True,ignore=[]):
         """ we simulate a panel using a solved model
 
             ni (1e4) : number of individuals
@@ -301,12 +328,12 @@ class Simulator:
         for iz in range(p.num_z):
             for in0 in range(p.num_n):
                 for in1 in range(p.num_n):        
-                    rho_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    n_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    j2j_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    sep_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    q_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
-                    ve_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[iz, in0,in1, ...], bounds_error=False, fill_value=None) 
+                    rho_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[iz, in0,in1, ...]) 
+                    n_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[iz, in0,in1, ...]) 
+                    j2j_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[iz, in0,in1, ...]) 
+                    sep_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[iz, in0,in1, ...]) 
+                    q_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[iz, in0,in1, ...]) 
+                    ve_interpolator[iz,in0,in1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[iz, in0,in1, ...]) 
 
         """
         Schaal's GE algorithm:
@@ -357,16 +384,17 @@ class Simulator:
             #Loop over firm states: so that firms aren't repeated
             for iz in range(p.num_z):
                 for in0 in range(p.num_n):
-                    for in1 in range(p.num_n):
-                        F_spec = F_set[(z[t-1,F_set]==iz) & (n0[t-1,F_set]==in0) & (n1[t-1,F_set]==in1)]
+                    for in1 in range(p.num_n1):
+                        F_spec = F_set[(z[t-1,F_set]==iz)  & (n0[t,F_set]==np.floor(model.N_grid[in0]).astype(int)) & (n1[t,F_set]==np.floor(model.N_grid1[in1]).astype(int))]
                         if len(F_spec)==0:
                             continue
-                        rho[t,F_spec] = rho_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        n_hire[t,F_spec] = n_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        pr_j2j[t,F_spec] = j2j_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        sep_rate[t,F_spec] = sep_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        q[t,F_spec] = q_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
-                        ve_star[t,F_spec] = ve_interpolator[iz,in0,in1] ((rho[t-1,F_spec],q[t-1,F_spec]))
+                        coords = np.stack((rho[t-1, F_spec], q[t-1, F_spec]), axis=1)
+                        rho[t,F_spec] = rho_interpolator[iz,in0,in1] (coords)
+                        n_hire[t,F_spec] = n_interpolator[iz,in0,in1] (coords)
+                        pr_j2j[t,F_spec] = j2j_interpolator[iz,in0,in1] (coords)
+                        sep_rate[t,F_spec] = sep_interpolator[iz,in0,in1] (coords)
+                        q[t,F_spec] = q_interpolator[iz,in0,in1] (coords)
+                        ve_star[t,F_spec] = ve_interpolator[iz,in0,in1] (coords)
             w[t,F_set,1] = rho[t,F_set]
             bon_leave[t,F_set] = model.pref.inv_utility(ve_star[t,F_set] - model.v_0) - model.pref.inv_utility(model.v_grid[0] - model.v_0) #Bonus wage if leave the current firm            
             bon_unemp = model.pref.inv_utility(model.ve - model.v_0) - model.pref.inv_utility(model.v_grid[0] - model.v_0) #Bonus wage if find a job
@@ -429,7 +457,8 @@ class Simulator:
             meet = INCLUDE_J2J *  rng.binomial(1, pr_j2j[t,F_e]) == 1  
 
             # Employed workers that didn't transition
-            Ie_stay = bool_index_combine(Ie,~meet)
+            #Ie_stay = bool_index_combine(Ie,~meet)
+            Ie_stay = (Ie * (~meet)).astype(bool)
             E[Ie_stay]  = 1          
             D[Ie_stay]  = Event.ee
             W[Ie_stay]  = w[t,F[Ie_stay],1]           # senior wage
@@ -438,23 +467,26 @@ class Simulator:
             R[Ie_stay]  = rho[t,F[Ie_stay]]                
             
             #Emp workers that did find a job
-            Ie_e2e = bool_index_combine(Ie,meet)
+            #Ie_e2e = bool_index_combine(Ie,meet)
+            Ie_e2e = (Ie * meet).astype(bool)
             #5. Total search and allocation of workers to firms
-            I_find_job = (Iu_u2e + Ie_e2e).astype(bool) #Note that I'm simply summing up non-overlapping boolean values here
+            I_find_job = (Iu_u2e + Ie_e2e.astype(bool)).astype(bool) #Note that I'm simply summing up non-overlapping boolean values here
             #Sum up expected hiring across all firms
             hire_total = n_hire[t,F_set].sum()
             #If not enough expected vacancies, update:
             if np.ceil(hire_total) < I_find_job.sum():
+                #See how much new firms want to hire
+                new_firm_hiring = model.n0_star[p.z_0-1,0,0,0,0]
                 #Note that, if there're 4 workers searching and 3.5 vacancies, no firms are added.
                 #Add new firms
-                n_new = np.floor(I_find_job.sum() - hire_total).astype(int)
+                n_new = np.ceil(np.floor(I_find_job.sum() - hire_total)/new_firm_hiring).astype(int) 
                 #And, if we have 4w/2.5v, we add 1 firm
                 new_firms = np.arange(nf + 1, nf + n_new + 1)
                 F_set = np.concatenate((F_set, new_firms)) #or is this too soon? let these firms find a job first mayb?
                 nf = nf+n_new #that way, even if we update F_set by removing the closed firms, we can keep the numerator going
                 #Add these firms into aggregate hiring
                 n_hire_new = np.zeros((nt,n_new))
-                n_hire_new[t,:] = 1
+                n_hire_new[t,:] = new_firm_hiring
                 n_hire = np.concatenate((n_hire, n_hire_new),axis=1)
                 hire_total = n_hire[t,F_set].sum()
                 #print("Number of workers looking for job vs total hiring (diff caps)", I_find_job.sum(), n_hire[t,1:len(F_set)+1].sum(), n_hire[t,F_set].sum())
@@ -473,6 +505,10 @@ class Simulator:
             #Sum up the number of jun and sen workers
             n0[t,F_set] = np.bincount(F[S == 1], minlength=n0.shape[1])[F_set]
             n1[t,F_set] = np.bincount(F[S > 1], minlength=n1.shape[1])[F_set]
+            n1[n1> model.N_grid1[-1]] = model.N_grid1[-1] #So that we don't have to worry about the last bin
+            n0[n0> model.N_grid[-1]] = model.N_grid[-1] #So that we don't have to worry about the last bin
+
+
             #Update firm prod shock
             for iz in range(p.num_z):
                 Fz =  F_set[(z[t-1,F_set]==iz) & (F_set != 0)]
@@ -481,13 +517,15 @@ class Simulator:
             #Update firm production + jun wage (both are interpolations, so put in the same loop)
             for iz in range(p.num_z):
                 for in0 in range(p.num_n):
-                    for in1 in range(p.num_n):
-                        F_spec = F_set[(z[t,F_set]==iz) & (n0[t,F_set]==in0) & (n1[t,F_set]==in1)]
+                    for in1 in range(p.num_n1):
+                        F_spec = F_set[(z[t,F_set]==iz) & (n0[t,F_set]==np.floor(model.N_grid[in0]).astype(int)) & (n1[t,F_set]==np.floor(model.N_grid1[in1]).astype(int))]
                         if len(F_spec)==0:
                             continue
-                        #Jun wage requires 2d intepolation so perform it the same way. Note also that it takes today's states, not previous ones. It's the only policy variable that works like that                
-                        w[t,F_spec,0] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[iz, in0, in1, ...], bounds_error=False, fill_value=None) ((rho[t,F_spec],q[t,F_spec])) #Is this time inconsistent??? Given that prod is decided later?
+                        #Jun wage requires 2d intepolation so perform it the same way. Note also that it takes today's states, not previous ones. It's the only policy variable that works like that  
+                        coords = np.stack((rho[t-1, F_spec], q[t-1, F_spec]), axis=1)              
+                        w[t,F_spec,0] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[iz, in0, in1, ...]) (coords) #Is this time inconsistent??? Given that prod is decided later?
                         prod[t,F_spec] = np.interp(q[t,F_spec],model.Q_grid,model.prod[iz,in0,in1,0,:])
+            assert prod[t,F_set[F_set!=0]].min() > 0, "Zero production for open firms"
             #Update new hire wages not jun wages are known
             #W[I_find_job]   = w[t,F[I_find_job],0]   # jun wage. potentially could add the wage bonus here as well. Important for tracking j2j wage growth
             W[Iu_u2e]   = w[t,F[Iu_u2e],0] + bon_unemp
@@ -913,16 +951,17 @@ class Simulator:
         hdata = (sdata.set_index(['i', 't'])
                       .pipe(create_lag_i, 't', ['d'], -1)
                       .reset_index()
-                      .query('h>=0')
+                      .query('f>=0')
                       .assign(c_e2u=lambda d: d.d_f1 == Event.e2u,
                               c_j2j=lambda d: d.d_f1 == Event.j2j)
-                      .groupby(['h'])
-                      .agg( {'f': 'sum', 'i': "count", 'c_e2u': 'sum', 'c_j2j': 'sum'}))
-        hdata['f_year'] = hdata.f + np.roll(hdata.f, -1) + np.roll(hdata.f, 0) + np.roll(hdata.f, -3)
-        hdata['c_year'] = hdata.i + np.roll(hdata.i, -1) + np.roll(hdata.i, 0) + np.roll(hdata.i, -3)
+                      .groupby(['f'])
+                      .agg( {'prod': 'sum', 'i': "count", 'c_e2u': 'sum', 'c_j2j': 'sum'}))
+        hdata['prod_year'] = hdata.prod + np.roll(hdata.prod, -1) + np.roll(hdata.prod, 0) + np.roll(hdata.prod, -3)
+        hdata['c_year'] = hdata.i + np.roll(hdata.i, -1) + np.roll(hdata.i, 0) + np.roll(hdata.i, -3) #Total number of workers at the firm in a year. How do they do this though?
+        #i is an indicator of a worker, no? So aren't they just summing up the indicators here?
         hdata['c_e2u_year'] = hdata.c_e2u + np.roll(hdata.c_e2u, -1) + np.roll(hdata.c_e2u, 0) + np.roll(hdata.c_e2u, -3)
         hdata['c_j2j_year'] = hdata.c_j2j + np.roll(hdata.c_j2j, -1) + np.roll(hdata.c_j2j, 0) + np.roll(hdata.c_j2j, -3)
-        hdata['ypw'] = np.log(hdata.f_year/hdata.c_year)
+        hdata['ypw'] = np.log(hdata.prod_year/hdata.c_year) #Output per worker at the firm level within a year
         hdata['lsize'] = np.log(hdata.c_year/4) # log number of worker in the year
 
         # create year on year growth at the firm level
@@ -943,23 +982,23 @@ class Simulator:
         # compute wages at the yearly level, for stayers
         sdata['s2'] = sdata['s']
         sdata['es'] = sdata['e']
-        sdata['w_exp'] = np.exp(sdata['w'])
+        #sdata['w_exp'] = np.exp(sdata['w'])
 
-        sdata_y = sdata.groupby(['i', 'year']).agg({'w_exp': 'sum', 'h': 'min', 's': 'min', 's2': 'max', 'e': 'min', 'es': 'sum'})
+        sdata_y = sdata.groupby(['i', 'year']).agg({'w': 'sum', 'f': 'min', 's': 'min', 's2': 'max', 'e': 'min', 'es': 'sum'})
         sdata_y = sdata_y.pipe(create_year_lag, ['e', 's'], -1).pipe(create_year_lag, ['e', 'es'], 1)
         # make sure we stay in the same spell, and make sure it is employment
-        sdata_y = sdata_y.query('h>=0').query('s+3==s2')
-        sdata_y['w'] = np.log(sdata_y['w_exp'])
+        sdata_y = sdata_y.query('f>=0').query('s+3==s2')
+        #sdata_y['w'] = np.log(sdata_y['w'])
 
         # attach firm output, compute lags and growth
-        sdata_y = (sdata_y.join(hdata.ypw, on="h")
-                          .pipe(create_year_lag, ['ypw', 'w', 's', 'h'], 1)
+        sdata_y = (sdata_y.join(hdata.ypw, on="f")
+                          .pipe(create_year_lag, ['ypw', 'w', 's', 'f'], 1)
                           .assign(dw=lambda d: d.w - d.w_l1,
                                   dypw=lambda d: d.ypw - d.ypw_l1))
 
 
         return(sdata_y)
-        
+
     def computeMoments(self):
         """
         Computes the simulated moments using the simulated data
@@ -969,114 +1008,199 @@ class Simulator:
         moms = {}
  
         # extract total output
-        moms['total_output'] = sdata.query('h>0')['f'].sum()/len(sdata)
-        moms['total_wage_gross'] = np.exp(sdata.query('h>0')['w_gross']).sum()/len(sdata)
-        moms['total_wage_net'] = np.exp(sdata.query('h>0')['w_net']).sum()/len(sdata)
-        moms['total_uben'] = self.p.u_bf_m * sdata.eval('h==0').sum()/len(sdata)
+        moms['total_output'] = sdata.query('f>0')['prod'].sum()/len(sdata)
+        moms['total_wage'] = sdata.query('f>0')['w'].sum()/len(sdata) #Used to have an exponent here, but I was not taking a log of wages anywhere
+        #moms['total_wage_net'] = np.exp(sdata.query('h>0')['w_net']).sum()/len(sdata)
+        moms['total_uben'] = self.p.u_bf_m * sdata.eval('f==0').sum()/len(sdata)
 
         # ------  transition rates   -------
         # compute unconditional transition probabilities
-        moms['pr_u2e'] = sdata.eval('d==@Event.u2e').sum() / sdata.eval('d==@Event.u2e | d==@Event.uu').sum()
-        moms['pr_j2j'] = sdata.eval('d==@Event.j2j').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
-        moms['pr_e2u'] = sdata.eval('d==@Event.e2u').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
+        u2e = (sdata['d'] == Event.u2e).sum()
+        eu  = (sdata['d'] == Event.e2u).sum()
+        j2j = (sdata['d'] == Event.j2j).sum()
+        #moms['pr_u2e'] = sdata.eval('d==@Event.u2e').sum() / sdata.eval('d==@Event.u2e | d==@Event.uu').sum()
+        #moms['pr_j2j'] = sdata.eval('d==@Event.j2j').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
+        #moms['pr_e2u'] = sdata.eval('d==@Event.e2u').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
 
+        #moms['pr_u2e'] = sdata.eval('d==@Event.u2e').sum() / sdata.eval('d==@Event.u2e | d==@Event.uu').sum()
+        #moms['pr_j2j'] = sdata.eval('d==@Event.j2j').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
+        #moms['pr_e2u'] = sdata.eval('d==@Event.e2u').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
         # ------  earnings and value added moments at yearly frequency  -------
         # compute firm output and sizes at year level
         hdata = (sdata.set_index(['i', 't'])
-                      .pipe(create_lag_i, 't', ['d'], -1)
+                      .pipe(create_lag_i, 't', ['d'], -1) #This is a forward lag, so that d appears on the employed workers
                       .reset_index()
-                      .query('h>=0')
-                      .assign(c_e2u=lambda d: d.d_f1 == Event.e2u,
+                      .query('e>0') #That (using f>0) would still include closed firms though! So I should do e>0 instead?
+                      .assign(e2u=lambda d: d.d_f1 == Event.e2u,
+                              c_e2u=lambda d: d.d_f1 == Event.e2u,
                               c_j2j=lambda d: d.d_f1 == Event.j2j)
-                      .groupby(['h'])
-                      .agg( {'f': 'sum', 'i': "count", 'c_e2u': 'sum', 'c_j2j': 'sum'}))
-        hdata['f_year'] = hdata.f + np.roll(hdata.f, -1) + np.roll(hdata.f, 0) + np.roll(hdata.f, -3)
-        hdata['c_year'] = hdata.i + np.roll(hdata.i, -1) + np.roll(hdata.i, 0) + np.roll(hdata.i, -3)
-        hdata['c_e2u_year'] = hdata.c_e2u + np.roll(hdata.c_e2u, -1) + np.roll(hdata.c_e2u, 0) + np.roll(hdata.c_e2u, -3)
-        hdata['c_j2j_year'] = hdata.c_j2j + np.roll(hdata.c_j2j, -1) + np.roll(hdata.c_j2j, 0) + np.roll(hdata.c_j2j, -3)
-        hdata['ypw'] = np.log(hdata.f_year/hdata.c_year)
-        hdata['lsize'] = np.log(hdata.c_year/4) # log number of worker in the year
+                      .groupby(['f','t'])
+                      .agg( {'prod': 'max', 'i': "count", 'c_e2u': 'sum', 'c_j2j': 'sum', 'n' : 'max', 'w': 'mean'})) #Also we don't want to sum prod! It is already at the firm level so don't sum it up.
+        #Also do we want to check? Whether i == n? i is the empirical count of workers, n is the theoretical count of workers, right? So they should be equal?
+        #assert (hdata['i'] == hdata['n']).all() #Also a good check to see if I understand the data correctly
+        #This assertion is not correctionb because I am clamping the size of the firm.
+        #These ones below not needed, since the data is already at the yearly level
+        #hdata['prod_year'] = hdata.prod + np.roll(hdata.prod, -1) + np.roll(hdata.prod, 0) + np.roll(hdata.prod, -3)
+        #hdata['c_year'] = hdata.i + np.roll(hdata.i, -1) + np.roll(hdata.i, 0) + np.roll(hdata.i, -3) #wait why is this not averaged? what if the workers are repeated? then we count them multiple times?
+        #hdata['c_e2u_year'] = hdata.c_e2u + np.roll(hdata.c_e2u, -1) + np.roll(hdata.c_e2u, 0) + np.roll(hdata.c_e2u, -3)
+        #hdata['c_j2j_year'] = hdata.c_j2j + np.roll(hdata.c_j2j, -1) + np.roll(hdata.c_j2j, 0) + np.roll(hdata.c_j2j, -3)
+        #hdata['ypw'] = np.log(hdata.prod_year/hdata.c_year)
+        hdata = hdata.sort_values(['f', 't'])  
+        hdata['ypw'] = np.log(hdata['prod']/hdata['n'])
+        hdata = hdata.sort_values(['f', 't']) #Sort by firm and time, so that the lags work correctly
+        hdata['dypw'] = hdata['ypw'] - hdata.groupby('f')['ypw'].shift(1) #I want the growth in logs, right? CHECK IN THE DATA. Souchier does it in logs.
+        hdata['id_shock_diff'] = hdata['dypw']
+        hdata['id_shock_sum'] = hdata.groupby('f')['ypw'].shift(-1) - hdata.groupby('f')['ypw'].shift(2)
+        hdata['id_shock_sum_lag'] = hdata['ypw'] - hdata.groupby('f')['ypw'].shift(3)
+        #hdata['id_shock_sum'] = hdata.pipe(create_lag, 'f', ['ypw'], -1)['ypw_f1'] - hdata.pipe(create_lag, 'f', ['ypw'], 2)['ypw_l2'] #Cumulative log sum over the 3 years, 1 forward and 2 back
+        #hdata['id_shock_sum_lag'] = hdata['ypw'] - hdata.pipe(create_lag, 'f', ['ypw'], 3)['ypw_l3']
+
+        #hdata['id_shock_sum_lag'] = hdata.pipe(create_lag, 'f', ['id_shock_sum'], 1)['id_shock_sum_l1'] #This is the lagged cumulative log sum over the 3 years, 3 back
+        #And to confirm
+        #assert np.all(hdata.dropna(subset=['id_shock_sum','id_shock_sum_lag']).groupby('f')['id_shock_sum_lag'].shift(0) == hdata.dropna(subset=['id_shock_sum','id_shock_sum_lag']).groupby('f')['id_shock_sum'].shift(1)) #Weird assertion error
+        #hdata['lsize'] = np.log(hdata.c_year/4) # log number of worker in the year
+        #hdata['c_year_mean'] = hdata.c_year / 4  # average number of workers in the year
 
         # create year on year growth at the firm level
-        hdata['le2u'] = np.log(hdata['c_e2u_year'] / hdata['c_year'])
-        hdata['lj2j'] = np.log(hdata['c_j2j_year'] / hdata['c_year'])
-        hdata['lsep'] = np.log((hdata['c_j2j_year'] + hdata['c_e2u_year']) / hdata['c_year'])
-        hdata = hdata.drop(columns='i')
+        #hdata['le2u'] = np.log(hdata['c_e2u_year'] / hdata['c_year'])
+        #hdata['lj2j'] = np.log(hdata['c_j2j_year'] / hdata['c_year'])
+        #hdata['lsep'] = np.log((hdata['c_j2j_year'] + hdata['c_e2u_year']) / hdata['c_year'])
+        #hdata = hdata.drop(columns='i')
 
-        # add measurement error to ypw
-        hdata_sep = (hdata.assign(ypwe=lambda d: d.ypw + self.p.prod_err_y * np.random.normal(size=len(d.ypw)))
-                          .pipe(create_lag, 'h', ['ypw', 'ypwe', 'le2u', 'lj2j', 'lsep'], 4)
-                          .assign(dlypw=lambda d: d.ypw - d.ypw_l4,
-                                  dlypwe=lambda d: d.ypwe - d.ypwe_l4,
-                                  dle2u=lambda d: d.le2u - d.le2u_l4,
-                                  dlsep=lambda d: d.lsep - d.lsep_l4,
-                                  dlj2j=lambda d: d.lj2j - d.lj2j_l4)[['dlypw', 'dlypwe', 'dle2u', 'dlj2j', 'dlsep', 'c_year']])
+        #Andrei: Now Adding my own moments
+        #1.Aggregate transitions
+        #a) hiring rate = moms['pr_u2e'](~ average duration of a non-employment spell)
+        #Wait, or did I do a rate of new hires, aka sum(new==1)/sum(new==1 | neww==0)? I think that's what I did
+        # So here it would be (s==1 & e==1)/(e==1). This is not yearly, but I do not do this yearly in the data either!
+        moms['pr_new_hire'] = sdata.eval('s==1 & e==1').sum() / sdata.eval('e==1').sum()
+        #b) annual e2u rate = moms['pr_e2u']
+        moms['pr_e2u'] = (sdata['d'] == Event.e2u).sum() / ((sdata['d'] == Event.j2j).sum() + (sdata['d'] == Event.ee).sum() + (sdata['d'] == Event.e2u).sum())
 
-        # covaraince between change in log separation and log value added per worker
-        moms['cov_dydsep'] = hdata_sep.cov()['dlypw']['dlsep']
+        #moms['pr_e2u'] = sdata.eval('d==@Event.e2u').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
+        
+        #c) annuanl j2j rate = moms['pr_j2j']
+        moms['pr_j2j'] = (sdata['d'] == Event.j2j).sum() / ((sdata['d'] == Event.j2j).sum() + (sdata['d'] == Event.ee).sum() + (sdata['d'] == Event.e2u).sum())
+        #moms['pr_j2j'] = sdata.eval('d==@Event.j2j').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
 
-        # moments of the process of value added a the firm level
-        cov = hdata_sep.pipe(create_lag, 'h', ['dlypwe'], 4)[['dlypwe', 'dlypwe_l4']].cov()
-        moms['var_dy'] = cov['dlypwe']['dlypwe']
-        moms['cov_dydy_l4'] = cov['dlypwe']['dlypwe_l4']
+        #2. Tenure profile of wages at 7.5 years (how did Souchier do that?)
+        # In my data, I took the average wage growth for each tenure group, and then summed/multiplied them all.
+        # So here, I could take the average wage growth for each s[e==1], and then combine them all. Do I want to have low wages then?
+        #sdata.query('e==1 & s==1')['w'].log() - sdata.query('e==1 & s==1').pipe(create_year_lag, ['w'], 7).log() #This is the wage growth over 7 years
+        # Step 1: Keep only employed individuals
+        employed = sdata.sort_values(['i', 't']).copy()
+        employed['e2u_emp'] = (employed.groupby('i')['d'].shift(1) == Event.e2u)
+        employed = employed.query('e == 1')
 
-        # compute wages at the yearly level, for stayers
-        sdata['s2'] = sdata['s']
-        sdata['es'] = sdata['e']
-        sdata['w_exp'] = np.exp(sdata['w'])
+        # Step 2: Sort by individual and time
+        employed = employed.sort_values(['i', 't'])
 
-        sdata_y = sdata.groupby(['i', 'year']).agg({'w_exp': 'sum', 'h': 'min', 's': 'min', 's2': 'max', 'e': 'min', 'es': 'sum'})
-        sdata_y = sdata_y.pipe(create_year_lag, ['e', 's'], -1).pipe(create_year_lag, ['e', 'es'], 1)
-        # make sure we stay in the same spell, and make sure it is employment
-        sdata_y = sdata_y.query('h>=0').query('s+3==s2')
-        sdata_y['w'] = np.log(sdata_y['w_exp'])
+        # Step 3: Compute log wage growth (log difference)
+        employed['w_growth_rate'] = (np.log(employed['w']) - np.log(employed.groupby('i')['w'].shift(1)))   
+        #sdata['w_growth_rate'] = np.log(sdata.query('e==1').groupby('i')['w']) - np.log(sdata.query('e==1').groupby('i')['w'].shift(1)) #No this is kinda trash, it just a single growth rate 7 years back
+        #So I need to take the average wage growth for each tenure group, and then sum them up
+        #So first, I need to group by s, and then take the mean of w_growth_rate
+        #But I also need to make sure that I only take the ones with e==1, so I can do it in a query
+        #sdata['w_growth_rate_tenure']=sdata.query('e==1').groupby('s')['w_growth_rate'].mean()
+        #Now I wanna take the average wage growth for each tenure group then sum them up
+        moms['avg_w_growth_7'] = employed.groupby('s')['w_growth_rate'].mean().sum()
+        #So what I want is the following: get the growth rate
+        #3. Productivity moments
+        #a) s.d. of firm productivity growth (take sd of dypw?) yep, this is exactly what we do in the data
+        moms['sd_dypw'] = hdata['dypw'].std()
+        #b) annual persistence of firm productivity (take autocovariance of ypw?)
+        #moms['autocov_dypw'] = hdata.pipe(create_year_lag, ['ypw'], 1).pipe(create_year_lag, ['ypw'], 2)[['ypw', 'ypw_l1', 'ypw_l2']].cov()['ypw']['ypw_l1'] #This is kinda weird? This was suggested code, but I don't get it. How does it work? Detailed answer: it takes the lagged ypw, and then computes the covariance between the current and lagged ypw. So it is like a persistence measure, but not really an autocorrelation, because it is not normalized by variance
+        hdata['ypw_l1'] = hdata.groupby('f')['ypw'].shift(1)
+        moms['autocov_ypw'] = hdata.cov()['ypw']['ypw_l1']
+        #4. Firm dynamics moments
+        #a) average firm size (mean of c_year?)
+        moms['avg_firm_size'] = hdata['i'].mean() #Average number of workers in a firm in a year
+        #b) ratio of jobs created by opening firms (need to denote opening firms, then sum up c_u2e_year (doesn't exist yet) for them divide by c_u2e_year for everyone)
+        #Wait, do I want u2e? I don't think that's what I did in the data, did I? It may have been jut a ratio of new==1 between opening firms and all firms
+        #First denote opening firms, that is, firms that for the first time (not the second or third) have a non-zero t
+        # Get the first period each firm appears in
+        firm_entry = sdata.query('i > 0').groupby('f')['t'].min()
 
-        # attach firm output, compute lags and growth
-        sdata_y = (sdata_y.join(hdata.ypw, on="h")
-                          .pipe(create_year_lag, ['ypw', 'w', 's'], 1)
-                          .assign(dw=lambda d: d.w - d.w_l1,
-                                  dypw=lambda d: d.ypw - d.ypw_l1))
+        # Map this back to each row in sdata
+        sdata['firm_entry_time'] = sdata['f'].map(firm_entry)
 
-        # make sure that workers stays in same firm for 2 periods
-        cov = sdata_y.query('s == s_l1 + 4')[['dw', 'dypw']].cov()
-        moms['cov_dydw'] = cov['dypw']['dw']
+        # Compare: Is this the firm's first period?
+        sdata['opening_firm'] = sdata['t'] == sdata['firm_entry_time']
+        moms['ratio_jobs_opening'] = sdata.query('opening_firm').eval('s==1 & e==1').sum() / sdata.eval('s==1 & e==1').sum()
+        #c?) proportion of jobs created by firms of certain size (>10/>100 etc. do I need this? if I fix the DRS factor, then not)
+        #5. HMQ moments
+        #a) Most basic approach: passthrough of productivity wrt layoffs. That's just one moment though. Also this is quite close to one of my untargeted regressions, so maybe I shouldn't use it
+        #b) response of sen/junior wage ratio to layoffs. doesn't work well with the 2 tenure steps imo, given that juniors have the bonus wage as well, which might mess things up
+        #Can consider it in a 3-step scenario though? And compare this across 2nd and 3rd steps? Or maybe consider wages without the bonus part?
+        #c) Labor share approach: I don't have any capital though??? So what would I look for? I guess my production IS the labor share? So look at how prod and ypw change with layoffs?
+        # Yeah, maybe do the labor share approach, gives me exactly two moments
+        # Do I do the real labor share here? Or just the prod and ypw? Because in the data it was also kinda meh
+        # First, do the fake one, just working with prod and ypw. So need to regress prod and ypw on layoffs, and then take the coefficients
+        # Also though, do I regress on EU, or on EU_rate? Let's try regressing on EU
+        #Can I take a forward lag of e2u to get the e2u for employed workers? I think I can, so let's do that
+        #hdata['e2u'] = ( sdata['d'] == Event.e2u ).astype(int)
+        #hdata['e2u_emp'] = hdata.pipe(create_lag, 'i', ['c_e2u'], -1)['c_e2u'] #This is the e2u for employed workers, so it is the forward lag of e2u
+        #hdata_emp = sdata.query('e==1').copy() #Keep only employed workers. But wait, where does even e2u reside? Doesn't it reside only with unemployed workers? Yep, so the issue that I have is that I don't have e2u for employed workers, like I do in the data
+        #Now we regress ypw on e2u_emp
+        #employed['e2u_emp'] = (employed['d'] == Event.e2u) #ahhh fuck, need to get a lag first!!!
+        employed['ypw'] = np.log(employed['prod']/employed['n'])
+        model_ypw = feols('ypw ~ 1 + e2u_emp', data=employed)
+        moms['ypw_layoffs'] = model_ypw.coef()['e2u_emp']
+        model_prod = feols('prod ~ e2u_emp', data=employed)
+        moms['prod_layoffs'] = model_prod.coef()['e2u_emp']
 
-        # Extract 2 U2E transitions within individual
-        wid_2spells = (sdata_y.query('e_l1<1')
-                            .assign(w1=lambda d: d.w, w2=lambda d: d.w, count=lambda d: d.h)
-                            .groupby('i')
-                            .agg({'count':'count','w1':'first','w2':'last'})
-                            .query('count>1'))
-        cov = wid_2spells[['w1','w2']].cov()
-        moms['var_w_longac'] = cov['w1']['w2']
+        #d) Fabrice suggestion: distribution of layoffs across firm productivity. What would the firm productivity be? I guess the firm output per worker, so ypw?
+        # So in the data, I could take terciles of productivity, and then compute the share of layoffs in each tercile. And then same here. Then, if I do terciles, can get rid of the aggregate moment
+        #So here, first get the terciles of ypw 
+        hdata['ypw_tercile'] = pd.qcut(hdata['ypw'], 3, labels=False)
+        #Then compute the share of layoffs in each tercile
+        hdata['layoff_rate'] = hdata['c_e2u'] / hdata['i']
+        moms['layoffs_share_tercile'] = (hdata.groupby('ypw_tercile')['layoff_rate']
+                                                .mean().rename('layoffs_share_tercile'))
 
-        cov = sdata_y.pipe(create_year_lag, ['w'], 4)[['w', 'w_l4']].cov()
-        moms['var_w'] = sdata_y['w'].var()
-
-        # lag wage growth auto-covariance
-        cov = sdata_y.pipe(create_year_lag, ['dw'], 1).pipe(create_year_lag, ['dw'], 2)[['dw', 'dw_l1', 'dw_l2']].cov()
-        moms['cov_dwdw_l4'] = cov['dw']['dw_l1']
-        moms['cov_dwdw_l8'] = cov['dw']['dw_l2']
-        moms['var_dw'] = cov['dw']['dw']
-
-        # compute wage growth J2J and unconditionaly
-        sdata_y.query('s == s_l1 + 4')['dw'].mean()
-        moms['mean_dw'] = sdata_y['dw'].mean()
-        sdata_y.pipe(create_year_lag, ['w'], 2).eval('w - w_l2').mean()
-
-        # compute u2e, ee gap
-        moms['w_u2e_ee_gap'] = sdata_y['w'].mean() - sdata_y.query('es_l1==0')['w'].mean()
-
-        # compute wage growth given employer change
-        moms['mean_dw_j2j_2'] = (sdata_y
-                                    .pipe(create_year_lag, ['w', 'h', 'e'], 2)
-                                    .query('e_l2 == 1').query('h_l2 + 8 != h')
-                                    .assign(diff=lambda d: d.w - d.w_l2)['diff'].mean())
-
-        del wid_2spells 
-        del sdata_y 
-
+        #del wid_2spells 
+        #del sdata_y 
+        self.hdata = hdata
+        self.employed = employed
         self.moments = moms
+        return self
+
+    def model_evaluation(self):
+        """
+        Computes the simulated NONTARGETED moments using the simulated data
+        I might also want to produce the plots here, if I intend to replicate any
+        :return:
+        """
+        employed = self.employed
+        moms_untarg = {}
+
+        #Now I want to run my regressions. First, let's run basic wages and layoffs across worker tenure in first-differences.
+        #Get log wage growth
+        #self.hdata['w_growth'] = np.log(self.hdata['w']) - np.log(self.hdata.pipe(create_lag_i, 't', ['w'], 1)['w_l1'])
+        # Merge hdata['id_shock_sum'] onto employed using firm ID and time
+        employed = employed.merge(self.hdata.reset_index()[['f', 't', 'id_shock_sum', 'id_shock_diff']], on=['f', 't'], how='left')
+
+        # Regress log wage growth on the interaction between tenure and firm productivity shock 
+        #We get hdata['id_shock_sum'] as the cumulative log shock over the 3 years
+        employed['tenure'] = employed['s']
+        model_wage_ten = feols('w_growth_rate ~ i(tenure, id_shock_sum)', data=employed)
+        moms_untarg['wage_pass_ten'] = model_wage_ten.coef() #This is HUGE so far. more than 1 for S==2!!!  Even bigger if I use id_shock_diff??? Surprising ngl
+        model_wage_ten = feols('w_growth_rate ~ id_shock_sum + tenure * id_shock_sum', data=employed)
+        moms_untarg['wage_pass_ten_simple'] = model_wage_ten.coef()  #positive baseline effect of id_shock_sum, POSITIVE effect of tenure (WRONG!), negative interaction (WRONG!!!!!!!)    
+        #It's also very weird after the first 2 tenures for some reason
+        #Ah shit, should I actually be looking at the first 2 guys?? 
+        # The very first tenure they've got the bonus wage
+        # The second year they become seniors, which is a huge huge jump in wages, too
+        # But past that it's immediately negative??? I guess, a positive shock now means new hirings?
+        # And then you don't wanna raise wages much in anticipation of future seniors? That kinda sucks ngl. 
+        # Is there any way to deal with this outside of more steps? Maybe I don't let firms internalize the combination???
+        # But then the value function is quite literally incorrect! Okay gotta focus some more on Neural Nets ig
+        model_e2u_ten = feols('e2u_emp ~ C(tenure)', data=employed)
+        moms_untarg['sep_ten'] = model_e2u_ten.coef() #So far it's only juniors getting fired. Surprisingly, their firing rates are not very high, only 8%      
+        model_e2u_pass_ten = feols('e2u_emp ~ i(tenure, id_shock_sum)', data=employed)
+        moms_untarg['sep_pass_ten'] = model_e2u_pass_ten.coef()        
+        model_e2u_pass_ten = feols('e2u_emp ~ id_shock_sum + tenure * id_shock_sum', data=employed)
+        moms_untarg['sep_pass_ten_simple'] = model_e2u_pass_ten.coef()  #exactly as we would expect! Negative id_shock_sum coef (-0.08), negative basic tenure coef (very small though? -0.002), POSITIVE interaction term, meaning that layoffs of seniors respond less to shock     
+        self.moments_untargeted = moms_untarg
         return self
 
     def clean(self):
@@ -1116,7 +1240,7 @@ class Simulator:
         return dd 
 
     def get_moments(self):
-        return self.moments
+        return self.moments, self.moments_untargeted
 
     def simulate_moments_rep(self, nrep):
         """
@@ -1126,17 +1250,53 @@ class Simulator:
         """
 
         moms = pd.DataFrame()
+        moms_unt = pd.DataFrame()
         self.log.info("Simulating {} reps".format(nrep))
         for i in range(nrep):
             self.log.debug("Simulating rep {}/{}".format(i+1, nrep))
-            mom = self.simulate().computeMoments().get_moments()
+            mom,mom_unt = self.simulate_val().computeMoments().model_evaluation().get_moments()
             moms = pd.concat([ moms, pd.DataFrame({ k:[v] for k,v in mom.items() })] , axis=0)
+            moms_unt = pd.concat([ moms_unt, pd.DataFrame({ k:[v] for k,v in mom_unt.items() })] , axis=0)
             self.clean()
         self.log.info("done simulating")
         moms_mean = moms.mean().rename('value_model')
         moms_var = moms.var().rename('value_model_var')
+        moms_unt_mean = moms_unt.mean('regressions')
+        moms_unt_var = moms_unt.var().rename('regressions_var')
 
-        return(moms_mean, moms_var)
+        return(moms_mean, moms_var,moms_unt_mean,moms_unt_var)
+
+#Okay, gotta debug
+def get_results_for_p(p,all_results):
+    # Create the key as a tuple
+    #key = (p.num_z,p.num_v,p.num_n,p.n_bar,p.num_q,p.q_0,p.prod_q,p.hire_c,p.k_entry,p.k_f,p.prod_alpha,p.dt)
+    key = (p.num_z,p.num_v,p.num_n,p.n_bar,p.num_q,p.q_0,p.prod_q,p.hire_c,p.prod_alpha,p.dt,p.u_bf_m)
+    # Check if the key exists in the saved results
+    if key in all_results:
+        print(key)
+        return all_results[key]
+    else:
+        print(f"No results found for p = {key}")
+        return None
+from primitives import Parameters
+p = Parameters()
+import pickle
+import matplotlib.pyplot as plt
+import numpy as np
+from plots import Plots
+import cProfile
+import pstats
+import os
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(script_dir, "model_GE.pkl")
+print("Loading model from:", model_path)
+with open(model_path, "rb") as file:
+    all_results = pickle.load(file)
+model = get_results_for_p(p,all_results)
+sim = Simulator(model,p)
+sim.simulate_moments_rep(1)
+
 
 """ 
 Old Notes

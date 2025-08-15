@@ -4,7 +4,7 @@
 \subsubsection*{Proof of Proposition \ref{prop:wagegrowth}} \label{proof:wagegrowth}
 The proposition is derived from the first-order conditions of the firm's problem.
 \begin{proof}
-    Consider the problem from Lemma \ref{lemma_tenure}.
+    Consider the problem from Lemma \ref{firmproblem}.
     The FOC for $v'_{k_1}$ yields (denote $\rho_k$ the shadow cost of $PK_k$ and $\omega_k$ the shadow cost of the expectation condition):
     \[\rho_k\beta(1-s_k)(1-p(v'_{k+1}))-\omega_k+\beta n_k(1-s_k)\frac{\partial (1-v(v'_{k+1}))}{\partial v'_{k+1}}E_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial n'_{k+1}}=0\]
     To develop this further, I use the FOC for $w_k$:
@@ -20,18 +20,28 @@ The proposition is derived from the first-order conditions of the firm's problem
 \end{proof}
 \subsubsection*{Proof of Proposition \ref{prop:targetwage}} \label{proof:targetwage}
   \begin{proof}
-I make strong use of Proposition~\ref{prop:wagegrowth}. \\
-  First note that wages are constant workers for promised $v^*$: $\frac{1}{u'(w'_{v^*})} - \frac{1}{u'(w_{v^*})} = 0$, meaning that $w'_{v^*}=w_{v^*}\equiv w^*_{v^*}$.
-  Furthermore, as the marginal value $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v)}$ is decreasing in $v$, one can deduce that $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} >0\: \forall \: k:v_k < v^*$ and, similarly, $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} < 0 \: \forall\: k:v_k > v^*$. This yields us the first result: wage change is non-zero everywhere besides $v^*$ and is thus larger in the absolute sense. 
 
-  For the second result, it is suffice to note that the marginal value $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v)}$ is decreasing in $v$ \textcolor{red}{also need that $\eta(v'_{k+1})$ is descreasing, but that is a quantitative result, not theoretical...}. Then $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} > \frac{1}{u'(w'_{\bar{k}+1})} - \frac{1}{u'(w_{\bar{k}})}$. Rearranging gives the result.
+%I make strong use of Proposition~\ref{prop:wagegrowth}. \\
+  %First note that wages are constant workers for promised $v^*$: $\frac{1}{u'(w'_{v^*})} - \frac{1}{u'(w_{v^*})} = 0$, meaning that $w'_{v^*}=w_{v^*}\equiv w^*_{v^*}$.
+  %Furthermore, as the marginal value $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v)}$ is decreasing in $v$, one can deduce that $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} >0\: \forall \: k:v_k < v^*$ and, similarly, $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} < 0 \: \forall\: k:v_k > v^*$. This yields us the first result: wage change is non-zero everywhere besides $v^*$ and is thus larger in the absolute sense. 
+
+  %For the second result, it is suffice to note that the marginal value $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v)}$ is decreasing in $v$ \textcolor{red}{also need that $\eta(v'_{k+1})$ is descreasing, but that is a quantitative result, not theoretical...}. Then $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} > \frac{1}{u'(w'_{\bar{k}+1})} - \frac{1}{u'(w_{\bar{k}})}$. Rearranging gives the result.
   \end{proof}
-\subsubsection*{Proof of Proposition \ref{prop:layoffs}} \label{proof:layoffs}
-This is a straightforward application of the FOC with respect to the layoffs.
+\subsubsection*{Proof of Proposition \ref{prop:qualityconv}} \label{proof:qualityconv}
+I start by describing the FOC with respect to layoffs $s_k$:
 \begin{proof}
     Consider the case where $s_k>0$. Then
   \[-\beta n_k (1-p(v'_{k+1}))E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}} + \beta E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial z'_{k+1}} \frac{\partial z'_{k+1}}{\partial s_k}- \rho_k \beta (U-R(v'_{k+1}))=0\]  
-  Note that the FOC with respect to $w_k$ yields $\rho_k = \frac{n_k}{u'(w_k)}$ and divide by $\beta n_k$ to finalize the proof.
+  Note that the FOC with respect to $w_k$ yields $\rho_k = \frac{n_k}{u'(w_k)}$ and divide by $\beta n_k$ to get the FOC in the Propositon. \\
+For the further results, I rewrite the firm state $(y,\{n_k,v_k,z_k\})$ into $(y,\{\underline{n}_k,\bar{n}_k,v_k\})$, where $\bar{n}_k = z_k n_k$ and $\underline{n}_k = (1-z_k) n_k$. \\
+I focus on the case where $\underline{n}_k > 0$ and $s_k(\underline{n}_k + \bar{n}_k) \leq \underline{n}_k$, that is, firm has not yet fired all the bad matches with the cohort (in the previous FOC, this is equivalent to $ \frac{\partial z'_{k+1}}{\partial s_k}>0$). The marginal value of firing a worker is then
+\[-\frac{R(v'_{k+1})-U}{u'(w_k)} - (1 - p(v'_{k+1}))E_{y'|y}\frac{\partial J(y',\{\underline{n'}_k,\bar{n'}_k,v'_k\})}{\partial \underline{n}'_{k+1}}\]
+To show that cohorts with lower promised values are more subject to layoffs, I take a derivative of this FOC with respect to the promised value $v_k$.%(\textcolor{red}{A bit imprecise! May have a case where a lower value cohort has very few bad matches, so firing them all is still less than firing a couple other bad matches in a higher value cohort. The prop should be something like $s_k(1- z_k) n_k \geq s_{k'}(1-z_{k'})n_{k'}$. That is, a total number of bad fired matches}), 
+The only component in the FOC directly dependent on $v_k$ is $\frac{1}{u'(w_k)}$, where $w_k = u^{-1}(v_k - \beta[s_kU + (1-s_k)R(v'_{k+1})]).$ Due to the $CRRA$ utility function, we find that $\frac{1}{u'(w_k)}$ is increasing in $v_k$, and, therefore, the marginal profit of firing workers is decreasing in $v_k$. \\
+Lastly, I show that layoffs are equally dependent on the quality of any cohort (as long as $z_k<1$). First, I note that quality directly appears only in the marginal value of low quality workers 
+\[\frac{\partial J(y',\{\underline{n}'_k,\bar{n}'_k,v'_k\})}{\partial \underline{n}'_{k+1}} = y'[F'_1(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})-F'_2(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k}) \frac{\sum n'_k}{(\sum n'_k z'_k)^2}-w'_{k+1} + \beta E_{y''|y'}\frac{\partial J(y'',...)}{\partial \underline{n}''_{k+2}}\frac{\partial \underline{n}''_{k+2}}{\partial \underline{n}'_{k+1}}\]
+Next, I note that all the quality states $\{z_k\}$ contribute in the same manner to $\frac{\partial J(y',\{\underline{n}'_k,\bar{n}'_k,v'_k\})}{\partial \underline{n}'_{k+1}}$, no matter the cohort $k$. Therefore, to first-order, the marginal value of firing a worker is equally dependent on all the quality states. \\
+\textcolor{red}{I don't think I need to assume $s_k(\underline{n}_k + \bar{n}_k) \leq \underline{n}_k$. I can write the proof for both cases, and the results should be there for either one.}
 \end{proof}
 
 \subsubsection*{Proof of Proposition \ref{prop:wage_cuts}} \label{proof:wage_cuts}

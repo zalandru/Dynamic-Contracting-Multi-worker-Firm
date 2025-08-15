@@ -366,7 +366,7 @@ class MultiworkerContract:
         print("Ji shape", Ji.shape)
         print("W1i shape", W1i.shape)        
         # create representation for J1p
-        J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
+        #J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
 
 
         EW1_star = np.copy(Ji)
@@ -392,7 +392,7 @@ class MultiworkerContract:
         error_js = 1
         
         # evaluate J1 tomorrow using our approximation
-        Jpi = J1p.eval_at_W1(W1i[...,1])
+        #Jpi = J1p.eval_at_W1(W1i[...,1])
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = np.copy(W1i)
@@ -562,8 +562,8 @@ class MultiworkerContract:
                 if update_eq:
                     # -----  check for termination ------
 
-                    error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
-                    print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)                   
+                    #error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
+                    print("Errors:",  error_j1i,  error_w1, error_js)                   
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
@@ -575,23 +575,23 @@ class MultiworkerContract:
                 else:
                     # -----  check for termination ------
                     # Updating J1 representation
-                    error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[...,1], Ji)
-                    error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
-                    print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)    
+                    #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[...,1], Ji)
+                    #error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
+                    print("Errors:",  error_j1i,  error_w1, error_js)    
                     if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
 
             if (ite_num % 25) == 0:
                 # Updating J1 representation
-                error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[...,1], Ji)
-                error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
-                print("Errors:", error_j1p_chg, error_j1i, error_j1g, error_w1, error_js)    
-                self.log.debug('[{}] W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}   rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
-                                     ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
+                #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i[...,1], Ji)
+                #error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i[...,1]), 100)
+                print("Errors:",  error_j1i, error_w1, error_js)    
+                #self.log.debug('[{}] W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}   rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
+                                     #ite_num, error_w1, error_j1i,  error_js, self.js.rsq() ))
 
-        self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
-                                     ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
+        #self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
+                                    # ite_num, error_w1, error_j1i,   error_js, self.js.rsq() ))
         return Ji,W1i,EW1_star,pc_star,n0_star, n1_star
 
     def J_sep(self,Jg=None,Wg=None,update_eq=0):    
