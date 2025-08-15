@@ -77,13 +77,14 @@ class JobSearch:
     Class that captures the optimal search decision. Update it using a P,V combination. Then ask for the value
     of the job where to apply and the associated probability for any expected value e.
     """
-    def __init__(self):
-        self.x = torch.tensor([0,-1,-1],dtype = torch.float32)  # parameters of the approximation
-        self.e0 = 0         # e value where p crosses 0
+    def __init__(self, device=torch.device("cpu")):
+        self.device = device
+        self.x = torch.tensor([0,-1,-1],dtype = torch.float32, device = device)  # parameters of the approximation
+        self.e0 = torch.tensor(0,dtype = torch.float32, device = device)          # e value where p crosses 0
         self.e_asy = 0      # asymptotic point in function
         self.input_P = 0
         self.input_V = 0
-        self.re_cst = 0
+        self.re_cst = torch.tensor(0,dtype = torch.float32, device = device)
         self.log = logging.getLogger('JobSearch')
         self.log.setLevel(logging.INFO)
         self.update_last = np.zeros(3)
@@ -94,7 +95,7 @@ class JobSearch:
     def update(self,V,P,disp=False,type=0,relax=0):
 
         # we first compute the maximization problem
-        self.x = self.x.numpy()
+        self.x = self.x.cpu().numpy()
         nv = P.size
         self.input_Ps = np.zeros(nv)
         self.input_Vs = np.zeros(nv)
@@ -152,9 +153,9 @@ class JobSearch:
         #    self.mse = np.power(self.input_Ps2 - self.pe(self.input_V2), 2).mean()
         #    self.rsq = 1.0 - self.mse / np.power(self.input_Ps2, 2).mean()
         #self.log.debug("done with optimization")
-        self.x = torch.from_numpy(self.x)  
+        self.x = torch.from_numpy(self.x).to(self.device)  
         if isinstance(self.e_asy,np.ndarray):
-            self.e_asy = torch.tensor(self.e_asy,dtype=torch.float32)      
+            self.e_asy = torch.tensor(self.e_asy,dtype=torch.float32, device = self.device)      
         self.e0 = -(-self.x[0]/self.x[1]) **( 1/self.x[2]) + self.e_asy #Andrei: This is the crossing point of the function, where p(v) = 0.
         #self.e0 = torch.tensor(self.e0,dtype=torch.float32)      
         #p=0 => x[0]+x[1]*abs(e0-e_asy)^x[2]=0 => abs(e0-e_asy)^x[2]=-x[0]/x[1] => e0= e_asy - (-x[0]/x[1])^(1/x[2])
@@ -174,7 +175,7 @@ class JobSearch:
 
         e = torch.minimum(e, self.e0)
         pe = self.x[0] + self.x[1] * torch.abs(e - self.e_asy) ** self.x[2]
-        return torch.maximum(pe,torch.tensor(0.0,dtype=torch.float32))
+        return torch.clamp(pe, min=0.0) #Andrei: this is the probability of finding a job, p(v(e)) in the paper. Note that it is always non-negative, so we take the maximum with 0.
 
     def pe_deriv(self,e):
         """
@@ -208,7 +209,7 @@ class JobSearch:
         return torch.minimum(ve,self.e0)
 
     def get_params(self):
-        return(np.array([ self.re_cst,  self.x[0], self.x[1] , self.x[2], self.e_asy, self.e0 ]))
+        return(np.array([ self.re_cst.cpu(),  self.x[0].cpu(), self.x[1].cpu() , self.x[2].cpu(), self.e_asy, self.e0.cpu() ]))
 
 class JobSearchArray:
     """
@@ -216,13 +217,13 @@ class JobSearchArray:
     can solve for the value of being unemployed.
     """
 
-    def __init__(self):
+    def __init__(self, device=torch.device("cpu")):
         self.log = logging.getLogger('JobSearch')
         self.log.setLevel(logging.INFO)
 
          #Andrei: Number of worker types
-        self.jsa = JobSearch()
-
+        self.device = device
+        self.jsa = JobSearch(device=self.device)
         self.Vf_U   = np.zeros(1)   # flow value of unemployment
         self.Vf_vu  = np.zeros(1)   # value unemployed applies to
         self.Pr_u2e = np.zeros(1)  # u2e probablity
@@ -255,8 +256,8 @@ class JobSearchArray:
         plt.show()
 
     def solve_search_choice(self,e):
-        pe = torch.zeros(e.shape)
-        re = torch.zeros(e.shape)
+        pe = torch.zeros(e.shape, device = e.device)
+        re = torch.zeros(e.shape, device = e.device)
         if len(e.shape)==2: #Andrei: why is e either 1 or 3 dimensional? Because e is either from unemployment (1d) or from employment (3d)
 
             pe[:, :] = self.jsa.pe(e[:, :])

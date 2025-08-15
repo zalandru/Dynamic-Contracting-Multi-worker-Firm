@@ -26,7 +26,7 @@ class Parameters:
         self.num_x  = 15      # Number of points of support for worker productivity
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
         self.num_np = 5       # Number of non-permanent levels
-        self.num_z  = 3      # Number of points for match productivity
+        self.num_z  = 5      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
         self.num_n  = 6     # Number of points of support for the number of workers
         self.n_bar = 5       # Number of workers in the firm        
@@ -37,7 +37,7 @@ class Parameters:
         self.dt     = 1.0 #0.25    # Time as a Fraction of Year
 
         # Vacancy cost
-        self.hire_c = 5.0
+        self.hire_c = 50.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
         self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire

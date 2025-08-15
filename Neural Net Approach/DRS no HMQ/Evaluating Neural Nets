@@ -1,0 +1,375 @@
+#Neural Network solver for the CRS model, with both sup and value networks
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.func import jacrev, vmap
+from tqdm import tqdm
+import numpy as np
+from scipy.stats import lognorm as lnorm
+from ContinuousContract import ContinuousContract
+from primitives import Parameters
+from primitives_CRS import Parameters as p_crs
+import opt_einsum as oe
+from primitives import Preferences
+from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
+from search_tensor import JobSearchArray
+import matplotlib.pyplot as plt
+from time import time
+import math
+import copy
+from ranger21 import Ranger21 as RangerOptimizer
+from plotter import LossPlotter
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from time import time
+import torch.optim.lr_scheduler as lr_scheduler
+from pcgrad import PCGrad
+p = Parameters()
+tensor = torch.tensor
+# Set random seeds for reproducibility
+torch.manual_seed(0)
+np.random.seed(0)
+ax = np.newaxis
+#Tensor type
+type = torch.float32
+class FOCresidual:
+    """Class to compute the FOC residual for the CRS model"""
+    def __init__(self, bounds_processor, K, p, cc):
+        self.bounds_processor = bounds_processor  # Store bounds_processor
+        self. K = K
+        self.p = p
+        self.deriv_eps = 1e-3 # step size for derivative
+        # Model preferences initialized by the same parameter object.
+        self.pref = Preferences(input_param=self.p)
+        # Worker and Match Productivity Heterogeneity in the Model
+        self.Z_grid = self.construct_z_grid()   # Create match productivity grid
+
+        # Production Function in the Model
+        self.fun_prod = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
+        self.fun_prod = tensor(self.fun_prod,dtype=type)
+        # Unemployment Benefits across Worker Productivities
+        self.unemp_bf = self.p.u_bf_m
+
+        # Transition matrices
+        self.Z_trans_mat = createPoissonTransitionMatrix(self.p.num_z, self.p.z_corr)
+        self.Z_trans_tensor = tensor(self.Z_trans_mat, dtype=torch.float32)
+        # Value Function Setup
+        self.w_grid = np.linspace(self.unemp_bf, self.fun_prod.max(), self.p.num_v )
+        self.rho_grid=tensor(1/self.pref.utility_1d(self.w_grid), dtype = type)
+        # Normalize rho_grid to tensor for model input
+        self.rho_normalized = self.bounds_processor.normalize_rho(self.rho_grid).unsqueeze(1).requires_grad_(True)
+
+        self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
+        self.v_0 = tensor(self.v_grid[0],dtype=type)
+
+        self.simple_J = torch.zeros((self.p.num_z,self.p.num_v), dtype = type)
+        self.simple_J= (self.fun_prod[:,ax] -self.pref.inv_utility(tensor(self.v_grid[ax,:]*(1-self.p.beta),dtype = type)))/ (1-self.p.beta)
+        self.simple_Rho = self.simple_J + self.rho_grid[ax,:] * tensor(self.v_grid[ax,:], dtype = type)#We do indeed need to work with Rho here since we're taking W via its derivatives
+        #Apply the matching function: take the simple function and consider its different values across v.
+        self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
+            np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
+        #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
+        if cc is None:
+            self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
+            self.js.update(self.v_grid[:], self.prob_find_vx.numpy()) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+        else:
+            self.js = cc.js
+    def construct_z_grid(self):
+        """
+            Construct a grid for match productivity heterogeneity.
+        """
+
+        exp_z = np.tile(np.linspace(0, 1, self.p.num_z + 2)[1:-1][:],
+                        (1))
+
+        return lnorm.ppf(q=exp_z, s=self.p.prod_var_z)    
+
+class ValueFunctionNN(nn.Module):
+    """Neural network to approximate the value function"""
+    def __init__(self, state_dim, num_y, hidden_dims=[40, 30, 20, 10]):
+        super(ValueFunctionNN, self).__init__()
+        
+        # Build layers
+        layers = []
+        input_dim = state_dim
+        # shared trunk
+        for h in hidden_dims:
+            layers.append(nn.Linear(input_dim, h))
+            # Consider adding layer normalization for stability
+            #layers.append(nn.LayerNorm(h))
+            layers.append(nn.Tanh())
+            input_dim = h
+        self.trunk = nn.Sequential(*layers)
+
+        # head for values: [B, num_y]
+        self.value_head = nn.Sequential(
+        nn.Linear(input_dim, num_y),
+        nn.Softplus() #So that these are increasing in y
+        )
+        self._init_weights()
+        self.state_dim = state_dim
+        self.num_y     = num_y
+    def _init_weights(self):
+        # 1) Trunk: He/Kaiming
+        for layer in self.trunk:
+            if isinstance(layer, nn.Linear):
+                torch.nn.init.xavier_uniform_(layer.weight, gain=torch.nn.init.calculate_gain('tanh'))
+                torch.nn.init.zeros_(layer.bias)
+        for layer in self.value_head:
+            if isinstance(layer, nn.Linear):
+                nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
+                nn.init.constant_(layer.bias, 0.01)            
+    def forward(self, x):
+        B = x.size(0)
+        features = self.trunk(x)                    # [B, hidden_dims[-1]]
+        values   = self.value_head(features)        # [B, num_y]
+        values = torch.cumsum(values, dim = 1) #This is the cumulative sum of the values across num_y
+
+        #grad_flat = self.grad_head(features)        # [B, num_y * state_dim]
+        #grads = grad_flat.view(B, self.num_y, self.state_dim)  # [B, num_y, state_dim]
+        return {
+            'values': values
+        }
+
+class PolicyNN(nn.Module):
+    """Neural network to approximate a multi-dimensional sup:
+       - values: multiple values per productivity state y across a predefined set of K_v
+       - hiring decision: probability per productivity state y
+    """
+    def __init__(self, state_dim, num_y, K_v, hidden_dims=[40, 30, 20, 10], cc=None):
+        super(PolicyNN, self).__init__()
+        self.K_v = K_v #Number of Value-related policies
+        self.num_y = num_y
+
+        # shared trunk
+        layers = []
+        input_dim = state_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(input_dim, hidden_dim))
+            # Consider adding layer normalization for stability
+            #layers.append(nn.LayerNorm(hidden_dim))
+            layers.append(nn.Tanh())
+            input_dim = hidden_dim
+        self.trunk = nn.Sequential(*layers)
+
+        # future value v' head: output num_y * num_Kv values, then reshape
+        self.value_head = nn.Sequential(
+            nn.Linear(input_dim, num_y * self.K_v * num_y), #Policy v'_{y',k}(y), for each [y,k,y']
+            nn.Softplus()
+        )
+
+
+        self.hiring_head = nn.Sequential(
+            nn.Linear(input_dim, num_y),
+            nn.Softplus()
+        )
+        # Apply activation‐specific initialization
+        self._init_weights()
+    def _init_weights(self):
+        # 1) Trunk: He/Kaiming
+        #for seq in (self.trunk, self.value_adapter, self.hiring_adapter):
+        for layer in self.trunk:
+        #    for layer in seq:
+                if isinstance(layer, nn.Linear):
+                    torch.nn.init.xavier_uniform_(layer.weight, gain=torch.nn.init.calculate_gain('tanh'))
+                    torch.nn.init.zeros_(layer.bias)
+        # 2) Hiring_head: Xavier/Glorot
+        for seq in (self.hiring_head, self.value_head):
+            for layer in seq:
+                if isinstance(layer, nn.Linear):
+                    nn.init.xavier_uniform_(layer.weight, gain=1.0)
+                    nn.init.constant_(layer.bias, 0.01)
+    def forward(self, x):
+        # x: [B, state_dim]
+        B = x.size(0)
+        features = self.trunk(x)  # [B, hidden_dims[-1]]
+
+
+
+        # values: reshape to [B, num_y, num_Kv]
+        #hv = self.value_adapter(features)  # [B, hidden_dims[-1]]
+        values_flat = self.value_head(features)            # [B, num_y * num_Kv]
+        values = values_flat.view(B, self.num_y, self.K_v, self.num_y)  # [B, num_y, num_Kv]
+        values = torch.cumsum(values, dim = 1) #this is the cumulative sum of the values across num_y       
+        # hire probabilities: [B, num_y]
+        #hh = self.hiring_adapter(features)  # [B, hidden_dims[-1]]
+        hiring = self.hiring_head(features)          # [B, num_y]
+        hiring = torch.cumsum(hiring, dim = 1)
+
+        return {
+            'values': values,
+            'hiring': hiring
+        }
+
+
+class StateBoundsProcessor:
+    def __init__(self, lower_bounds, upper_bounds):
+        """
+        Initialize with lower and upper bounds for each state dimension
+        
+        Args:
+            lower_bounds: List or tensor of lower bounds [x_1, x_2, ..., x_20]
+            upper_bounds: List or tensor of upper bounds [y_1, y_2, ..., y_20]
+        """
+        self.lower_bounds = tensor(lower_bounds, dtype=type)
+        self.upper_bounds = tensor(upper_bounds, dtype=type)
+        self.range = self.upper_bounds - self.lower_bounds
+        
+    def normalize(self, states):
+        """Scale states from [lower_bound, upper_bound] to [0, 1]"""
+        return (states - self.lower_bounds[ax, :]) / self.range[ax, :]
+        #Example: lower-upper is [0,1]. So normalize(0.5) = 2 * (0.5 - 0) /1 -1 = 0. Ok correct
+        #Another example. lower-upper is [0,30]. Sn normalize 15= 2 * 15 / 30 -1 = 0 Ok good.
+        # And normalize (20) = 40/30 - 1 = 1/3 yup
+        # Now denormalize(1/3) = 0.5 ( 1/3 +1 ) * 30 + 0 = 2/3*30 = 20
+
+        #Normalizing to (0,1) now. Checking: 15 in (0,30) is 15/30=0.5. 15 in (10,20) is 5/10=0.5       
+    def normalize_rho(self, states):
+        """Scale states from [lower_bound, upper_bound] to [0, 1]"""
+        return (states - self.lower_bounds[ax, K_n:]) / self.range[ax, K_n:]    #Note: this will need to be adjusted at multiple steps    
+    def denormalize_rho(self, normalized_states):
+        """Convert normalized states back to original range"""
+        #return 0.5 * (normalized_states + 1) * self.range + self.lower_bounds
+        return normalized_states * self.range[ax,K_n:] + self.lower_bounds[ax,K_n:] #Check: 0.5 * 10 + 10= 15. 
+    def denormalize(self, normalized_states):
+        """Convert normalized states back to original range"""
+        #return 0.5 * (normalized_states + 1) * self.range + self.lower_bounds
+        return normalized_states * self.range[ax, :] + self.lower_bounds[ax, :] #Check: 0.5 * 10 + 10= 15.
+    def normalize_dim(self, states,dim):
+        """Scale states from [lower_bound, upper_bound] to [0, 1]"""
+        return (states - self.lower_bounds[dim]) / self.range[dim]    #Note: this will need to be adjusted at multiple steps      
+    def denormalize_dim(self, normalized_states,dim):
+        """Convert normalized states back to original range"""
+        #return 0.5 * (normalized_states + 1) * self.range + self.lower_bounds
+        return normalized_states * self.range[dim] + self.lower_bounds[dim] #Check: 0.5 * 10 + 10= 15. 
+    def denormalize_size(self, normalized_states):
+        """Convert normalized states back to original range"""
+        #return 0.5 * (normalized_states + 1) * self.range + self.lower_bounds
+        return normalized_states * self.range[ax,:K_n] + self.lower_bounds[ax,:K_n] #Check: 0.5 * 10 + 10= 15.
+
+#Fin Diff gradients
+def get_batch_gradients(states, value_model, num_y, range_tensor=None):
+    """
+    Computes per-sample gradient of E_{y'|y} V(y', s) for all y ∈ {0, 1, ..., num_y-1}
+
+    Args:
+        states:        [B, D] — input states (normalized), requires_grad NOT required
+        value_model:   neural net mapping [B, D] → [B, num_y]
+        P_mat:         [num_y, num_y] — transition matrix with rows P(y → y′)
+        range_tensor:  [D] or scalar, optional — rescale gradients (e.g., if states were normalized)
+
+    Returns:
+        expectation_grads: [B, num_y, D] — ∇_s E[V(y′|y, s)] for each y or fixed y
+    """
+    #states = states.requires_grad_(True)
+    B, D = states.shape
+    eps = 1e-2
+    # [B, D] → [B, 1, D], then broadcast-add an eye matrix [1, D, D]*eps → [B, D, D]
+    eye = torch.eye(D, device=states.device) * eps        # [D, D]
+    perturbs = states.unsqueeze(1) + eye.unsqueeze(0)      # [B, D, D]
+
+    # flatten back to a big batch of size B*D
+    flat_plus = perturbs.reshape(-1, D)                   # [B*D, D]
+
+    # forward through value_model
+    V_plus = value_model(flat_plus)['values']             # [B*D, num_y]
+    V_plus = V_plus.view(B, D, num_y).permute(0, 2, 1)     # → [B, num_y, D]
+
+    V_minus = value_model(states)['values'].unsqueeze(-1) # [B, num_y, 1]
+    grads      = (V_plus - V_minus) / eps                          # [B, num_y, D]
+
+    # Optional: rescale gradients if states were normalized
+    if range_tensor is not None:
+        expectation_grads = grads / range_tensor[ax,ax,:]  # broadcast over D
+
+    return expectation_grads  # [B, y, D] or [B, D] if current_y is not None
+
+def evaluate_plot_precise(value_net, sup_net, bounds_processor, foc_optimizer):
+    """
+    Evaluate the trained value function on test points
+    
+    Args:
+        model: Trained value function model
+        num_test_points: Number of test points
+        state_dim: Dimension of state space
+    """
+    test_states = bounds_processor.normalize_dim(foc_optimizer.rho_grid,-1).unsqueeze(1)
+    size = torch.zeros(test_states.shape[0], K_n, dtype = type)
+    size[:, 0] = bounds_processor.normalize_dim(1,0) # 1 junior worker
+    size[:, 1] = bounds_processor.normalize_dim(1,1) # 1 senior worker
+    test_states = torch.cat((size,test_states),dim=1)
+    # Evaluate model
+    values = value_net(test_states)['values'][:,p.z_0-1]
+    #Evaluate policies
+    policy = sup_net(test_states)
+    v_prime = policy['values'][:,p.z_0-1,:,p.z_0-1]
+    hiring = policy['hiring'][:,p.z_0-1]
+
+    W=get_batch_gradients(test_states, value_net,  num_y = foc_optimizer.p.num_z, range_tensor=bounds_processor.range)[:,p.z_0-1,-1].detach().numpy()
+
+
+    # Print results
+    #print("\nValue function evaluation on test states:")
+    #for i in range(min(5, num_test_points)):
+    #    print(f"State {i+1}: Value = {values[i].item():.4f}")
+    #Plot results
+    plt.figure(figsize=(14, 4))
+    plt.subplot(1,3,1)
+    #plt.plot(cc.rho_grid, cc_Rho[p.z_0-1,:], label = "VFI")
+    plt.plot(cc.rho_grid, values.detach(), label = "NN")   
+    plt.title("Value")  # Add a title to this plot
+    plt.legend()  # To show the label in the legend 
+    #Plot the gradient
+    plt.subplot(1,3,2)
+    #plt.plot(cc.rho_grid, cc_W[p.z_0-1,:], label = "VFI")
+    plt.plot(cc.rho_grid, W, label = "NN")    
+    plt.title("Value Gradient (=n_1 v_1)")  # Add a title to this plot
+    plt.legend()  # To show the label in the legend
+
+    plt.subplot(1,3,3)
+    plt.plot(cc.rho_grid, v_prime[:,0].detach().numpy(), label = "NN v_prime")    
+    plt.plot(cc.rho_grid, hiring.detach().numpy(), label = "NN hiring")
+    plt.title("Sup policies")  # Add a title to this plot
+    plt.legend()  # To show the label in the legend
+
+    plt.tight_layout()  # Adjust spacing for better visualization
+    plt.show()
+
+
+if __name__ == "__main__":
+    # Define parameters
+    K = 2 #Number of tenure steps
+    #Number of states
+    K_n = K #K size states
+    K_v = K - 1 #K - 1 (ignoring bottom) value states
+    K_q = K - 1 #K - 1 (ignoring bottom) quality states. Ignore them for now
+    state_dim = K_n + K_v # + K_q #Discrete prod-ty y as multiple outputs
+    ACTION_DIM = K_v + 1 # + K_n  # omega + hiring + separations. 
+    HIDDEN_DIMS_CRIT = [64,64]
+    HIDDEN_DIMS_POL = [64,64]  # Basic architecture. Basically every paper has 2 inner layers, can make them wider though
+
+    #pref = Preferences(input_param=p_crs)
+    cc=ContinuousContract(p_crs()) 
+    cc_J,cc_W,cc_Wstar,omega = cc.J(0) 
+    target_values = tensor(cc_J + cc.rho_grid[ax,:] * cc_W, dtype=type)
+    target_W = tensor(cc_W, dtype=type)
+    #NORMALIZE EVERYTHING!!!
+    LOWER_BOUNDS = [0, 0 , cc.v_grid[0]] # The state space is (y,n_0,n_1,ρ_1).
+    UPPER_BOUNDS = [10, 20, cc.v_grid[-1] * 4]
+
+    num_episodes= 20000
+    minibatch_num = 4
+    #Initialize
+    bounds_processor = StateBoundsProcessor(LOWER_BOUNDS,UPPER_BOUNDS)
+
+# Initialize FOC computer
+foc_optimizer = FOCresidual(bounds_processor, K=K_n, p=p, cc=None)    
+
+print("Loading saved nets")
+
+
+value_net = ValueFunctionNN(state_dim, p.num_z, HIDDEN_DIMS_CRIT)
+sup_net = PolicyNN(state_dim, p.num_z, K_v, HIDDEN_DIMS_POL, cc)
+value_net.load_state_dict(torch.load("trained_value_function.pt"))
+sup_net.load_state_dict(torch.load("trained_sup_function.pt"))
+
+evaluate_plot_precise(value_net, sup_net, bounds_processor, foc_optimizer)

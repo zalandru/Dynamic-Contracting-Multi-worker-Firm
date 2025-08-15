@@ -487,7 +487,6 @@ def Values_int(ERho_star,EW_star,ERho,EW,N_grid,N_grid1,rho_grid,Q_grid,points,n
         EW_star[iz,...] =  flat_result.reshape(shape)        
     return ERho_star,EW_star
 
-
 class MultiworkerContract:
     """
         This solves a contract model with DRS production, hirings, and heterogeneous match quality.
@@ -565,7 +564,7 @@ class MultiworkerContract:
         #self.prod_diff = self.production_diff(self.sum_sizeadj)
         self.prod_1d = self.fun_prod_1d(self.sum_sizeadj)
         self.prod_nd = self.prod_1d * (self.p.prod_q + self.Q_grid[self.grid[4]] * (1.0-self.p.prod_q)) #\partial F / \partial n_1 = q_1 * (prod_q+q_1*(1-prod_q)) F'(nq)
-        self.prod_qd = self.prod_1d * self.N_grid1[self.grid[2]] * (1.0-self.p.prod_q) #\partial F / \partial q_1 = n_1 * (1-prod_q) * F'(nq)
+        self.prod_qd = self.prod_1d * self.N_grid1[self.grid[2]] * (1.0-self.p.prod_q) #\partial F / \partial q_1 = n_1 * (1-prod_q) * F'(nq) #Andrei Aug'25: wait why??? Why is n still here?? F = (sum n * (prod_q+q_1 * (1-prod_q)))^α. ∂ F / ∂ q = F' * sum_n * (1-prod_q). ah lol k
 
 
         #Job value and GE first
