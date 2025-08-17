@@ -773,7 +773,7 @@ class FOCresidual:
             v_prime  = pol['values'][iN, y_idx, :, :]                    # [N, K_v, Z]
 
             # E_{y'|y} v′ for worker decisions (same convention as elsewhere)
-            v_prime_exp_all = torch.einsum("bky,yz->bkz", v_prime, Z_trans_tensor)  # [N, K_v, Z]
+            v_prime_exp_all = torch.einsum("bkz,yz->bky", v_prime, Z_trans_tensor)  # [N, K_v, Z]
             v_prime_exp     = v_prime_exp_all[iN, :, y_idx]                            # [N, K_v]
             re, pc = foc_optimizer.getWorkerDecisions(v_prime_exp)
             size = states_d[:,:K_n]
