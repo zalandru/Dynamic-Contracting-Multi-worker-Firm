@@ -66,7 +66,6 @@ class EconDetails:
             (self.fun_prod[:, ax] - self.pref.inv_utility(torch.tensor(self.v_grid[ax, :] * (1 - self.p.beta), dtype=DTYPE)))
             / (1 - self.p.beta)
         )
-        self.simple_Rho = self.simple_J + self.rho_grid[ax, :] * torch.tensor(self.v_grid[ax, :], dtype=DTYPE)
 
         self.prob_find_vx = self.p.alpha * np.power(
             1 - np.power(np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0 - 1, :].numpy(), 1.0)), self.p.sigma),
@@ -77,14 +76,14 @@ class EconDetails:
             self.js.update(self.v_grid[:], self.prob_find_vx)
         else:
             self.js = cc.js
-
+    @torch.no_grad()
     def _construct_z_grid(self):
         exp_z = np.linspace(0, 1, self.p.num_z + 2)[1:-1]
         return lnorm.ppf(q=exp_z, s=self.p.prod_var_z)
-
+    @torch.no_grad()
     def production(self, sum_n):
         return sum_n ** self.p.prod_alpha
-
+    @torch.no_grad()
     def getWorkerDecisions(self, EW1, employed=True):
         pe, re = self.js.solve_search_choice(EW1)
         assert (~torch.isnan(pe)).all(), "pe is NaN"
@@ -125,14 +124,20 @@ class EconModel:
         vprime_flat = action_phys[:, 1 : 1 + self.K_v * self.num_y]
         vprime_sched = vprime_flat.view(B, self.K_v, self.num_y)
 
-        v_prime_exp_all = torch.einsum("bky,yz->bkz", vprime_sched, self.details.Z_trans_tensor)
+        v_prime_exp_all = torch.einsum("bkz,yz->bky", vprime_sched, self.details.Z_trans_tensor)
         iN = torch.arange(B, device=state.device)
         v_prime_exp = v_prime_exp_all[iN, :, y_idx]
         re, pc = self.details.getWorkerDecisions(v_prime_exp)
 
+        # Compute argument to inv_utility (which is exp for log utility)
+        u_emp = v - self.details.p.beta * (v_prime_exp + re)
+        u_unemp = self.details.v_0 - self.details.p.beta * (v_prime_exp + re)
         wages = torch.zeros(B, self.K_n, device=state.device, dtype=self.dtype)
         wages[:, 1:] = self.details.pref.inv_utility(v - self.details.p.beta * (v_prime_exp + re))
         wages[:, :1] = self.details.pref.inv_utility(self.details.v_0 - self.details.p.beta * (v_prime_exp + re))
+        if not torch.isfinite(wages).all():
+            print("u_emp range:", float(u_emp.min()), float(u_emp.max()))
+            print("u_unemp range:", float(u_unemp.min()), float(u_unemp.max()))
 
         next_state = state.clone()
         next_state[:, 0] = hiring
@@ -388,9 +393,9 @@ def main():
     cc = ContinuousContract(p_crs())
 
     state_low = torch.tensor([0, 0, cc.v_grid[0]], dtype=dtype)
-    state_high = torch.tensor([10, 20, cc.v_grid[-1]], dtype=dtype)
+    state_high = torch.tensor([10, 20, 1.5 * cc.v_grid[-1]], dtype=dtype)
     vprime_low = torch.full((K_v,), float(cc.v_grid[0]), dtype=dtype)
-    vprime_high = torch.full((K_v,), float(cc.v_grid[-1]), dtype=dtype)
+    vprime_high = torch.full((K_v,), float(1.5 * cc.v_grid[-1]), dtype=dtype)
 
     beta = p.beta
     bounds = EconBounds(state_low=state_low, state_high=state_high, vprime_low=vprime_low, vprime_high=vprime_high)
@@ -402,11 +407,11 @@ def main():
 
     # --- Gym envs
     # parallel envs (see section below), or keep DummyVecEnv for 1 env:
-    n_envs = 4  # try 4 or 8 if you have cores; else set to 1 and use DummyVecEnv
+    n_envs = 8  # try 4 or 8 if you have cores; else set to 1 and use DummyVecEnv
     make_env = make_gym_env(model, P_y, pi0, horizon=32, device=device)
     vec_env = SubprocVecEnv([make_env for _ in range(n_envs)])  # or DummyVecEnv([make_env]) if n_envs=1
     # normalize observations and rewards
-    vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, gamma=float(beta), clip_obs=100.0, clip_reward=100.0)
+    vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, gamma=float(beta), clip_obs=5.0, clip_reward=5.0)
 
 
     # --- SB3 PPO
@@ -417,12 +422,12 @@ def main():
     policy_kwargs=policy_kwargs,
     learning_rate=1e-4,        # smaller step
     n_steps=1024,              # per env ⇒ total batch = n_steps * n_envs
-    batch_size=256,            # must divide total batch
+    batch_size=2048,            # must divide total batch
     n_epochs=5,                # fewer passes per update
     gamma=float(beta),         # your beta
     gae_lambda=0.95,
     clip_range=0.2,
-    #clip_range_vf=0.2,         # <— value function clipping
+    clip_range_vf=0.2,         # <— value function clipping
     ent_coef=0.0,
     vf_coef=0.25,              # reduce value loss weight
     max_grad_norm=0.5,
@@ -430,7 +435,14 @@ def main():
     verbose=1,
     device=device,
 )
-    total_timesteps = 200_000
+    
+    vec_env.training = True
+    obs = vec_env.reset()
+    for _ in range(2000):  # ~2k vector steps = 2k*n_envs transitions
+        actions = [vec_env.action_space.sample() for _ in range(n_envs)]
+        obs, r, done, info = vec_env.step(actions)
+
+    total_timesteps = 4000_000
     model_sb3.learn(total_timesteps=total_timesteps)
 
     # After training
@@ -442,19 +454,20 @@ def main():
     vecnorm.training = False
     vecnorm.norm_reward = False   # report real rewards
     # quick eval
-    ep_rews = []
-    for _ in range(5):
-        obs = vec_env.reset()
-        done = [False]
+
+    n_eval_eps = 20
+    ep_returns = []
+    for _ in range(n_eval_eps):
+        obs = vecnorm.reset()
+        done = [False]  # vec env API
         ep_r = 0.0
-    while not done[0]:
-        action, _ = model_sb3.predict(obs, deterministic=True)
-        obs, rewards, dones, infos = vec_env.step(action)  # vec API: returns arrays
-        ep_r += float(rewards[0])
-        if dones[0]:
-            break
-        ep_rews.append(ep_r)
-    print({"eval_mean_reward": np.mean(ep_rews), "n_eval_eps": len(ep_rews)})
+        while not done[0]:
+            action, _ = model_sb3.predict(obs, deterministic=True)
+            obs, rewards, dones, infos = vecnorm.step(action)      # ← use vecnorm
+            ep_r += float(rewards[0])                              # real reward
+            done = dones
+        ep_returns.append(ep_r)
+    print({"eval_mean_reward": np.mean(ep_returns), "n_eval_eps": len(ep_returns)})
 
     model_sb3.save("ppo_econ_agent.zip")
     print("Saved SB3 PPO model to ppo_econ_agent.zip")
