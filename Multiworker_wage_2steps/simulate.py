@@ -1095,7 +1095,8 @@ class Simulator:
         employed = employed.sort_values(['i', 't'])
 
         # Step 3: Compute log wage growth (log difference)
-        employed['w_growth_rate'] = (np.log(employed['w']) - np.log(employed.groupby('i')['w'].shift(1)))   
+        employed['w_growth_rate'] = (np.log(employed.groupby('i','f')['w']) - np.log(employed.groupby('i','f')['w'].shift(1)))  #Does this include J2J transitioners??? Also if a guy is employed in one firm, then unemployed for 3 years, then employed again, would shift give the wage difference? I think it would, so I need to filter out the ones that are not employed in the previous period
+        #So I'm doing groupby 'i','f' to make sure that I only take the wage growth within the same firm, and not across firms
         #sdata['w_growth_rate'] = np.log(sdata.query('e==1').groupby('i')['w']) - np.log(sdata.query('e==1').groupby('i')['w'].shift(1)) #No this is kinda trash, it just a single growth rate 7 years back
         #So I need to take the average wage growth for each tenure group, and then sum them up
         #So first, I need to group by s, and then take the mean of w_growth_rate
