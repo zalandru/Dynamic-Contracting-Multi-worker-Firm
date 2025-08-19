@@ -97,7 +97,21 @@ class EconDetails:
             re = re * self.p.s_job
         pc = (1 - pe)
         return re, pc
-
+    @torch.no_grad()
+    def get_U(self):
+        #Iterate on U
+        U = self.pref.utility(self.unemp_bf) / ( 1 - self.p.beta)
+        critU = 1
+        while critU >= 1e-3:
+            U2 = U
+            ru, _ = self.getWorkerDecisions(U, employed=False)
+            U = self.pref.utility(self.unemp_bf) + self.p.beta * ( U + ru)
+            #Or, direct formulation
+            #U = (self.pref.utility(self.unemp_bf) + self.p.beta * ru) / ( 1 - self.p.beta)
+            U = 0.4 * U + 0.6 * U2
+            critU = torch.abs(U - U2)
+        self.U=U
+        return self
 
 class EconModel:
     def __init__(self, device: torch.device, dtype: torch.dtype, beta: float, K_n: int, K_v: int, num_y: int, details: EconDetails, bounds: EconBounds):
@@ -110,21 +124,29 @@ class EconModel:
         self.details = details
         self.bounds = bounds
 
+        #Get U
+        self.details.get_U()
     @torch.no_grad()
     def init_state(self, batch_size: int) -> torch.Tensor:
         obs_cont_dim = self.bounds.state_low.numel()
         s = torch.zeros(batch_size, obs_cont_dim, device=self.device, dtype=self.dtype)
         s[:, 0] = 1.0
+        s[:, 1:self.K_n] = 1e-2 #Just a few seniors so that the value has some real impact
+        s[:, self.K_n : self.K_n + self.K_v] = (self.details.v_grid[-1] + self.details.v_grid[0]) / 2#Since my vprime is delta parametrized, I want to incentivize it to be at least a bit positive
+        s[:, self.K_n + self.K_v:] = self.details.p.q_0
         return s
 
     @torch.no_grad()
     def step(self, state: torch.Tensor, action_phys: torch.Tensor, y_idx: torch.Tensor, y_next_idx: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Dict]:
         B = state.shape[0]
         sizes = state[:, :self.K_n]
-        v = state[:, self.K_n:]
-
+        v = state[:, self.K_n:self.K_n + self.K_v]
+        q = torch.zeros(state.shape[0], state[:,self.K_n+self.K_v:].shape[1] + 1)
+        q[:,0] = self.details.p.q_0
+        q[:,1:] = state[:,self.K_n+self.K_v:]
         hiring = action_phys[:, 0]
-        vprime_flat = action_phys[:, 1 : 1 + self.K_v * self.num_y]
+        sep = action_phys[:, 1: 1 + self.K_n]
+        vprime_flat = action_phys[:, 1 + self.K_n: 1 + self.K_n + self.K_v * self.num_y]
         vprime_sched = vprime_flat.view(B, self.K_v, self.num_y)
 
         v_prime_exp_all = torch.einsum("bkz,yz->bky", vprime_sched, self.details.Z_trans_tensor)
@@ -133,22 +155,32 @@ class EconModel:
         re, pc = self.details.getWorkerDecisions(v_prime_exp)
 
         # Compute argument to inv_utility (which is exp for log utility)
-        u_emp = v -                  self.details.p.beta * (v_prime_exp + re)
-        u_unemp = self.details.v_0 - self.details.p.beta * (v_prime_exp + re)
+        #all_v = torch.zeros(B, self.K_n, device=state.device, dtype=self.dtype)
+        #all_v[:, 0] = self.details.v_0
+        #all_v[:, 1:] = v
+        #u_emp = v -                  self.details.p.beta * (sep[:,0] * self.details.U + (1-sep[:,0]) * (v_prime_exp + re))
+        #u_unemp = self.details.v_0 - self.details.p.beta * (sep[:,1] * self.details.U + (1-sep[:,1]) * (v_prime_exp + re))
         wages = torch.zeros(B, self.K_n, device=state.device, dtype=self.dtype)
-        wages[:, 1:] = self.details.pref.inv_utility(v - self.details.p.beta * (v_prime_exp + re))
-        wages[:, :1] = self.details.pref.inv_utility(self.details.v_0 - self.details.p.beta * (v_prime_exp + re))
-        if not torch.isfinite(wages).all():
-            print("u_emp range:", float(u_emp.min()), float(u_emp.max()))
-            print("u_unemp range:", float(u_unemp.min()), float(u_unemp.max()))
+        wages[:, 1:] = self.details.pref.inv_utility(v - self.details.p.beta * (sep[:,1] * self.details.U + (1-sep[:,1]) * (v_prime_exp + re)))
+        wages[:, :1] = self.details.pref.inv_utility(self.details.v_0 - self.details.p.beta * (sep[:,0] * self.details.U + (1-sep[:,0]) * (v_prime_exp + re)))
+        #if not torch.isfinite(wages).all():
+        #    print("u_emp range:", float(u_emp.min()), float(u_emp.max()))
+        #    print("u_unemp range:", float(u_unemp.min()), float(u_unemp.max()))
 
         next_state = state.clone()
         next_state[:, 0] = hiring
         next_state[:, 1] = sizes.sum(dim=1) * pc.squeeze(1)
-        next_state[:, self.K_n:] = vprime_sched[iN, :, y_next_idx]
-
+        next_state[:, self.K_n:self.K_n + self.K_v] = vprime_sched[iN, :, y_next_idx]
+        #Future q
+        good_juns = sizes[:,0] * pc.squeeze(1) * torch.min( 1 - sep[:,0], torch.tensor(self.details.p.q_0, device=state.device, dtype=self.dtype) )
+        good_sens = sizes[:,1] * pc.squeeze(1) * torch.min( 1 - sep[:,1], q[:,1] )
+        q_1 = (good_sens + good_juns).unsqueeze(1) / next_state[:,1:self.K_n]
+        q_1[q_1 > 1] = 1 #Should never be the case bah, just in case lol.
+        next_state[:, self.K_n + self.K_v:] = q_1
+        
+        tot_size_adj = (sizes * ( q + ( 1 - q ) * self.details.p.prod_q)).sum(dim=1)
         reward = (
-            self.details.fun_prod[y_idx.detach().long()] * self.details.production(sizes.sum(dim=1))
+            self.details.fun_prod[y_idx.detach().long()] * self.details.production(tot_size_adj)
             - self.details.p.hire_c * hiring
             - (wages * sizes).sum(dim=1)
         ).to(self.dtype)
@@ -178,6 +210,7 @@ class EconGymEnv(gym.Env):
         self.obs_cont_dim = model.bounds.state_low.numel()
         self.obs_dim = self.obs_cont_dim + self.num_y
         self.K_v = model.K_v
+        self.K_n = model.K_n
 
         if pi0 is None:
             self.pi0 = torch.full((self.num_y,), 1.0 / self.num_y, device=self.device, dtype=torch.float32)
@@ -187,7 +220,7 @@ class EconGymEnv(gym.Env):
         # observation: concatenation of continuous state and one-hot y
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_dim,), dtype=np.float32)
         # action: [hiring, v'(K_v x num_y)] in [-1,1]
-        self.act_dim = 1 + self.K_v * self.num_y
+        self.act_dim = 1 + self.K_n + self.K_v * self.num_y #hiring + sep(K_n) + v'(K_v x num_y)
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.act_dim,), dtype=np.float32)
 
         # internal state
@@ -198,10 +231,13 @@ class EconGymEnv(gym.Env):
     # ---- helpers ----
     def _act_physical(self, a: torch.Tensor) -> torch.Tensor:
         B = a.shape[0]
-        # hiring as before
+        #Map from [-1,1] to real values
+        # Hiring to [0,state_high[0]]
         hiring = 0.5 * (a[:, :1] + 1.0) * (self.model.bounds.state_high[0] - self.model.bounds.state_low[0]) + self.model.bounds.state_low[0]
-
-        vflat = a[:, 1 : 1 + self.K_v * self.num_y]
+        #Sep to [0,1]. btw, maybe I'll want to "average" it out to zero?
+        sep = 0.5 * (a[:,1: 1 + self.K_n] + 1.0)
+        #Future value
+        vflat = a[:, 1 + self.K_n: 1 + self.K_n + self.K_v * self.num_y]
         vsched = vflat.view(B, self.K_v, self.num_y)
 
         # current v (state) for delta parameterization
@@ -217,12 +253,12 @@ class EconGymEnv(gym.Env):
         dv = vsched * dmax[:, :, None]    # broadcast over num_y
 
         vsched_phys = (v_curr[:, :, None] + dv).clamp(vlow[:, :, None], vhigh[:, :, None])
-        return torch.cat([hiring, vsched_phys.reshape(B, self.K_v * self.num_y)], dim=-1)
+        return torch.cat([hiring, sep, vsched_phys.reshape(B, self.K_v * self.num_y)], dim=-1)
 
     def model_state_for_env(self):
         # pull the current v from self.state_cont: shape [1, obs_cont_dim]
         # here K_v = 1 so we take [:, self.model.K_n:]
-        v_curr = self.state_cont[:, self.model.K_n:]  # [B, K_v]
+        v_curr = self.state_cont[:, self.model.K_n:self.model.K_n + self.model.K_v]  # [B, K_v]
         return v_curr
     def _obs_from_raw(self, state_cont: torch.Tensor, y_idx: int) -> np.ndarray:
         one_hot = torch.nn.functional.one_hot(torch.tensor([y_idx], device=self.device), num_classes=self.num_y).to(state_cont.dtype)
@@ -315,7 +351,8 @@ class PlotCallback(BaseCallback):
         a = torch.as_tensor(actions_np, dtype=env.dtype, device=env.device)
         B = a.shape[0]
         hiring = 0.5 * (a[:, :1] + 1.0) * (env.model.bounds.state_high[0] - env.model.bounds.state_low[0]) + env.model.bounds.state_low[0]
-        vflat = a[:, 1 : 1 + env.K_v * env.num_y]
+        sep = 0.5 * (a[:, 1: 1 + env.K_n] + 1.0)
+        vflat = a[:, 1 + env.K_n: 1 + env.K_n + env.K_v * env.num_y]
         vsched = vflat.view(B, env.K_v, env.num_y)
         obs_cont = torch.as_tensor(obs_np[:, :env.obs_cont_dim], dtype=env.dtype, device=env.device)
         v_curr = obs_cont[:, env.model.K_n : env.model.K_n + env.K_v]
@@ -324,7 +361,7 @@ class PlotCallback(BaseCallback):
         dmax = torch.minimum(vhigh - v_curr, v_curr - vlow).clamp_min(1e-6)
         dv = vsched * dmax[:, :, None]
         vsched_phys = (v_curr[:, :, None] + dv).clamp(vlow[:, :, None], vhigh[:, :, None])
-        return torch.cat([hiring, vsched_phys.reshape(B, env.K_v * env.num_y)], dim=-1).cpu().numpy()
+        return torch.cat([hiring, sep, vsched_phys.reshape(B, env.K_v * env.num_y)], dim=-1).cpu().numpy()
 
     def _make_obs_grid(self):
         env = self.plot_env
@@ -340,11 +377,12 @@ class PlotCallback(BaseCallback):
 
     def _make_fig(self, obs_mat, vals_true, acts_phys, y_idx):
         y_vec = np.full(obs_mat.shape[0], y_idx, dtype=int)
-        hire, vprime0 = extract_policy_components(acts_phys, self.plot_env.num_y, self.plot_env.K_v, y_vec)
+        hire, sep, vprime0 = extract_policy_components(acts_phys, self.plot_env.num_y, self.plot_env.K_n, self.plot_env.K_v, y_vec)
         fig = plt.figure(figsize=(12, 3.6))
-        ax = fig.add_subplot(1, 3, 1); ax.plot(self.grid, vals_true); ax.set_title(f"Value (true) vs state[{self.dim_index}]"); ax.set_xlabel(f"state[{self.dim_index}]"); ax.set_ylabel("V")
-        ax = fig.add_subplot(1, 3, 2); ax.plot(self.grid, hire);     ax.set_title("Hiring (physical)"); ax.set_xlabel(f"state[{self.dim_index}]")
-        ax = fig.add_subplot(1, 3, 3); ax.plot(self.grid, vprime0);  ax.set_title("v' (k=0) (physical)"); ax.set_xlabel(f"state[{self.dim_index}]")
+        ax = fig.add_subplot(1, 4, 1); ax.plot(self.grid, vals_true); ax.set_title(f"Value (true) vs state[{self.dim_index}]"); ax.set_xlabel(f"state[{self.dim_index}]"); ax.set_ylabel("V")
+        ax = fig.add_subplot(1, 4, 2); ax.plot(self.grid, hire);     ax.set_title("Hiring (physical)"); ax.set_xlabel(f"state[{self.dim_index}]")
+        ax = fig.add_subplot(1, 4, 3); ax.plot(self.grid, sep);  ax.set_title("v' (k=0) (physical)"); ax.set_xlabel(f"state[{self.dim_index}]")        
+        ax = fig.add_subplot(1, 4, 4); ax.plot(self.grid, vprime0);  ax.set_title("v' (k=0) (physical)"); ax.set_xlabel(f"state[{self.dim_index}]")
         fig.tight_layout()
         return fig
 
@@ -378,87 +416,20 @@ def make_gym_env(model, P_y, pi0, horizon, device):
         return env
     return _make
 
-def sb3_value_and_action(model_sb3: PPO, obs_np: np.ndarray, deterministic: bool = True):
-    """Return (values_np, actions_np) for observations (N, obs_dim).
-    Actions come from model.predict(..., deterministic=True) so they respect env.action_space."""
-    policy = model_sb3.policy
-    obs_t = torch.as_tensor(obs_np, device=policy.device, dtype=torch.float32)
-    if obs_t.ndim == 1:
-        obs_t = obs_t.unsqueeze(0)
-    with torch.no_grad():
-        features = policy.extract_features(obs_t)
-        _, latent_vf = policy.mlp_extractor(features)
-        values = policy.value_net(latent_vf).squeeze(-1)
-    actions_np, _ = model_sb3.predict(obs_np, deterministic=deterministic)
-    return values.cpu().numpy(), np.asarray(actions_np)
 
-
-def extract_policy_components(actions_np: np.ndarray, num_y: int, K_v: int, y_idx: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """From normalized actions in [-1,1], extract hiring and v_prime for current y (k=0).
-    actions_np: (N, 1 + K_v * num_y)
+def extract_policy_components(actions_np: np.ndarray, num_y: int, K_n: int, K_v, y_idx: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """From normalized actions in [-1,1], extract hiring, sep and v_prime for current y (k=0).
+    actions_np: (N, 1 + K_n + K_v * num_y)
     y_idx: (N,) ints inferred from obs one-hot when rolling out.
     Returns (hiring_norm, vprime0_norm).
     """
     hiring = actions_np[:, 0]
-    if K_v <= 0:
-        vprime0 = np.zeros_like(hiring)
-    else:
-        idx = 1 + (0 * num_y + y_idx)
-        vprime0 = actions_np[np.arange(actions_np.shape[0]), idx]
-    return hiring, vprime0
+    sep = actions_np[:, 1: 1 + K_n]
+    idx = 1 + K_n + K_v * (0 * num_y + y_idx)
+    vprime0 = actions_np[np.arange(actions_np.shape[0]), idx]
+    return hiring, sep, vprime0
 
 
-def rollout_collect_reached(model_sb3: PPO, env: EconGymEnv, episodes: int = 5, max_steps: Optional[int] = None):
-    """Roll out deterministic policy in a fresh (non-vec) env and collect obs, values, actions."""
-    obs_list, val_list, act_list = [], [], []
-    y_list = []
-    for _ in range(episodes):
-        obs, _ = env.reset()
-        t = 0
-        done = False
-        while not done:
-            vals, acts = sb3_value_and_action(model_sb3, obs)
-            obs_list.append(obs)
-            val_list.append(vals[0])
-            act_list.append(acts)
-            y_idx = int(np.argmax(obs[-env.num_y:]))
-            y_list.append(y_idx)
-            action, _ = model_sb3.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, _ = env.step(action)
-            done = bool(terminated or truncated)
-            t += 1
-            if max_steps is not None and t >= max_steps:
-                break
-    return np.vstack(obs_list), np.array(val_list), np.vstack(act_list), np.array(y_list)
-
-
-def plot_scatter_reached(model_sb3: PPO, env: EconGymEnv, dim_index: int, episodes: int = 5, max_steps: Optional[int] = None):
-    """Scatter: value and policies vs a chosen *continuous* state dim along visited states."""
-    obs, vals, acts, y_idx = rollout_collect_reached(model_sb3, env, episodes, max_steps)
-    x = obs[:, dim_index]
-    hire, vprime0 = extract_policy_components(actions_to_physical(env,acts), env.num_y, env.K_v, y_idx)
-
-    plt.figure(figsize=(14, 4))
-    plt.subplot(1, 3, 1)
-    plt.scatter(x, vals, s=8)
-    plt.title("Value vs state[{}] (visited)".format(dim_index))
-    plt.xlabel(f"state[{dim_index}]")
-    plt.ylabel("V")
-
-    plt.subplot(1, 3, 2)
-    plt.scatter(x, hire, s=8)
-    plt.title("Hiring (norm) vs state[{}]".format(dim_index))
-    plt.xlabel(f"state[{dim_index}]")
-    plt.ylabel("hiring in [-1,1]")
-
-    plt.subplot(1, 3, 3)
-    plt.scatter(x, vprime0, s=8)
-    plt.title("v' (k=0, current y) (norm)")
-    plt.xlabel(f"state[{dim_index}]")
-    plt.ylabel("v' in [-1,1]")
-
-    plt.tight_layout()
-    #plt.show()
 
 class SB3InferenceAdapter:
     """
@@ -568,7 +539,7 @@ def plot_along_grid_clean(
 
     if extract_policy_components is not None:
         y_vec = np.full(grid_points, y_idx, dtype=int)
-        comp1, comp2 = extract_policy_components(acts_phys, env.num_y, env.K_v, y_vec)
+        hiring, sep, vprime = extract_policy_components(acts_phys, env.num_y, env.K_n, env.K_v, y_vec)
     else:
         # fallback: plot first two dims if present
         comp1 = acts_phys[:, 0] if acts_phys.ndim == 2 and acts_phys.shape[1] > 0 else acts_phys
@@ -581,74 +552,27 @@ def plot_along_grid_clean(
     #v_prime_exp = v_prime_exp_all[iN, :, y_idx]
     # plots
     plt.figure(figsize=(14, 4))
-    plt.subplot(1, 3, 1)
+    plt.subplot(1, 4, 1)
     plt.plot(grid, v_true)
     plt.title(f"Value (true units) vs state[{dim_index}]")
     plt.xlabel(f"state[{dim_index}]"); plt.ylabel("V (true)")
 
-    plt.subplot(1, 3, 2)
-    plt.plot(grid, comp1)
-    plt.title("Policy component 1 (physical)"); plt.xlabel(f"state[{dim_index}]")
+    plt.subplot(1, 4, 2)
+    plt.plot(grid, hiring)
+    plt.title("Hiring (physical)"); plt.xlabel(f"state[{dim_index}]")
 
-    plt.subplot(1, 3, 3)
-    plt.plot(grid, comp2)
-    plt.title(f"Policy component 2 (physical)"); plt.xlabel(f"state[{dim_index}]")
+    plt.subplot(1, 4, 3)
+    plt.plot(grid, sep)
+    plt.title(f"Layoffs (physical)"); plt.xlabel(f"state[{dim_index}]")
 
+    plt.subplot(1, 4, 4)
+    plt.plot(grid, vprime)
+    plt.title(f"v' (physical)"); plt.xlabel(f"state[{dim_index}]")
     plt.tight_layout()
 
 def actions_to_physical(env: EconGymEnv, actions_np: np.ndarray) -> np.ndarray:
     a_t = torch.as_tensor(actions_np, dtype=env.dtype, device=env.device)
     return env._act_physical(a_t).cpu().numpy()
-def plot_along_grid(model_sb3: PPO, env: EconGymEnv, dim_index: int, grid_min: float, grid_max: float, grid_points: int = 200, base_state: Optional[np.ndarray] = None, y_idx: Optional[int] = None):
-    """Plot value and policy (deterministic action) along a 1D grid of a chosen continuous state dim.
-    - base_state: (obs_cont_dim,) continuous state used as baseline for other dims; default = env.model.init_state(1)[0]
-    - y_idx: discrete state fixed for the grid; default = middle (or 0 if undefined)
-    """
-    obs_cont_dim = env.obs_cont_dim
-    assert 0 <= dim_index < obs_cont_dim, "dim_index must target a continuous state dim"
-
-    if base_state is None:
-        base_state = env.model.init_state(1)[0].cpu().numpy()
-    if y_idx is None:
-        try:
-            y_idx = int(env.model.details.p.z_0 - 1)
-        except Exception:
-            y_idx = 0
-
-    grid = np.linspace(grid_min, grid_max, grid_points)
-
-    oh = np.zeros(env.num_y, dtype=np.float32)
-    oh[y_idx] = 1.0
-    obs_mat = np.repeat(np.concatenate([base_state, oh]).reshape(1, -1), grid_points, axis=0)
-    obs_mat[:, dim_index] = grid
-
-    vals, acts = sb3_value_and_action(model_sb3, obs_mat)
-    y_vec = np.full(grid_points, y_idx, dtype=int)
-    acts = actions_to_physical(env,acts)
-    hire, vprime0 = extract_policy_components(acts, env.num_y, env.K_v, y_vec)
-
-    plt.figure(figsize=(14, 4))
-    plt.subplot(1, 3, 1)
-    plt.plot(grid, vals)
-    plt.title("Value along grid (state[{}])".format(dim_index))
-    plt.xlabel(f"state[{dim_index}]")
-    plt.ylabel("V")
-
-    plt.subplot(1, 3, 2)
-    plt.plot(grid, hire)
-    plt.title("Hiring (norm) vs grid")
-    plt.xlabel(f"state[{dim_index}]")
-    plt.ylabel("hiring in [-1,1]")
-
-    plt.subplot(1, 3, 3)
-    plt.plot(grid, vprime0)
-    plt.title("v' (k=0, y={}) (norm)".format(y_idx))
-    plt.xlabel(f"state[{dim_index}]")
-    plt.ylabel("v' in [-1,1]")
-
-    plt.tight_layout()
-    #plt.show()
-
 
 # ========================= 4) Train with Stable-Baselines3 PPO =========================
 def main():
@@ -666,8 +590,8 @@ def main():
     K_v = K - 1
     cc = ContinuousContract(p_crs())
 
-    state_low = torch.tensor([0, 0, cc.v_grid[0]], dtype=dtype)
-    state_high = torch.tensor([10, 20, 1.0 * cc.v_grid[-1]], dtype=dtype)
+    state_low = torch.tensor([0, 0, cc.v_grid[0], p.q_0], dtype=dtype)
+    state_high = torch.tensor([10, 20, 1.0 * cc.v_grid[-1], 1], dtype=dtype)
     vprime_low = torch.full((K_v,), float(cc.v_grid[0]), dtype=dtype)
     vprime_high = torch.full((K_v,), float(1.01 * cc.v_grid[-1]), dtype=dtype)
 
@@ -675,6 +599,7 @@ def main():
     bounds = EconBounds(state_low=state_low, state_high=state_high, vprime_low=vprime_low, vprime_high=vprime_high)
 
     details = EconDetails(env_device, K, p, cc)
+
     model = EconModel(device=env_device, dtype=dtype, beta=beta, K_n=K_n, K_v=K_v, num_y=p.num_z, details=details, bounds=bounds)
     P_y = model.details.Z_trans_tensor
     pi0 = torch.full((p.num_z,), 1.0 / p.num_z)
@@ -685,7 +610,7 @@ def main():
     make_env = make_gym_env(model, P_y, pi0, horizon=32, device=env_device)
     vec_env = SubprocVecEnv([make_env for _ in range(n_envs)])  # or DummyVecEnv([make_env]) if n_envs=1
     # normalize observations and rewards
-    vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, gamma=float(beta))#, clip_obs=20.0, clip_reward=20.0)
+    vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, gamma=float(beta), clip_obs=10.0, clip_reward=10.0)
     # after you build vec_env (SubprocVecEnv + VecNormalize)
     vec_env = VecMonitor(vec_env)  # logs ep_len_mean/ep_rew_mean to TB too
 
@@ -695,7 +620,7 @@ def main():
     model_sb3 = PPO(
     "MlpPolicy", vec_env,
     policy_kwargs=policy_kwargs,
-    learning_rate=1e-4,        # smaller step
+    learning_rate=3e-4,        # smaller step
     n_steps=2048,              # per env ⇒ total batch = n_steps * n_envs
     batch_size=2048,            # must divide total batch
     n_epochs=10,                
@@ -713,11 +638,11 @@ def main():
 )
     
     #tensorboard --logdir tb/MWF --bind_all
-    vec_env.training = True
-    obs = vec_env.reset()
-    for _ in range(2000):  # ~2k vector steps = 2k*n_envs transitions
-        actions = [vec_env.action_space.sample() for _ in range(n_envs)]
-        obs, r, done, info = vec_env.step(actions)
+    #vec_env.training = True
+    #obs = vec_env.reset()
+    #for _ in range(2000):  # ~2k vector steps = 2k*n_envs transitions
+    #    actions = [vec_env.action_space.sample() for _ in range(n_envs)]
+    #    obs, r, done, info = vec_env.step(actions)
     
     grid_min = float(bounds.state_low[K_n].item())
     grid_max = float(bounds.state_high[K_n].item())
@@ -785,14 +710,14 @@ def main():
     print("Saved SB3 PPO model to ppo_econ_agent.zip")
 
     # ----- Plots -----
-    eval_env = EconGymEnv(model=model, P_y=P_y, pi0=pi0, horizon=64, device=env_device)
+    #eval_env = EconGymEnv(model=model, P_y=P_y, pi0=pi0, horizon=64, device=env_device)
     # 1) Scatter on visited states, along last continuous dim (e.g., v)
-    plot_scatter_reached(model_sb3, eval_env, dim_index=eval_env.obs_cont_dim - 1, episodes=3, max_steps=64)
+    #plot_scatter_reached(model_sb3, eval_env, dim_index=eval_env.obs_cont_dim - 1, episodes=3, max_steps=64)
     # 2) Along a fixed grid for the same dim
-    grid_min = float(bounds.state_low[eval_env.obs_cont_dim - 1].item())
-    grid_max = float(bounds.state_high[eval_env.obs_cont_dim - 1].item())
-    base_state = eval_env.model.init_state(1)[0].cpu().numpy()
-    plot_along_grid(model_sb3, eval_env, dim_index=eval_env.obs_cont_dim - 1, grid_min=grid_min, grid_max=grid_max, grid_points=200, base_state=base_state)
+    #grid_min = float(bounds.state_low[eval_env.obs_cont_dim - 1].item())
+    #grid_max = float(bounds.state_high[eval_env.obs_cont_dim - 1].item())
+    #base_state = eval_env.model.init_state(1)[0].cpu().numpy()
+    #plot_along_grid(model_sb3, eval_env, dim_index=eval_env.obs_cont_dim - 1, grid_min=grid_min, grid_max=grid_max, grid_points=200, base_state=base_state)
     #plt.show()
 
     # for plotting:
@@ -812,5 +737,6 @@ def main():
     extract_policy_components=extract_policy_components,
     )
     plt.show()
+
 if __name__ == "__main__":
     main()

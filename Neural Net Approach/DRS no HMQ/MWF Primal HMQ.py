@@ -778,16 +778,16 @@ class FOCresidual:
         q_1 = (good_sens + good_juns).unsqueeze(1) / n_1
         q_1[q_1 > 1] = 1 #Should never be the case bah, just in case lol.
         return n_1, q_1, re, pc
-    def U(self):
+    def get_U(self):
         #Iterate on U
-        U = self.p.utility(self.unemp_bf) / ( 1 - self.p.beta)
+        U = self.pref.utility(self.unemp_bf) / ( 1 - self.p.beta)
         critU = 1
         while critU >= 1e-3:
             U2 = U
             ru, _ = self.getWorkerDecisions(U, employed=False)
-            #U = self.pref.utility(self.unemp_bf) + self.p.beta ( U + ru)
+            U = self.pref.utility(self.unemp_bf) + self.p.beta * ( U + ru)
             #Or, direct formulation
-            U = (self.pref.utility(self.unemp_bf) + self.p.beta * ru) / ( 1 - self.p.beta)
+            #U = (self.pref.utility(self.unemp_bf) + self.p.beta * ru) / ( 1 - self.p.beta)
             U = 0.4 * U + 0.6 * U2
             critU = torch.abs(U - U2)
         self.U=U
@@ -1005,7 +1005,7 @@ def initialize(bounds_processor, state_dim, K_n, K_v, HIDDEN_DIMS_CRIT, HIDDEN_D
     # Initialize FOC computer
     foc_optimizer = FOCresidual(bounds_processor, K=K_n, p=p, cc=None)    
     #Get U
-    foc_optimizer.U()
+    foc_optimizer.get_U()
     #Step 0: basic guess
     if pre_training_steps > 0:
         value_net, sup_net, optimizer_value, optimizer_sup = pre_training(optimizer_value,optimizer_sup,value_net,sup_net,foc_optimizer,bounds_processor, K_n, K_v, pre_training_steps)   
