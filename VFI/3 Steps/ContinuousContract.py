@@ -8,18 +8,14 @@ import opt_einsum as oe
 from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
 from search import JobSearchArray
-from valuefunction_multi import PowerFunctionGrid
+from valuefunction2d import PowerFunctionGrid
 from scipy.optimize import minimize
 ax = np.newaxis
 
 def impose_decreasing(M):
     nv = M.shape[1]
-    if len(M.shape)==2:
-        for v in reversed(range(nv-1)):
-            M[:,v] = np.maximum(M[:,v],M[:,v+1]+1e-10)
-    else:
-        for v in reversed(range(nv-1)):
-            M[:,v,:] = np.maximum(M[:,v,:],M[:,v+1,:])
+    for v in reversed(range(nv-1)):
+        M[:,v,:] = np.maximum(M[:,v,:],M[:,v+1,:])
     return M
 def impose_increasing(A0):
     A = np.copy(A0)
@@ -44,24 +40,19 @@ def array_dist(A,B):
     """
     return  (np.power( A-B,2) ).mean() / ( np.power(B,2) ).mean()
 
-def fun_prod(sum_n):
-    return np.power(sum_n, 0.5)
-
-
-
-class MultiworkerContract:
+class ContinuousContract:
     """
         This solves a classic contract model.
     """
-    def __init__(self, K, input_param=None):
+    def __init__(self, input_param=None):
 
         """
             Initialize with a parameter object.
             :param input_param: Input parameter object, can be None
         """
-        self.log = logging.getLogger('ContinuousContract')
-        self.log.setLevel(logging.INFO)
-        self.K = K
+       # self.log = logging.getLogger('ContinuousContract')
+       # self.log.setLevel(logging.INFO)
+
         self.p = input_param
         self.deriv_eps = 1e-4 # step size for derivative
         # Model preferences initialized by the same parameter object.
@@ -69,10 +60,8 @@ class MultiworkerContract:
 
         # Worker and Match Productivity Heterogeneity in the Model
         self.Z_grid = self.construct_z_grid()   # Create match productivity grid
-
-        #Size grid:
-        self.N_grid=np.linspace(0,10,self.p.num_n)
-
+        # Production Function in the Model
+        self.fun_prod = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
         # Unemployment Benefits across Worker Productivities
         self.unemp_bf = np.ones(self.p.num_x) * self.p.u_bf_m
 
@@ -80,65 +69,21 @@ class MultiworkerContract:
         self.Z_trans_mat = createPoissonTransitionMatrix(self.p.num_z, self.p.z_corr)
 
         # Value Function Setup
-        dimensions=[self.p.num_z]
-        dimensions.extend([self.p.num_n] * K)
-        dimensions.extend([self.p.num_v] * (K - 1))        
-        self.J_grid   = np.zeros(dimensions) #grid of job values, first productivity, then size for each step, then value level for each step BESIDES FIRST
-        # Production Function in the Model
-        self.fun_prod_onedim = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
-        self.fun_prod = self.fun_prod_onedim.reshape((self.p.num_z,) + (1,) * (self.J_grid.ndim - 1))
-
-        # Wage and Shadow Cost Grids
+        self.J_grid   = -10 * np.ones((self.p.num_z, self.p.num_v)) #grid of job values, first productivity, then starting value, then tenure level
         self.w_grid = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v )
         self.rho_grid=1/self.pref.utility_1d(self.w_grid)
-
-        #Total firm size for each possible state
-        grid = np.ogrid[[slice(dim) for dim in self.J_grid.shape]]
-        # Calculate the sum size for each element in the matrix
-        self.sum_size = np.zeros(self.J_grid.shape)
-        self.sum_wage=np.zeros(self.J_grid.shape)
-        for i in range(1, K + 1):
-            self.sum_size += self.N_grid[grid[i]]
-        for i in range(K+1,self.J_grid.ndim):
-            self.sum_wage+=self.w_grid[grid[i]]*self.N_grid[grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
-
-
-
-        #Job value and GE first
-        self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod_onedim.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
-        self.simple_J=np.divide(self.fun_prod_onedim[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
+        #Gotta fix the tightness+re functions somehow. Ultra simple J maybe?
+        self.v_grid=np.linspace(np.divide(self.pref.utility(self.unemp_bf.min()),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
+        self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
         #Apply the matching function: take the simple function and consider its different values across v.
-        #This is equivalent to marginal value of a firm of size 1 at the lowest step
         self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
             np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :], 1.0)), self.p.sigma), 1/self.p.sigma)
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
         self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
-        self.js.update(self.v_grid[ax,:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
-        
-
-
-        #Create a guess for the MWF value function
-        self.J_grid = self.J_grid+np.divide(self.fun_prod*fun_prod(self.sum_size)-self.w_grid[0]*self.N_grid[grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
-
-        #Guess for the Worker value function
-        self.W1i = np.zeros_like(self.J_grid)
-        self.W1i = np.expand_dims(self.W1i, axis=-1) #adding an extra dimension to W1i
-        self.W1i = np.repeat(self.W1i, self.K, axis=-1)
-        print("Shape of W1i:", self.W1i.shape)
-        #v_grid = self.v_grid.reshape((1,)*(self.K+1)+(self.p.num_v,) + (1,) * (self.J_grid.ndim - 1))
-
-        self.w_matrix = np.zeros(self.W1i.shape) #So the line below is somehow not recognized as a real index. So w_grid[grid_w[0]] is allowed, but not the actual line somehow?
-        index_to_access=np.zeros(self.W1i.shape)
-        self.grid_w = np.ogrid[[slice(dim) for dim in index_to_access.shape]]
-        print("Shape of grid_w:", self.grid_w)
-        step=np.zeros(self.W1i.shape)
-        for idx in np.ndindex(self.W1i.shape):
-         step[idx] = idx[-1]
-        index_to_access = self.grid_w[self.K + 1 + step]           
-        print("Index to access:", index_to_access.shape)
-        self.w_matrix = self.w_grid[index_to_access] #Matrix of wages for every actual worker at each state and step       
-        self.W1i = self.W1i+self.w_matrix #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
-
+        self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+        print(self.js.jsa.e0)
+        #self.re=self.js.re
+        #self.pc = self.getWorkerDecisions(self.simple_v_grid[ax, :,ax]) #shit, re is an array, not a function!! why???
     def getWorkerDecisions(self, EW1, employed=True): #Andrei: Solves for the entire matrices of EW1 and EU
         """
         :param EW1: Expected value of employment
@@ -154,7 +99,7 @@ class MultiworkerContract:
         if employed:
             pe = pe * self.p.s_job
             re = re * self.p.s_job
-        #print("Shape of pe:", pe.shape)
+
         # construct the continuation probability. #Andrei: probability the worker doesn't get fired and also doesn't leave
         pc = (1 - pe)
 
@@ -164,16 +109,22 @@ class MultiworkerContract:
             np.divide(self.p.kappa, np.maximum(J1, self.p.kappa)), self.p.sigma),
                                 1 / self.p.sigma)
 
-    def J(self,update_eq=1):    
+    def J(self,update_eq=0):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
         """
-        # create representation for J1p
-        w_grid = self.w_grid
-        rho_grid = self.rho_grid
-        Ji = self.J_grid
+                # create representation for J1p
+        w_grid=self.w_grid
+        rho_grid=self.rho_grid
+        Ji= self.simple_J
+        W1i=np.zeros((self.p.num_z, self.p.num_v))
+        W1i=W1i+self.v_grid[ax,:]
+        U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
         J1p = PowerFunctionGrid(W1i, Ji) #From valueFunction.py
+
+        #W1i[ Ji < 0 ] = U
+        #Ji[ Ji < 0 ] = 0  
 
         EW1_star = np.copy(Ji)
         EJ1_star = np.copy(Ji)
@@ -191,45 +142,35 @@ class MultiworkerContract:
         for ite_num in range(self.p.max_iter):
             Ji2 = Ji
             W1i2 = W1i
+            U2 = np.copy(U)
 
             # evaluate J1 tomorrow using our approximation
             Jpi = J1p.eval_at_W1(W1i)
-
+            #print("Jpi-Ji max:", np.max(np.abs(Jpi-Ji)))
             # we compute the expected value next period by applying the transition rules
             EW1i = Exz(W1i, self.Z_trans_mat)
             EJpi = Exz(Ji, self.Z_trans_mat)
-            
-            #print("Shape of EW1i:", EW1i.shape)
+            EU = U
+
+            #EW1i = W1i
+            #EJpi = Jpi
             # get worker decisions
             _, _, pc = self.getWorkerDecisions(EW1i)
             # get worker decisions at EW1i + epsilon
             _, _, pc_d = self.getWorkerDecisions(EW1i + self.deriv_eps) 
-           
+
             # compute derivative where continuation probability is >0
             #Andrei: continuation probability is pc, that the worker isn't fired and doesn't leave
-            #print("Shape of pc:", pc.shape)
-            #print("Shape of pc_d:", pc_d.shape if 'pc_d' in locals() else "pc_d not defined")
-            #print("Shape of log_diff:", log_diff.shape if 'log_diff' in locals() else "log_diff not defined")
             log_diff[:] = np.nan
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
-            
-            #Andrei: this is the FOC that I would actually like to run
-            EJinv=(impose_decreasing(Ji+w_grid[ax,:])-self.fun_prod[:,ax])/self.p.beta #creating expected job value as a function of today's value
-            foc = rho_grid[ax, :,ax] - (EJinv[:,ax,:]/pc[:,:,ax])* (log_diff[:,:,ax] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-            
-            #foc = rho_grid[ax, :,ax] - ((impose_decreasing(Ji[:,ax,:]+w_grid[ax,:,ax])-self.fun_prod[:,ax,ax])/(self.p.beta*pc[:,:,ax]))* (log_diff[:,:,ax] / self.deriv_eps)
-            #if ite_num==0:
-            #   pp=np.zeros((self.p.num_z,self.p.num_v,self.p.num_v))
-            #   foc = rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)+pp
-            #Andrei: this is the same foc as in the previous code (just a 3d version) that I am using for benchmarking
-            #pp=np.zeros((self.p.num_z,self.p.num_v,self.p.num_v))
-            #foc = rho_grid[ax, :,ax] - EJpi[:,:,ax]* (log_diff[:,:,ax] / self.deriv_eps)+pp #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
-
-            assert (np.isnan(foc) & (pc[:,:,ax] > 0)).sum() == 0, "foc has NaN values where p>0"
+            foc = rho_grid[ax, :] - EJpi * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
+            # foc = 1/u'(w')-eta(v')EJpi = 1/u'(w)
+            assert (np.isnan(foc) & (pc > 0)).sum() == 0, "foc has NaN values where p>0"
 
 
             for iz in range(self.p.num_z):
-                assert np.all(EW1i[iz, 1:] >= EW1i[iz, :-1]) #Andrei: check that worker value is increasing in v
+
+                #assert np.all(EW1i[iz, 1:] >= EW1i[iz, :-1]) #Andrei: check that worker value is increasing in v
                     # find highest V with J2J search
                 rho_bar[iz] = np.interp(self.js.jsa.e0, EW1i[iz, :], rho_grid) #Andrei: interpolate the rho_grid, aka the shadow cost, to the point where the worker no longer searches
                 rho_min = rho_grid[pc[iz, :] > 0].min()  # lowest promised rho with continuation > 0
@@ -237,25 +178,16 @@ class MultiworkerContract:
                     # look for FOC below  rho_0
                 Isearch = (rho_grid <= rho_bar[iz]) & (pc[iz, :] > 0) #Okay, I think this is the set of points (of promised value v) such that these conditions hold
                 if Isearch.sum() > 0:
-                    Isearch_indices = np.where(Isearch)[0]
-                    for iv in Isearch_indices:
-                      #print(iv)
-                      #print(rho_grid[iv].shape)
-                      #print(impose_increasing(foc[iz, Isearch, iv]).shape)
-                      #print(rho_grid[Isearch].shape)
-                      rho_star[iz, iv] = np.interp(rho_grid[iv],
-                                                              impose_increasing(foc[iz, Isearch,iv]),
+                      rho_star[iz, Isearch] = np.interp(rho_grid[Isearch],
+                                                              impose_increasing(foc[iz, Isearch]),
                                                               rho_grid[Isearch], right=rho_bar[iz])
 
                     # look for FOC above rho_0
                 Ieffort = (rho_grid > rho_bar[iz]) & (pc[iz, :] > 0)
                 if Ieffort.sum() > 0:
-                    Ieffort_indices = np.where(Ieffort)[0]
-                    for iv in Ieffort_indices:
-                         #print("iv:",iv)
                         #assert np.all(foc[iz, Ieffort, ix][1:] > foc[iz, Ieffort, ix][:-1])
-                         rho_star[iz, iv] = np.interp(rho_grid[iv],
-                                                              foc[iz, Ieffort,iv], rho_grid[Ieffort])
+                         rho_star[iz, Ieffort] = np.interp(rho_grid[Ieffort],
+                                                              foc[iz, Ieffort], rho_grid[Ieffort])
                     #Andrei: so this interpolation is: find the rho_grid value such that foc=rho_grid?
                     #Let's try to be more precise here: for each v_0 in Ieffort, we want rho_star=rho_grid[v'] such that foc[v']=rho_grid[v_0]
                     # set rho for quits to the lowest value
@@ -269,24 +201,31 @@ class MultiworkerContract:
                     #Andrei: rather, we're interpolating the Job value at the point of the optimal shadow cost. still confused as to why its a shadow cost rather than lambda
                     #Or, more like, we're interpolating EJpi to the value where the shadow cost is the optimal one, aka rho_star/
                     #Basically, fixing today's promised value, we find the future value that will be optimal via  the shadow cost, and interpolate the expected value at the point of the optimal shadow cost
-            #print("Rho_star:",rho_star)
-            #assert np.all(rho_star[:, 1:] >= rho_star[:, :-1])
             assert np.isnan(EW1_star).sum() == 0, "EW1_star has NaN values"
 
-            pe_star, re_star, _ = self.getWorkerDecisions(EW1_star)
-            #print("Expectation diff:", np.max(np.abs(EJ1_star-(Ji-self.fun_prod[:,ax]+w_grid[ax,:])/(self.p.beta*(1-pe_star)))))
+            # get pstar, qstar
+            pe_star, re_star, pc_star = self.getWorkerDecisions(EW1_star)
+
+            _, ru, _ = self.getWorkerDecisions(EU, employed=False)
+            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
+            U = 0.4 * U + 0.6 * U2
+
             # Update firm value function 
             #Andrei: why is the w_grid still preset? Doesn't it depend on what you promised to the worker?
             #Andrei: also, why do we still use this EJ1_star as the future value rather than just the actual value?
             Ji = self.fun_prod[:, ax] - w_grid[ax, :] + self.p.beta * (1 - pe_star) * EJ1_star
-            print("Value diff:", np.max(np.abs(Ji-Ji2)))
+            Ji = .2 * Ji + .8 * Ji2
+            #print("Value diff:", np.max(np.abs(Ji-Ji2)))
             # Update worker value function
             W1i = self.pref.utility(w_grid)[ax, :] + \
                 self.p.beta * (re_star + EW1_star)
-            #print("Worker value:", W1i)
-            W1i = .4*W1i + .6*W1i2
-            Ji = .2*Ji + .8*Ji2
+            #plt.plot(W1i[self.p.z_0-1, :], pe_star[self.p.z_0-1, :], label='Probability of the worker leaving across submarkets')      
+            #plt.show()
+            W1i = .4 * W1i + .6 * W1i2
 
+            #Firm exit:
+            #W1i[ Ji < 0 ] = U
+            #Ji[ Ji < 0 ] = 0
             # Updating J1 representation
             error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W1i, Ji)
 
@@ -294,32 +233,36 @@ class MultiworkerContract:
             error_j1i = array_exp_dist(Ji,Ji2,100) #np.power(Ji - Ji2, 2).mean() / np.power(Ji2, 2).mean()  
             error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W1i), 100)
             error_w1 = array_dist(W1i, W1i2)
-
+            #print("Error:", error_j1i)
             # update worker search decisions
             if (ite_num % 10) == 0:
                 if update_eq:
                     # -----  check for termination ------
-                    if (np.array([error_w1, error_js, error_j1p_chg]).max() < self.p.tol_full_model
+                    if (np.array([error_j1i,error_w1, error_js, error_j1p_chg]).max() < self.p.tol_full_model
                             and ite_num > 50):
+                        P_xv = self.matching_function(Ji[self.p.z_0-1, :])
+                        plt.plot(W1i[self.p.z_0-1, :], P_xv, label='Probability of finding a job across submarkets')      
+                        plt.show()
                         break
                     # ------ or update search function parameter using relaxation ------
                     else:
-                            P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
+                            #P_xv = self.matching_function(J1p.eval_at_W1(W1i)[self.p.z_0-1, :])
+                            P_xv = self.matching_function(Ji[self.p.z_0-1, :])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
                             error_js = self.js.update(W1i[self.p.z_0-1, :], P_xv, type=1, relax=relax)
                 else:
                     # -----  check for termination ------
-                    if (np.array([error_w1, error_j1g]).max() < self.p.tol_full_model
+                    if (np.array([error_j1i,error_w1, error_j1g]).max() < self.p.tol_full_model
                             and ite_num > 50):
                         break
 
-            if (ite_num % 25) == 0:
-                self.log.debug('[{}] W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}   rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
-                                     ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
+            #if (ite_num % 25) == 0:
+             #   self.log.debug('[{}] W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}   rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
+            #                         ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
 
-        self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
-                                     ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
-        return Ji,W1i,EW1_star
+        #self.log.info('[{}][final]  W1= {:2.4e} Ji= {:2.4e} Jg= {:2.4e} Jp= {:2.4e} Js= {:2.4e}  rsq_p= {:2.4e} rsq_j= {:2.4e}'.format(
+        #                             ite_num, error_w1, error_j1i, error_j1g, error_j1p_chg, error_js, self.js.rsq(), rsq_j1p ))
+        return Ji,W1i,EW1_star,Jpi,pc_star
 
 
     def construct_z_grid(self):

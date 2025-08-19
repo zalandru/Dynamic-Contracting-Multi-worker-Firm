@@ -1,5 +1,5 @@
 #from .modelfull import FullModel
-#from .simulate import Simulator,create_year_lag
+from .simulate import Simulator,create_year_lag
 from .primitives import *
 from .search import JobSearch
 #from .modelsimple import SimpleModel

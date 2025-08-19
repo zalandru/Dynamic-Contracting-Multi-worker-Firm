@@ -23,21 +23,38 @@ class Parameters:
         # Points in the Model
         self.num_l  = 101     # Number of points of evaluation
         self.num_v  = 100     # Number of points in the grid for V
-        self.num_v0 = 5     # Number of points in the grid for V0
-        self.num_v_simple = 200 #Number of points in the grid for V for the simple start
-        #self.num_x  = 15      # Number of points of support for worker productivity
+        self.num_x  = 15      # Number of points of support for worker productivity
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
-        #self.num_np = 5       # Number of non-permanent levels
-        self.num_np = 1       # Number of non-permanent levels
-        self.num_z  = 7      # Number of points for match productivity
+        self.num_np = 5       # Number of non-permanent levels
+        self.num_z  = 3      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 11      # Number of points of support for the number of workers
-
+        self.num_n  = 5     # Number of points of support for the number of workers
+        self.n_bar = 4       # Number of workers in the firm	
+        self.num_q = 6      #Number of avg match quality levels
         # Time periods in the Model
-        self.dt     = 1.0 #0.25    # Time as a Fraction of Year
+        self.dt     = 0.25 #0.25    # Time as a Fraction of Year
+
+        # Vacancy cost
+        self.hire_c = 5.0
+        #HMQ
+        self.q_0 = 0.5 #Starting match q
+        self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
+        #DRS production
+        self.prod_alpha = 0.5
+        # Unemployment Parameters
+        self.u_bf_m = 1.0 #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
+        self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
+        #Firm entry and maintenance cost
+        self.k_entry = 8.0
+        self.k_f = 1.0
+
+        #Min wage
+        self.min_wage = 0 * self.u_bf_m
+
+
 
         # Utility Function Parameters
-        self.u_rho = 1.5      # Risk aversion coefficient, was 1.5
+        self.u_rho = 1.1      # Risk aversion coefficient, was 1.5
         self.u_a   = 1.0
         self.u_b   = 1.0
 
@@ -47,6 +64,7 @@ class Parameters:
         self.alpha    = 0.1        # Parameter for probability of finding a job
         self.sigma    = 1.0        # Parameter for probability of finding a job
         self.kappa    = 1.0        # Vacancy cost parameter
+
 
         # effort function that control separation
         self.efcost_sep = 0.005 * self.dt
@@ -73,9 +91,6 @@ class Parameters:
         self.beta     = 1 - (1 - 0.95) * self.dt  # Impatience
         self.int_rate = 1 / self.beta - 1         # Period interest rate
 
-        # Unemployment Parameters
-        self.u_bf_m = 0.05       # Intercept of benefit function for unemployed(x)
-        self.u_bf_c = 0.5        # Slope of benefit function for unemployed(x) not used
 
         # Unemployment Parameters w_net = tau * w ^ lambda
         self.tax_lambda = 1.0       # curvature of the tax system 
@@ -160,6 +175,14 @@ class Preferences:
         else:
             self.p = input_param
 
+    def q_inv(self,q):
+         """
+            Computes the tightness function at a particular vacancy-filling probability.
+            :param  q: Argument of the function.
+            :return: Output of the function.
+        """       
+         return np.power( np.power(self.p.alpha/q,self.p.sigma) - np.power(self.p.alpha,self.p.sigma), 1 / self.p.sigma )
+
     def utility(self, wage):
         """
             Computes the utility function at a particular wage.
@@ -209,8 +232,9 @@ class Preferences:
             :return: Output of the function.
         """
         aa = self.p.u_a * np.power(self.p.tax_tau, 1 - self.p.u_rho) 
-        pow_arg = ( (1 - self.p.u_rho) * value + self.p.u_b   ) / self.p.u_a
-        return np.power( pow_arg, 1.0/( 1 - self.p.u_rho ) - 1.0) / ( self.p.tax_lambda * self.p.u_a )
+        pow_arg = ( (1 - self.p.u_rho) * value + self.p.u_b   ) / aa
+        #return np.power( pow_arg, 1.0/( self.p.tax_lambda * (1 - self.p.u_rho) ) - 1.0) / ( self.p.tax_lambda * aa )
+        return np.power( pow_arg, -self.p.u_rho / ( 1 - self.p.u_rho )) / ( self.p.tax_lambda * aa )
         #return np.exp(value)
 
 
