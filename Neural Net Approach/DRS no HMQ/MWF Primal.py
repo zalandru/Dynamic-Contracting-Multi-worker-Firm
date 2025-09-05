@@ -134,8 +134,8 @@ class ValueFunctionNN(nn.Module):
         for h in hidden_dims:
             layers.append(nn.Linear(input_dim, h))
             # Consider adding layer normalization for stability
-            #layers.append(nn.LayerNorm(h))
-            layers.append(nn.Tanh())
+            layers.append(nn.LayerNorm(h))
+            layers.append(nn.SiLU())
             input_dim = h
         self.trunk = nn.Sequential(*layers)
 
@@ -186,8 +186,8 @@ class PolicyNN(nn.Module):
         for hidden_dim in hidden_dims:
             layers.append(nn.Linear(input_dim, hidden_dim))
             # Consider adding layer normalization for stability
-            #layers.append(nn.LayerNorm(hidden_dim))
-            layers.append(nn.Tanh())
+            layers.append(nn.LayerNorm(hidden_dim))
+            layers.append(nn.SiLU())
             input_dim = hidden_dim
         self.trunk = nn.Sequential(*layers)
 
@@ -1197,6 +1197,7 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         print("Loading saved nets")
         value_net.load_state_dict(torch.load("trained_value_function.pt"))
         sup_net.load_state_dict(torch.load("trained_sup_function.pt"))
+        evaluate_plot_precise(value_net, sup_net, bounds_processor, foc_optimizer) 
     #Initialize a target network
     target_value_net = copy.deepcopy(value_net)
     target_sup_net = copy.deepcopy(sup_net)
@@ -1262,7 +1263,7 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
             
             batch_index += 1
             i = torch.arange(states.shape[0])
-            if (((batch_index) % 3)==0) & (ep>=100): #Policy update
+            if (((batch_index) % 3)==0) & (ep>=0): #Policy update
                 optimizer_sup.zero_grad()                        
                 policies = sup_net(states)
                 #Gotta now do wages, hiring, and values separately
@@ -1339,7 +1340,7 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         time_end_train = time()
         scheduler_value.step()  # or just .step(episode)
         
-        if ep >= 100:
+        if ep >= 0:
             scheduler_sup.step()
             #Collect your raw loss scalars
             losses = {
@@ -1488,7 +1489,7 @@ if __name__ == "__main__":
 
     #pref = Preferences(input_param=p_crs)
     cc=ContinuousContract(p_crs()) 
-    cc_J,cc_W,cc_Wstar,omega = cc.J(0) 
+    #cc_J,cc_W,cc_Wstar,omega = cc.J(0) 
     #target_values = tensor(cc_J + cc.rho_grid[ax,:] * cc_W, dtype=type)
     #target_W = tensor(cc_W, dtype=type)
     #NORMALIZE EVERYTHING!!!
@@ -1503,7 +1504,7 @@ if __name__ == "__main__":
     
     learning_rate=[3e-4,1e-4]
     value_net, sup_net, optimizer_value, optimizer_sup, scheduler_value, scheduler_sup, foc_optimizer = initialize(bounds_processor,  STATE_DIM, 
-    K_n, K_v, HIDDEN_DIMS_CRIT, HIDDEN_DIMS_POL, learning_rate=learning_rate, weight_decay = [1e-4, 1e-4], pre_training_steps=100, num_epochs=num_episodes, minibatch_num=minibatch_num)
+    K_n, K_v, HIDDEN_DIMS_CRIT, HIDDEN_DIMS_POL, learning_rate=learning_rate, weight_decay = [1e-4, 1e-4], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
     # Train value function
     print("Training value function...")
     beg=time()
@@ -1512,7 +1513,7 @@ if __name__ == "__main__":
         num_episodes=num_episodes,
         starting_points_per_iter=1,
         simulation_steps=5,
-        minibatch_num=minibatch_num, λ=5.0,use_saved_nets = False    )
+        minibatch_num=minibatch_num, λ=5.0,use_saved_nets = True    )
     print("Training time:", time()-beg)
 
     # Evaluate trained model

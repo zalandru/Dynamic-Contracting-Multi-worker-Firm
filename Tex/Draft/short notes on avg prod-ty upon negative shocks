@@ -1,0 +1,39 @@
+When a firm fires, total production goes down, but per person goes up.
+Qualitatively, would that be true with the basic DRS? Or would the productivity stay the same? lol I feel stupid that I'm unsure
+Π = \max_ L y \sqrt{L} - L * w
+FOC: w= y/\sqrt{L}
+%But what determines L or w then? Need one more equation
+V = max_L u(c) - L^2/2
+c= w*L
+FOC: w u'(w*L) - L=0 => L/w= u'(w*L)
+Removing w, we get L/u'(w*L) = y/sqrt(L)
+let u=log so 1/u'(w*L) = w*L
+w * L^2 = y/sqrt(L)
+Again, w = y/sqrt(L)
+so L^2=1, independent of y.
+Now, what about CRRA utility that isnt log?
+Then u'(c) = c^{-σ}
+So 1/u'(w*L) = (w*L) ^ σ
+L^{1+σ} * w^σ = w
+L^{1+σ} = w^{1-σ} = (y/sqrt(L)) ^ {1-σ}
+L^{1+σ - 0.5(1-σ)=0.5 + 1.5σ} = y ^ {1-σ}
+So the average productivity y * \sqrt{L}/L = y/\sqrt{L} = y ^ σ * L ^{1.5σ}??? Does that help in any way??
+If σ<1, then L is increasing in y so the marginal productivity MAY be decreasing in y.
+If σ>1, the L is decreasing in y, so when y goes down, L goes up, so the average productivity definitely falls down.
+
+In reality, it also depends on α, the DRS coefficient. 
+Let's check most generally.
+Π = \max_ L y * L ^ α - w*L
+FOC_f: w = y * L^{-α}
+FOC_h = w u'(w*L) - L = 0 ⟺ w * (w*L) ^ (-σ) = L ⟺ w ^{1-σ} = L^{1+σ}
+y * L ^ {-α} = L ^ {(1+σ)/(1-σ)}
+y = L ^ {(1+σ)/(1-σ) + α}
+Now we want to get the average productivity y * L^{α} / L = y * L ^{α-1}
+First note: if σ=1, it seems like the original result survives: L stays constant.
+We can try something like: determine the cases where L is increasing/decreasing in y:
+1. If L is decreasing in y, we already know that the avg productivity will fall with y: y goes down, L goes up, ofc avg prod will fall
+2. If L is increasing in y (case where (1+σ)/(1-σ) + α > 0. If σ=2, -3 + α<0!!! So is there any such case??? NO THERE ISN'T.)
+, we can substitute y with L ^ {(1+σ)/(1-σ) + α} and see if the full expression is increasing in L:
+L ^ {(1+σ)/(1-σ) + α + α - 1}= L ^ {2 * (σ/(1-σ) + α)}.
+So, if this expression is decreasing in L (so that, when y falls, L falls as well, and thus this expression, aka avg prod-ty, goes up), we will have the same result qualitatively
+This requires that σ/(1-σ) + α< 0. Thus σ>1, but very lightly (like σ=1.0000001) and α small enough. For σ=2, we would get -2 + α, guaranteeably <0.
