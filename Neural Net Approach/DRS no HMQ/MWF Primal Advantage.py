@@ -1043,6 +1043,8 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         #Starting states. First with a single junior and nothing else. State = (y, {1,0},{rho_min,rho_min}). Plus a bunch of random starting states
         state_start = torch.zeros(state_dim,dtype=type)#.requires_grad_(True)
         state_start[0] = bounds_processor.normalize_dim(1,0) # 1 junior worker
+        state_start[1] = bounds_processor.normalize_dim(1e-3,1) # Tiny positive seniors
+        state_start[2] = torch.rand(1, K_v)
         #Or if randomized. 
         starting_states = torch.rand(starting_points_per_iter, state_dim,dtype=type) 
         #Add the starting state
@@ -1277,14 +1279,14 @@ if __name__ == "__main__":
 
     #pref = Preferences(input_param=p_crs)
     cc=ContinuousContract(p_crs()) 
-    cc_J,cc_W,cc_Wstar,omega = cc.J(0) 
+    #cc_J,cc_W,cc_Wstar,omega = cc.J(0) 
     #target_values = tensor(cc_J + cc.rho_grid[ax,:] * cc_W, dtype=type)
     #target_W = tensor(cc_W, dtype=type)
     #NORMALIZE EVERYTHING!!!
     LOWER_BOUNDS = [0, 0 , cc.v_grid[0]] # The state space is (y,n_0,n_1,v_1).
-    UPPER_BOUNDS = [5, 10, cc.v_grid[-1]]
+    UPPER_BOUNDS = [100, 200, 1.1 * cc.v_grid[-1]]
 
-    num_episodes= 20000
+    num_episodes= 40000
     minibatch_num = 4
     #Initialize
     bounds_processor = StateBoundsProcessor(LOWER_BOUNDS,UPPER_BOUNDS)
@@ -1292,7 +1294,7 @@ if __name__ == "__main__":
     
     learning_rate=[1e-3,1e-4]
     value_net, sup_net, optimizer_value, optimizer_sup, scheduler_value, scheduler_sup, foc_optimizer = initialize(bounds_processor,  STATE_DIM, 
-    K_n, K_v, HIDDEN_DIMS_CRIT, HIDDEN_DIMS_POL, learning_rate=learning_rate, weight_decay = [1e-3, 1e-3], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
+    K_n, K_v, HIDDEN_DIMS_CRIT, HIDDEN_DIMS_POL, learning_rate=learning_rate, weight_decay = [1e-2, 1e-2], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
     # Train value function
     print("Training value function...")
     beg=time()

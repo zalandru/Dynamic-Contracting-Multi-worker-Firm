@@ -131,8 +131,8 @@ class EconModel:
         obs_cont_dim = self.bounds.state_low.numel()
         s = torch.zeros(batch_size, obs_cont_dim, device=self.device, dtype=self.dtype)
         s[:, 0] = 1.0
-        s[:, 1:self.K_n] = 1e-2 #Just a few seniors so that the value has some real impact
-        s[:, self.K_n : self.K_n + self.K_v] = (self.details.v_grid[-1] + self.details.v_grid[0]) / 2#Since my vprime is delta parametrized, I want to incentivize it to be at least a bit positive
+        s[:, 1:self.K_n] = 1e-3 #Just a few seniors so that the value has some real impact
+        s[:, self.K_n : self.K_n + self.K_v] = torch.rand(batch_size, self.K_v, device=self.device) * (self.details.v_grid[-1] - self.details.v_grid[0])#Since my vprime is delta parametrized, I want to incentivize it to be at least a bit positive. I also get a little bit of exploration so I make it random.
         s[:, self.K_n + self.K_v:] = self.details.p.q_0
         return s
 
@@ -304,7 +304,7 @@ class EconGymEnv(gym.Env):
 #========================= 3) Helpers for SB3 inference and plotting =========================
 
 class PlotCallback(BaseCallback):
-    def __init__(self, plot_env, make_env, dim_index, grid_min, grid_max,
+    def __init__(self, obs_norm_check, plot_env, make_env, dim_index, grid_min, grid_max,
                  grid_points=200, plot_every_ts=200_000, y_idx=None):
         super().__init__()
         self.plot_env = plot_env
@@ -315,6 +315,7 @@ class PlotCallback(BaseCallback):
         self.y_idx = y_idx
         self.plot_every_ts = int(plot_every_ts)
         self._last_plot_ts = -10**18  # force an initial plot
+        self.obs_norm_check = obs_norm_check
 
     # ---------- helpers (unchanged logic) ----------
     def _vn(self) -> VecNormalize | None:
@@ -336,8 +337,11 @@ class PlotCallback(BaseCallback):
         ret_std = float(np.sqrt(vn.ret_rms.var + vn.epsilon))
         return v_norm * ret_std
 
-    def _value_and_action(self, obs_raw_np: np.ndarray):
-        obs_norm_np = self._normalize_obs(obs_raw_np)
+    def _value_and_action(self, obs_norm_check, obs_raw_np: np.ndarray):
+        if obs_norm_check:
+            obs_norm_np = self._normalize_obs(obs_raw_np)
+        else: 
+            obs_norm_np = obs_raw_np
         pol = self.model.policy
         with torch.no_grad():
             obs_t = torch.as_tensor(obs_norm_np, device=pol.device, dtype=torch.float32)
@@ -388,7 +392,7 @@ class PlotCallback(BaseCallback):
 
     def _plot_once(self):
         obs_mat, y_idx = self._make_obs_grid()
-        vals_true, acts_model = self._value_and_action(obs_mat)
+        vals_true, acts_model = self._value_and_action(self.obs_norm_check, obs_mat)
         acts_phys = self._actions_to_physical_from_obs(acts_model, obs_mat)
         fig = self._make_fig(obs_mat, vals_true, acts_phys, y_idx)
         self.logger.record("plots/value_policy_grid", Figure(fig, close=True),
@@ -591,7 +595,7 @@ def main():
     cc = ContinuousContract(p_crs())
 
     state_low = torch.tensor([0, 0, cc.v_grid[0], p.q_0], dtype=dtype)
-    state_high = torch.tensor([10, 20, 1.0 * cc.v_grid[-1], 1], dtype=dtype)
+    state_high = torch.tensor([50, 100, 1.0 * cc.v_grid[-1], 1], dtype=dtype)
     vprime_low = torch.full((K_v,), float(cc.v_grid[0]), dtype=dtype)
     vprime_high = torch.full((K_v,), float(1.01 * cc.v_grid[-1]), dtype=dtype)
 
@@ -607,10 +611,11 @@ def main():
     # --- Gym envs
     # parallel envs (see section below), or keep DummyVecEnv for 1 env:
     n_envs = 8  # try 4 or 8 if you have cores; else set to 1 and use DummyVecEnv
+    obs_norm = True
     make_env = make_gym_env(model, P_y, pi0, horizon=32, device=env_device)
     vec_env = SubprocVecEnv([make_env for _ in range(n_envs)])  # or DummyVecEnv([make_env]) if n_envs=1
     # normalize observations and rewards
-    vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, gamma=float(beta), clip_obs=10.0, clip_reward=10.0)
+    vec_env = VecNormalize(vec_env, norm_obs=obs_norm, norm_reward=True, gamma=float(beta), clip_obs=10.0, clip_reward=10.0)
     # after you build vec_env (SubprocVecEnv + VecNormalize)
     vec_env = VecMonitor(vec_env)  # logs ep_len_mean/ep_rew_mean to TB too
 
@@ -628,7 +633,7 @@ def main():
     gae_lambda=0.95,
     clip_range=0.2,
     clip_range_vf=0.2,         # <— value function clipping
-    ent_coef=0.0,
+    ent_coef=0.01,
     vf_coef=0.25,              # reduce value loss weight
     max_grad_norm=0.5,
     target_kl=0.01,            # optional safety brake
@@ -649,6 +654,7 @@ def main():
     
     plot_env = EconGymEnv(model, P_y, pi0, horizon=32, device=env_device)  # plain env for shapes
     plot_cb = PlotCallback(
+        obs_norm_check = obs_norm,
         plot_env=plot_env,
         make_env=make_env,             # not strictly used here, but handy if you extend
         dim_index=2,                   # pick the state dimension to sweep

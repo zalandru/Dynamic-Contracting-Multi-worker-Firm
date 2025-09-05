@@ -1,7 +1,7 @@
 import numpy as np
 import logging
 from scipy.stats import lognorm as lnorm
-
+from typing import Sequence, Optional, Tuple
 import opt_einsum as oe
 
 #For printing
@@ -26,7 +26,7 @@ from time import time
 import math
 
 ax = np.newaxis
-
+dtype = np.float32
 
 # Set up the basic configuration for the logger
 logging.basicConfig(
@@ -486,12 +486,138 @@ def Values_int(ERho_star,EW_star,ERho,EW,N_grid,N_grid1,rho_grid,Q_grid,points,n
         flat_result = multilinear_interp(points[iz], ((N_grid, N_grid1, rho_grid, Q_grid)), EW[iz, ...])
         EW_star[iz,...] =  flat_result.reshape(shape)        
     return ERho_star,EW_star
+#Get indices from a flat index
+@nb.njit(cache=True)
+def decode_flat_index(pos, dims):
+    # dims: 1D int64 array of sizes
+    nd = dims.size
+    idx = np.empty(nd, np.int64)
+    for d in range(nd-1, -1, -1):
+        idx[d] = pos % dims[d]
+        pos //= dims[d]
+    return idx
+#Layout class to handle the dimensions
+class Layout:
+    def __init__(self, K):
+        # Order: [z] + [n (K-1 dims)] + [n1 (1 dim)] + [v (K-1 dims)] + [q (K-1 dims)]
+        # indices:
+        self.ax_z = 0
+        self.ax_ns = list(range(1, K))         # juniors at each step before seniors
+        self.ax_n1 = K                         # seniors
+        self.ax_vs = list(range(K+1, K+(K-1)+1))
+        self.ax_qs = list(range(K+(K-1)+1, K+2*(K-1)+1))
 
+        # Convenience – “primary” dims (first v/q step) when you conceptually had one
+        self.ax_v = self.ax_vs[0] if self.ax_vs else None
+        self.ax_q = self.ax_qs[0] if self.ax_qs else None
+
+def dims_for_K(p, K):
+    dims = [p.num_z]
+    dims.extend([p.num_n]*(K-1))
+    dims.extend([p.num_n1])            # seniors
+    dims.extend([p.num_v]*(K-1))
+    dims.extend([p.num_q]*(K-1))
+    return dims
+
+#Smoothing functions
+def _sort_if_needed(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    # Ensure 1D; x and y must be 1D views
+    if np.all(np.diff(x) > 0):
+        return x, y
+    order = np.argsort(x)
+    return x[order], y[order]
+
+def _smooth_series(x, y, s=0.0, k=3):
+    # x, y are 1D
+    x1, y1 = _sort_if_needed(x, y)
+    tck = splrep(x1, y1, s=s, k=k)
+    return splev(x, tck)  # evaluate back on the original (unsorted) grid
+
+def smooth_along_single_v_axis_inplace(
+    J: np.ndarray,
+    W: np.ndarray,         # assumes an extra trailing "step" axis of size K
+    Rho: np.ndarray,
+    rho_grid: np.ndarray,  # 1D, shared x for W and Rho smoothing
+    v_axis: int,           # which axis in J/Rho/W[..., step] is "v"
+    step_idx: int,         # which step slice of W to pair with this v_axis
+    s: float = 0.0,
+    k: int = 3,
+    *,
+    also_smooth_J_vs_W: bool = True,
+    also_smooth_W_vs_rho: bool = True,
+    also_smooth_Rho_vs_rho: bool = True,
+):
+    """
+    In-place smoothing along the v_axis:
+      - J(·) as a function of W(·, step_idx)
+      - W(·, step_idx) as a function of rho_grid
+      - Rho(·) as a function of rho_grid
+    """
+
+    # Bring the v-axis to the end to get clean 1D series slices
+    Jv   = np.moveaxis(J,   v_axis, -1)
+    Wv   = np.moveaxis(W[..., step_idx], v_axis, -1)  # fix step, then move v to the end
+    Rhov = np.moveaxis(Rho, v_axis, -1)
+
+    # The leading shape (all dims except the last "v" dim)
+    lead_shape = Jv.shape[:-1]
+    nv = Jv.shape[-1]
+
+    # Basic sanity
+    assert Wv.shape[-1] == nv and Rhov.shape[-1] == nv
+    assert rho_grid.ndim == 1 and rho_grid.size == nv
+
+    # Iterate over all other indices; operate on 1D vectors along the last axis
+    it = np.ndindex(lead_shape)
+    for idx in it:
+        # 1) J vs W (per-slice x varies)
+        if also_smooth_J_vs_W:
+            xW = Wv[idx]          # shape (nv,)
+            yJ = Jv[idx]          # shape (nv,)
+            Jv[idx] = _smooth_series(xW, yJ, s=s, k=k)
+
+        # 2) W vs rho_grid (shared x)
+        if also_smooth_W_vs_rho:
+            yW = Wv[idx]
+            tckW = splrep(rho_grid, yW, s=s, k=k)
+            Wv[idx] = splev(rho_grid, tckW)
+
+        # 3) Rho vs rho_grid (shared x)
+        if also_smooth_Rho_vs_rho:
+            yR = Rhov[idx]
+            tckR = splrep(rho_grid, yR, s=s, k=k)
+            Rhov[idx] = splev(rho_grid, tckR)
+
+    # Move axes back in place (in-place update)
+    J =                 np.moveaxis(Jv,   -1, v_axis)
+    W[..., step_idx] =  np.moveaxis(Wv,   -1, v_axis)
+    Rho =               np.moveaxis(Rhov, -1, v_axis)
+
+def smooth_all_v_axes_inplace(
+    J: np.ndarray,
+    W: np.ndarray,
+    Rho: np.ndarray,
+    rho_grid: np.ndarray,
+    v_axes: Sequence[int],
+    step_indices: Optional[Sequence[int]] = None,
+    s: float = 0.0,
+    k: int = 3,
+):
+    """
+    Smooth along every v-axis. By convention, map v_axes[i] to step_indices[i].
+    If step_indices is None, use step_indices = [1, 2, ..., len(v_axes)].
+    """
+    if step_indices is None:
+        step_indices = list(range(1, len(v_axes)+1))
+    for v_ax, st in zip(v_axes, step_indices):
+        smooth_along_single_v_axis_inplace(
+            J, W, Rho, rho_grid, v_axis=v_ax, step_idx=st, s=s, k=k
+        )
 class MultiworkerContract:
     """
         This solves a contract model with DRS production, hirings, and heterogeneous match quality.
     """
-    def __init__(self, input_param=None, js=None):
+    def __init__(self, K=2, input_param=None, js=None):
         """
             Initialize with a parameter object.
             :param input_param: Input parameter object, can be None
@@ -499,9 +625,12 @@ class MultiworkerContract:
     
         self.log = logging.getLogger('MWF with Hiring')
         self.log.setLevel(logging.INFO)
-        self.K = 2
-        K = 2
         self.p = input_param
+        self.K = K
+        #K-based layofs
+        self.layout = Layout(K)
+        dimensions = dims_for_K(self.p, K)
+        L = self.layout
         #Deep loops
         self.indices = list(product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n1), range(self.p.num_v) ,range(self.p.num_q)))
         self.indices_no_v = list(product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n1),range(self.p.num_q)))
@@ -512,12 +641,12 @@ class MultiworkerContract:
 
         # Worker and Match Productivity Heterogeneity in the Model
         self.Z_grid = self.construct_z_grid()   # Create match productivity grid
-        self.Q_grid = np.linspace(self.p.q_0,1,self.p.num_q) # Create worker productivity grid
+        self.Q_grid = np.linspace(self.p.q_0,1,self.p.num_q, dtype=dtype) # Create worker productivity grid
 
         #Size grid:
-        self.N_grid=np.linspace(0,self.p.n_bar,self.p.num_n)
-        self.N_grid1 = np.linspace(0,self.p.n_bar1,self.p.num_n1) #Separate grid for seniors, since everyone ends up there. For more tenure levels, keep everyone besides seniors on the same grids, and larger grid for seniors.
-        self.N_grid1[0] = 1e-2 #So that it's not exactly zeor and I thus can keep my interpretation
+        self.N_grid=np.linspace(0,self.p.n_bar,self.p.num_n, dtype=dtype)
+        self.N_grid1 = np.linspace(0,self.p.n_bar1,self.p.num_n1, dtype=dtype) #Separate grid for seniors, since everyone ends up there. For more tenure levels, keep everyone besides seniors on the same grids, and larger grid for seniors.
+        self.N_grid1[0] = 1e-2 #So that it's not exactly zero and I thus can keep my interpretation
 
         #self.N_grid=np.linspace(0,1,self.p.num_n)
         # Unemployment Benefits across Worker Productivities
@@ -526,12 +655,8 @@ class MultiworkerContract:
         self.Z_trans_mat = createPoissonTransitionMatrix(self.p.num_z, self.p.z_corr)
 
         # Value Function Setup
-        dimensions=[self.p.num_z]
-        dimensions.extend([self.p.num_n] * (K - 1))
-        dimensions.extend([self.p.num_n1] * 1)        
-        dimensions.extend([self.p.num_v] * (K - 1))  
-        dimensions.extend([self.p.num_q] * (K - 1))   
-        self.J_grid   = np.zeros(dimensions) #grid of job values, first productivity, then size for each step, then value level for each step BESIDES FIRST
+        self.J_grid = np.zeros(dimensions, dtype=dtype)
+        self.grid = np.ogrid[[slice(dim) for dim in self.J_grid.shape]]
         # Production Function in the Model
         self.fun_prod_onedim = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
         self.fun_prod = self.fun_prod_onedim.reshape((self.p.num_z,) + (1,) * (self.J_grid.ndim - 1))
@@ -539,32 +664,42 @@ class MultiworkerContract:
         self.unemp_bf = np.ones(self.p.num_x) * 0.5 * self.fun_prod.min() #Half of the lowest productivity. Kinda similar to Shimer-like estimates who had 0.4 of the average
 
         # Wage and Shadow Cost Grids
-        self.w_grid = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v ) #Note that this is not the true range of possible wages as this excludes the size part of the story
+        self.w_grid = np.linspace(self.unemp_bf.min(), self.fun_prod.max(), self.p.num_v , dtype=dtype) #Note that this is not the true range of possible wages as this excludes the size part of the story
         self.rho_grid=1/self.pref.utility_1d(self.w_grid)
 
 
         #Total firm size for each possible state
-        self.grid = np.ogrid[[slice(dim) for dim in self.J_grid.shape]]
+
         # Calculate the sum size for each element in the matrix
-        self.sum_size = np.zeros(self.J_grid.shape) #Sum size
-        self.sum_sizeadj = np.zeros(self.J_grid.shape) #Sum size ADJUSTED FOR QUALITY
-        self.sum_wage=np.zeros(self.J_grid.shape) #Calculate the total wage paid for every state
+        self.sum_size     = np.zeros_like(self.J_grid) #Sum size
+        self.sum_sizeadj  = np.zeros_like(self.J_grid) #Sum size ADJUSTED FOR QUALITY
+        self.sum_wage     = np.zeros_like(self.J_grid) #Calculate the total wage paid for every state
+        #Start with juniors layers
         self.sum_size[...] = self.N_grid[self.grid[1]]
         self.sum_sizeadj[...] = self.N_grid[self.grid[1]] * (self.p.prod_q +self.p.q_0*(1.0-self.p.prod_q))
-        for i in range(2, K + 1):
-            self.sum_size += self.N_grid1[self.grid[i]]
-            self.sum_sizeadj += self.N_grid1[self.grid[i]] * (self.p.prod_q + self.Q_grid[self.grid[self.J_grid.ndim - (K-1) + (i-2)]] * (1.0 - self.p.prod_q))
-        for i in range(K+1,self.J_grid.ndim - (K-1)):
-            self.sum_wage += self.w_grid[self.grid[i]]*self.N_grid1[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
-
-                
-
+        #add medium workers
+        if K > 2:
+            for k in range(1,K-1): #Ignoring the original junior layer
+                self.sum_size += self.N_grid[self.grid[L.ax_ns[k]]]
+                self.sum_sizeadj += self.N_grid[self.grid[L.ax_ns[k]]] * (self.p.prod_q + self.Q_grid[self.grid[L.ax_qs[k-1]]] * (1.0 - self.p.prod_q))
+                self.sum_wage += self.w_grid[self.grid[L.ax_vs[k-1]]] * self.N_grid1[self.grid[L.ax_ns[k]]]
+        #Add seniors
+        #for i in range(2, K + 1):
+        #    self.sum_size += self.N_grid1[self.grid[i]]
+        #    self.sum_sizeadj += self.N_grid1[self.grid[i]] * (self.p.prod_q + self.Q_grid[self.grid[self.J_grid.ndim - (K-1) + (i-2)]] * (1.0 - self.p.prod_q))
+        #for i in range(K+1,self.J_grid.ndim - (K-1)):
+        #    self.sum_wage += self.w_grid[self.grid[i]]*self.N_grid1[self.grid[i-K+1]] #We add +1 because the wage at the very first step is semi-exogenous, and I will derive it directly
+        self.sum_size += self.N_grid1[self.grid[L.ax_n1]] #Add the senior size to the sum size
+        self.sum_sizeadj += self.N_grid1[self.grid[L.ax_n1]] * (self.p.prod_q + self.Q_grid[self.grid[L.ax_qs[-1]]] * (1.0 - self.p.prod_q)) 
+        self.sum_wage += self.w_grid[self.grid[L.ax_vs[-1]]] * self.N_grid1[self.grid[L.ax_n1]]
         #Setting up production grids
         self.prod = self.production(self.sum_sizeadj) #F = sum (n* (prod_q+q_1*(1-prod_q)))
         #self.prod_diff = self.production_diff(self.sum_sizeadj)
         self.prod_1d = self.fun_prod_1d(self.sum_sizeadj)
-        self.prod_nd = self.prod_1d * (self.p.prod_q + self.Q_grid[self.grid[4]] * (1.0-self.p.prod_q)) #\partial F / \partial n_1 = q_1 * (prod_q+q_1*(1-prod_q)) F'(nq)
-        self.prod_qd = self.prod_1d * self.N_grid1[self.grid[2]] * (1.0-self.p.prod_q) #\partial F / \partial q_1 = n_1 * (1-prod_q) * F'(nq) #Andrei Aug'25: wait why??? Why is n still here?? F = (sum n * (prod_q+q_1 * (1-prod_q)))^α. ∂ F / ∂ q = F' * sum_n * (1-prod_q). ah lol k
+        for a in L.ax_qs: #This excludes the junior cohort, for which q_0 is used
+            self.prod_nd = self.prod_1d * (self.p.prod_q + self.Q_grid[self.grid[a]] * (1.0-self.p.prod_q)) #\partial F / \partial n_1 = q_1 * (prod_q+q_1*(1-prod_q)) F'(nq)
+        #I'm not using this guy anywhere anyway
+        #self.prod_qd = self.prod_1d * self.N_grid1[self.grid[L.ax_ns]] * (1.0-self.p.prod_q) #\partial F / \partial q_1 = n_1 * (1-prod_q) * F'(nq) #Andrei Aug'25: wait why??? Why is n still here?? F = (sum n * (prod_q+q_1 * (1-prod_q)))^α. ∂ F / ∂ q = F' * sum_n * (1-prod_q). ah lol k
 
 
         #Job value and GE first
@@ -600,29 +735,31 @@ class MultiworkerContract:
 
 
         #Guess for the Worker value function
-        self.W = np.zeros_like(self.J_grid)
-        self.W = np.expand_dims(self.W, axis=-1) #adding an extra dimension to W
-        self.W = np.repeat(self.W, self.K, axis=-1)
+        self.W = np.zeros(self.J_grid.shape + (self.K,), dtype=dtype)
 
         #Creating the wage matrix manually
-        self.w_matrix = np.zeros(self.W.shape)
+        self.w_matrix = np.zeros_like(self.W)
         self.w_matrix[...,0] = 0 #The workers at the bottom step will have special wages, derived endogenously through their PK
         #Actually, do I then need to add that step to the worker value? Not really, but useful regardless.
         # Can say that the bottom step really is step zero, with a fixed value owed to the worker.
         # And then all the actually meaningful steps are 1,2... etc, so when K=2 with just have 1 meaningful step            
-        self.w_matrix[...,1] = self.w_grid[ax,ax,ax,:,ax]
+        for k in range(1,K):
+            self.w_matrix[...,k] = self.w_grid[self.grid[L.ax_vs[k-1]]]
 
-        self.W[...,1] = self.W[...,1] + self.pref.utility(self.w_matrix[...,1])/(1-self.p.beta) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
+        self.W[...,1:] = self.W[...,1:] + self.pref.utility(self.w_matrix[...,1:])/(1-self.p.beta) #skip the first K-1 columns, as they don't correspond to the wage state. Then, pick the correct step, which is hidden in the last dimension of the grid
         self.W[...,0] = self.W[...,0] + self.pref.utility(self.unemp_bf.min())/(1-self.p.beta)
 
         #Setting up size and quality grids already in the matrix for
-        self.size = np.zeros_like(self.W)
-        self.size[...,0] = self.N_grid[self.grid[1]]
-        for i in range(2,K + 1):
-            self.size[...,i-1] = self.N_grid1[self.grid[i]]
-        self.q = np.zeros_like(self.J_grid) + self.Q_grid[self.grid[4]]
-
-    def J_sep(self,Jg=None,Wg=None,Ug=None,Rhog=None,P=None,kappa=None,n0_g = None, sep_g = None,update_eq=1,s=1.0):    
+        #self.size = np.zeros_like(self.W)
+        #self.q = np.zeros_like(self.W)
+        #self.size[...,0] = self.N_grid[self.grid[1]]
+        #self.q[...,0] = self.p.q_0
+        #for i in range(2,K + 1):
+        #    self.size[...,i-1] = self.N_grid1[self.grid[i]]
+        #for k in range(1,K):
+        #    self.q[...,k] +=  self.Q_grid[self.grid[L.ax_qs[k-1]]] #Will this work? Worried about the fact that L.ax_qs is a list.
+        del self.w_matrix, 
+    def J_sep(self,Jg=None,Wg=None,Ug=None,Rhog=None,P=None,kappa=None,n_g = None, sep_g = None,update_eq=1,s=1.0):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -633,11 +770,11 @@ class MultiworkerContract:
         N_grid1 = self.N_grid1
         Q_grid = self.Q_grid
         grid = self.grid
-        size = self.size
-        q = self.q
+        #size = self.size
+        #q = self.q
         indices = self.indices
         indices_no_v = self.indices_no_v
-
+        layout = self.layout
         if Jg is None:
             J = np.copy(self.J_grid)
         else:
@@ -651,15 +788,20 @@ class MultiworkerContract:
         else:
             U = np.copy(Ug)
         if Rhog is None:
-            Rho = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]  
+            Rho = J
+            for k in range(1,self.K):
+                if k < self.K - 1:
+                    Rho += self.N_grid[self.grid[layout.ax_ns[k]]] * self.rho_grid[self.grid[layout.ax_vs[k-1]]] * W[...,k]
+                else:
+                    Rho += self.N_grid1[self.grid[layout.ax_n1]] * self.rho_grid[self.grid[layout.ax_vs[k-1]]] * W[...,k]
         else:
             Rho = np.copy(Rhog) 
-        if n0_g is None:
-            n0_star = np.zeros_like(J)   
+        if n_g is None:
+            n_star = np.zeros_like(W)   
         else:
-            n0_star = n0_g
+            n0_star = n_g
         if sep_g is None:
-            sep_star = np.zeros_like(J)
+            sep_star = np.zeros_like(W)
         else:
             sep_star = sep_g
         # create representation for J1p
@@ -667,35 +809,49 @@ class MultiworkerContract:
         Wp = np.zeros_like(J)
         Rhop = np.zeros_like(J)
         # Updating J1 representation
-        for iz, in0, in1, iq in indices_no_v:
-            W_inc = W[iz,in0,in1,:,iq,1]
-            Jp[iz,in0,in1,:,iq] = splev(W_inc, splrep(W[iz,in0,in1,:,iq,1],J[iz,in0,in1,:,iq],s=s))
-            Wp[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,W[iz,in0,in1,:,iq,1],s=s))
-            Rhop[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,Rho[iz,in0,in1,:,iq],s=s))
+        #for iz, in0, in1, iq in indices_no_v:
+        #    W_inc = W[iz,in0,in1,:,iq,1]
+        #    Jp[iz,in0,in1,:,iq] = splev(W_inc, splrep(W[iz,in0,in1,:,iq,1],J[iz,in0,in1,:,iq],s=s))
+        #    Wp[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,W[iz,in0,in1,:,iq,1],s=s))
+        #   Rhop[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,Rho[iz,in0,in1,:,iq],s=s))
        
-        Jp = Rhop - size[...,1] * rho_grid[ax,ax,ax,:,ax] * Wp
-
+        #This is slow af, BUT IT WORKS
+        smooth_all_v_axes_inplace(
+        J=J, W=W, Rho=Rho,
+        rho_grid=rho_grid,
+        v_axes=layout.ax_vs,           # smooth along ALL v-axes
+        step_indices=None,             # defaults to [1, 2, ..., K-1]
+        s=s,                        # your smoothing strength
+        k=3,                    # spline order
+        )
+        Jp = Rhop 
+        for k in range(1,self.K):
+            if k < self.K - 1:
+                Jp += - self.N_grid[self.grid[layout.ax_ns[k]]] * self.rho_grid[self.grid[layout.ax_vs[k-1]]] * Wp[...,k]
+            else:
+                Jp += - self.N_grid1[self.grid[layout.ax_n1]] * self.rho_grid[self.grid[layout.ax_vs[k-1]]] * Wp[...,k]        
+        #- size[...,1] * rho_grid[ax,ax,ax,:,ax] * Wp
         print("J shape", J.shape)
         print("W shape", W.shape)        
 
 
-
-        EW_star = np.copy(J)
-        EJ_star = np.copy(J)
+        #These are SOOOOO MANY THOUGH. I don't think I have ram space for all this...
+        EW_star = np.copy(W) #These are all W shape now in order to be useable for every cohort. The zero index will usually be empty tho
+        #EJ_star = np.copy(J)
         ERho_star = np.copy(J)
-        EJderiv = np.zeros_like(J)
-        Jderiv = np.zeros_like(J)
-        rho_star = np.zeros_like(J)
-        sep_star1 = np.zeros_like(J) #probably better to just make it multidimensional
-        n1_star = np.zeros_like(J)   
-        q_star  = np.zeros_like(J)   
+        #EJderiv = np.zeros_like(J)
+        Jderiv = np.zeros_like(W)
+        rho_star = np.zeros_like(W) #except the zero dimension here. That one will be empty
+        #sep_star1 = np.zeros_like(J) #probably better to just make it multidimensional
+        #n1_star = np.zeros_like(J)   
+        q_star  = np.zeros_like(W)   
 
         Rhoderiv = np.zeros_like(J)
         Rhod0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n1, self.p.num_v, self.p.num_q, self.p.num_n))
-        Rhod1 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n1, self.p.num_v, self.p.num_q, self.p.num_n1)) 
+        #Rhod1 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n1, self.p.num_v, self.p.num_q, self.p.num_n1)) 
         Rhod0_diff = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n1, self.p.num_v, self.p.num_q, self.p.num_n-1))  
         Ihire = np.zeros_like(J,dtype=bool)     
-        Wd0 = np.zeros_like(Rhod0)
+        #Wd0 = np.zeros_like(Rhod0)
 
         #Separations related variables
         sep_grid = np.linspace(0,1,20)
@@ -704,8 +860,8 @@ class MultiworkerContract:
         foc_sep = np.zeros_like(n1_s)
         J_s = np.zeros_like(n1_s)
         J_s_deriv = np.zeros_like(J_s)
-        sep_reshaped = np.zeros_like(J_s) + sep_grid[ax,ax,ax,ax,ax,:]
-        sep_grid_exp = sep_grid[ax,ax,ax,ax,ax,:]
+        #sep_reshaped = np.zeros_like(J_s) + sep_grid[ax,ax,ax,ax,ax,:]
+        #sep_grid_exp = sep_grid[ax,ax,ax,ax,ax,:]
 
         # prepare expectation call
         Ez = oe.contract_expression('anmvq,az->znmvq', J.shape, self.Z_trans_mat.shape)
@@ -715,23 +871,31 @@ class MultiworkerContract:
         ite_num = 0
         error_js = 1
         
-        # General equilibrium first time
-        self.v_0 = U
-        self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
-        if P is None:
-            kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
+
+        #First U + GE solve
+        critU = 1
+        while critU > 1e-3:
+            # General equilibrium first time
+            self.v_0 = U
+            self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
+            if P is None:
+                kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
+            self.js.update(self.v_grid,P)
+            U2 = U
+            _, ru, _ = self.getWorkerDecisions(EU, employed=False)
+            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
+            U = 0.2 * U + 0.8 * U2
+            critU = np.abs(U-U2)
+        critU = 1
         print("kappa", kappa)
         print("P", P)
-        self.js.update(self.v_grid,P)
-
         for ite_num in range(self.p.max_iter):
             J2 = J
             W2 = np.copy(W)
             U2 = U
             Rho2 = np.copy(Rho)
             rho_star2 = np.copy(rho_star)
-            n0_star2 =  np.copy(n0_star)            
-            n1_star2 =  np.copy(n1_star)
+            n_star2 =  np.copy(n_star)            
             q_star2 =   np.copy(q_star)                       
             # we compute the expected value next period by applying the transition rules
             EW = Ez(Wp, self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
@@ -945,26 +1109,26 @@ class MultiworkerContract:
                             and ite_num > 50):
                         break
             #Comparing Ejinv to the future deriv
-            if (ite_num % 100) == 0:
-             #Getting the derivative of the future job value wrt n1:
-             floorn1=np.floor(np.interp( n1_star, N_grid1, range(self.p.num_n1))).astype(int)
-             ceiln1=np.ceil(np.interp( n1_star, N_grid1, range(self.p.num_n1))).astype(int)            
-             for iz in range(self.p.num_z):
-                for in11 in range(self.p.num_n1): 
+            #if (ite_num % 100) == 0:
+            # #Getting the derivative of the future job value wrt n1:
+            # floorn1=np.floor(np.interp( n1_star, N_grid1, range(self.p.num_n1))).astype(int)
+            # ceiln1=np.ceil(np.interp( n1_star, N_grid1, range(self.p.num_n1))).astype(int)            
+            # for iz in range(self.p.num_z):
+            #    for in11 in range(self.p.num_n1): 
                     
-                    Rho_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), ERho[iz, :, in11, ...], bounds_error=False, fill_value=None)
+            #        Rho_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), ERho[iz, :, in11, ...], bounds_error=False, #fill_value=None)
                     #W_interpolator = RegularGridInterpolator((N_grid, rho_grid, Q_grid), EW[iz, :, in11, ...], bounds_error=False, fill_value=None)
-                    Rhod1[iz, ..., in11] = Rho_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
+            #        Rhod1[iz, ..., in11] = Rho_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
                     #Wd0[iz, ..., in11] = W_interpolator((n0_star[iz, ...], rho_star[iz,...], q_star[iz, ...]))
-             ERhoderiv = ERhoDerivative(Rhod1,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
-             EJderiv = ERhoderiv - rho_star * EW_star
-             print("EJinv", EJinv[self.p.z_0-1,1,2,50, 0]/pc_star[self.p.z_0-1,1,2,50, 0])
-             print("EJderiv", EJderiv[self.p.z_0-1,1,2,50, 0])
-             j = np.where(N_grid==1)
-             s = np.where(N_grid1==2)
-             print("EJinv diff 1j 2s:", np.mean(np.abs((EJinv[:,j,s,:, 0]/pc_star[:,j,s,:, 0] - EJderiv[:,j,s,:, 0]) / EJderiv[:,j,s,:, 0])))
-             print("EJinv diff 1 sen:", np.mean(np.abs((EJinv[:,0,1,:, 0]/pc_star[:,0,1,:, 0] - EJderiv[:,0,1,:, 0]) / EJderiv[:,0,1,:, 0])))
-             print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,s,:, 0]/pc_star[:,0,s,:, 0] - EJderiv[:,0,s,:, 0]) / EJderiv[:,0,s,:, 0])))
+            # ERhoderiv = ERhoDerivative(Rhod1,Wd0,ceiln1,floorn1,n1_star,rho_star,N_grid1,self.p.num_z,self.p.num_n,self.p.n_bar,self.p.num_v,self.p.num_q)
+            # EJderiv = ERhoderiv - rho_star * EW_star
+            # print("EJinv", EJinv[self.p.z_0-1,1,2,50, 0]/pc_star[self.p.z_0-1,1,2,50, 0])
+            # print("EJderiv", EJderiv[self.p.z_0-1,1,2,50, 0])
+            # j = np.where(N_grid==1)
+            # s = np.where(N_grid1==2)
+            # print("EJinv diff 1j 2s:", np.mean(np.abs((EJinv[:,j,s,:, 0]/pc_star[:,j,s,:, 0] - EJderiv[:,j,s,:, 0]) / EJderiv[:,j,s,:, 0])))
+            # print("EJinv diff 1 sen:", np.mean(np.abs((EJinv[:,0,1,:, 0]/pc_star[:,0,1,:, 0] - EJderiv[:,0,1,:, 0]) / EJderiv[:,0,1,:, 0])))
+            # print("EJinv diff 2 sen:", np.mean(np.abs((EJinv[:,0,s,:, 0]/pc_star[:,0,s,:, 0] - EJderiv[:,0,s,:, 0]) / EJderiv[:,0,s,:, 0])))
 
             if (((ite_num % 200)  == 0) & (ite_num>10)):   
                 plt.plot(W[self.p.z_0-2, 0, 1, :, 0 ,1], J[self.p.z_0-2, 0, 1, :, 0], label='1 senior value function')
@@ -1203,5 +1367,5 @@ class MultiworkerContract:
 
 #mwc_GE_J = objects['mwc_Rho_J']
 #mwc_GE_W = objects['mwc_Rho_W']
-#mwc_GE=MultiworkerContract(p)
-#(mwc_GE_J,mwc_GE_W,mwc_GE_Wstar,mwc_GE_sep,mwc_GE_n0,mwc_GE_n1)=mwc_GE.J(mwc_GE_J,mwc_GE_W,1)
+#mwc_GE=MultiworkerContract(K=3,input_param=p)
+#model=mwc_GE.J_sep(update_eq=1,s=20.0)
