@@ -28,19 +28,19 @@ class Parameters:
         self.num_np = 5       # Number of non-permanent levels
         self.num_z  = 3      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
-        self.num_n  = 6     # Number of points of support for the number of workers
-        self.n_bar = 5       # Number of workers in the firm        
-        self.num_n1  = 11     # Number of points of support for the number of workers
-        self.n_bar1 = 10       # Number of workers in the firm
+        self.num_n  = 8     # Number of points of support for the number of workers
+        self.n_bar = 14       # Number of workers in the firm        
+        self.num_n1  = 16     # Number of points of support for the number of workers
+        self.n_bar1 = 30       # Number of workers in the firm
         self.num_q = 6      #Number of avg match quality levels
         # Time periods in the Model
         self.dt     = 1.0 #0.25    # Time as a Fraction of Year
 
         # Vacancy cost
-        self.hire_c = 5.0
+        self.hire_c = 20.0
         #HMQ
         self.q_0 = 0.5 #Starting match q
-        self.prod_q = 0.5 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
+        self.prod_q = 1.0 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
         #DRS production
         self.prod_alpha = 0.85 #Taken from Schaal who quotes the 90s empirical literature (is there smth more recent??) Bilal et al. have smth similar, 0.817. Though tbf this is all US
         # Unemployment Parameters

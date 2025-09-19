@@ -188,6 +188,8 @@ class PolicyNN(nn.Module):
                 if isinstance(layer, nn.Linear):
                     nn.init.xavier_uniform_(layer.weight, gain=1.0)
                     nn.init.constant_(layer.bias, 0.01)
+    def squash_frac(self,x):      # = x/(1+x)
+        return x / (1 + x)
     def forward(self, x):
         # x: [B, state_dim]
         B = x.size(0)
@@ -200,11 +202,13 @@ class PolicyNN(nn.Module):
         #hv = self.value_adapter(features)  # [B, hidden_dims[-1]]
         values_flat = self.value_head(features)            # [B, num_y * num_Kv]
         values = values_flat.view(B, self.num_y, self.K_v, self.num_y)  # [B, num_y, num_Kv]
-        values = torch.cumsum(values, dim = 1) #this is the cumulative sum of the values across num_y       
+        values = torch.cumsum(values, dim = 1) / self.num_y #this is the cumulative sum of the values across num_y       
+        values = self.squash_frac(values)
         # hire probabilities: [B, num_y]
         #hh = self.hiring_adapter(features)  # [B, hidden_dims[-1]]
         hiring = self.hiring_head(features)          # [B, num_y]
-        hiring = torch.cumsum(hiring, dim = 1)
+        hiring = torch.cumsum(hiring, dim = 1) / self.num_y
+        hiring = self.squash_frac(hiring)
 
         return {
             'values': values,
@@ -769,8 +773,8 @@ class FOCresidual:
 
             # policies at the current y
             pol      = sup_net(states)
-            hiring   = pol['hiring'][iN, y_idx]                          # [N]
-            v_prime  = pol['values'][iN, y_idx, :, :]                    # [N, K_v, Z]
+            hiring   = pol['hiring'][iN, y_idx] * self.bounds_processor.upper_bounds[0]                          # [N]
+            v_prime  = pol['values'][iN, y_idx, :, :] * self.bounds_processor.upper_bounds[K_n]                   # [N, K_v, Z]
 
             # E_{y'|y} v′ for worker decisions (same convention as elsewhere)
             v_prime_exp_all = torch.einsum("bkz,yz->bky", v_prime, Z_trans_tensor)  # [N, K_v, Z]
@@ -885,7 +889,7 @@ def initialize(bounds_processor, state_dim, K_n, K_v, HIDDEN_DIMS_CRIT, HIDDEN_D
     # Fill these based on your loop:
     # total_steps = num_epochs * (num_batches_per_epoch)
     # warmup_steps = ~1-2k steps (or ~2-5% of total)
-    warmup_steps = 1500
+    warmup_steps = 5000
     total_steps  = num_epochs            # example; set this to your real total
     cosine_steps = max(1, total_steps - warmup_steps)
 
@@ -1044,7 +1048,8 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         state_start = torch.zeros(state_dim,dtype=type)#.requires_grad_(True)
         state_start[0] = bounds_processor.normalize_dim(1,0) # 1 junior worker
         state_start[1] = bounds_processor.normalize_dim(1e-3,1) # Tiny positive seniors
-        state_start[2] = torch.rand(1, K_v)
+        state_start[2] = bounds_processor.normalize_dim(cc.v_grid[10],1)
+        #state_start[2] = torch.rand(1, K_v)
         #Or if randomized. 
         starting_states = torch.rand(starting_points_per_iter, state_dim,dtype=type) 
         #Add the starting state
@@ -1052,11 +1057,17 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
 
         #Simulate the firm path using the sup network
         #Let the simulation steps increase over time
-        sim_steps_ep = np.floor(3 + 5 * (ep/num_episodes)).astype(int)
-        random_paths = np.minimum(p.num_z ** sim_steps_ep, 10000).astype(int)
+        horizon = np.floor(128 + 0 * (ep/num_episodes)).astype(int)
+        #if horizon <= 8:
+        #    random_paths = np.minimum(p.num_z ** horizon, 1000).astype(int)
+        #else:
+        random_paths = 25000 
         #Do both simulations: start with a deterministic one just a few periods ahead, then a random one from the last states
         #Now use those states to simulate further, but with random paths
-        states, prod_states, G_flat, G_starting, R_flat, V_last_bootstrap = foc_optimizer.simulate(starting_states, sup_net, target_value_net, bounds_processor, foc_optimizer.Z_trans_tensor, sim_steps_ep, random_paths) #This is the set of states we will use to train the value function.
+        beg= time()
+        states, prod_states, G_flat, G_starting, R_flat, V_last_bootstrap = foc_optimizer.simulate(starting_states, sup_net, target_value_net, bounds_processor, foc_optimizer.Z_trans_tensor, horizon, random_paths) #This is the set of states we will use to train the value function.
+        end = time()
+        #print("Simul time", end - beg)
         if (ep) % (num_episodes/20) == 0:
          with torch.no_grad():
             S_det = states.detach()
@@ -1064,17 +1075,13 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
                 col = S_det[:, d]
                 print(f"dim {d}: mean={col.mean():.4g}, std={col.std():.4g}, min={col.min():.4g}, max={col.max():.4g}")
         i = torch.arange(states.shape[0])
-        #I first train the sup net on this
-        sup_loss = -(G_starting).mean()
-        sup_loss.backward()
-        torch.nn.utils.clip_grad_norm_(sup_net.parameters(), max_norm = 1.0) #Clip the gradients to avoid exploding gradients
-        optimizer_sup.step()
 
-        #Now train the value net
+
+        #Train the value net
         optimizer_value.zero_grad()
         # Build TD(λ) targets (time-major reconstruction uses sim_steps_ep and N)
         N = starting_points_per_iter * random_paths
-        T = sim_steps_ep
+        T = horizon
         tdlam_flat = td_lambda_targets_from_flat(
             R_flat=R_flat,
             S_flat=states,
@@ -1094,25 +1101,43 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         # Standardize BOTH using the target’s μ, σ
         tgt_n  = (tgt  - μ) / σ
         pred_n = (pred_values - μ) / σ
-        value_loss =  nn.HuberLoss()(pred_n, tgt_n)     
+        #Add a quick monotonicity loss
+        states_v = states.detach() + tensor([0,0,1e-3])
+        values_v = value_net(states_v.detach())['values'][i,prod_states.detach().long()]
+        mon_loss = torch.relu( values_v - pred_values).mean() #value function should be decreasing in v, so zero out cases where pred_values > values_v
+        value_loss =  nn.HuberLoss()(pred_n, tgt_n) + 1e+2 * mon_loss
         value_loss.backward()
         torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm = 1.0) #Clip the gradients to avoid exploding gradients
         optimizer_value.step()
         #Later I can consider adding my usual stuff but let's try these basics for now
         scheduler_value.step()  # or just .step(episode)
+
+        #Sup net update
+        #I first train the sup net on this
+        adv_flat = 0.5 * (G_flat - pred_values.detach()) + 0.5 * (R_flat - pred_values.detach()) #Advantage is TD error + immediate reward - baseline
+        scale = adv_flat.std(unbiased=False).clamp_min(1e-6).detach()
+        sup_loss = - (adv_flat/scale).mean() 
+        #This ain't an advantage, but tbf my policy ain't random here, so do I even need it?
+        sup_loss.backward()
+        torch.nn.utils.clip_grad_norm_(sup_net.parameters(), max_norm = 1.0) #Clip the gradients to avoid exploding gradients
+        optimizer_sup.step()
         scheduler_sup.step()
+
         #Collect your raw loss scalars
         losses = {
         'value':       value_loss.item(),
         'sup_loss':  sup_loss.item(),
         }
+        tail = (p.beta**horizon) * V_last_bootstrap.abs().mean()
+        if (episode + 1) % (num_episodes/20) == 0:
+            print( tail/G_flat.abs().mean().item() )        
 
         # One line hides all the plotting mess
         plotter.update(ep, losses)
         if (ep == 2000):
             plotter.update_interval = 500 #Slow down the plotting
         #Soft update target value at the end of every episode
-        soft_update(target_value_net, value_net, tau=0.005)
+        soft_update(target_value_net, value_net, tau=0.05)
         #soft_update(target_sup_net, sup_net, tau=0.05)     
         # Print progress
         if (episode + 1) % (num_episodes/20) == 0:
@@ -1120,7 +1145,13 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         if (episode + 1) % (num_episodes/20) == 0 or episode == 250:            
             evaluate_plot_precise(value_net, sup_net, [1,1], bounds_processor, foc_optimizer)    
         if (episode + 1) % (num_episodes/2) == 0:         
-            evaluate_plot_sup(value_net, sup_net,bounds_processor, num_samples=1000)            
+            evaluate_plot_sup(value_net, sup_net,bounds_processor, num_samples=1000) 
+        #if (episode + 1) % (num_episodes // 20) == 0:
+            #eval_losses = evaluate_loss(value_net, sup_net, bounds_processor, foc_optimizer, horizon=horizon, random_paths=random_paths)
+            #print(f"[Eval] Value Eval Loss: {eval_losses['value_eval']:.6f}, "
+            #  f"Sup Eval Loss: {eval_losses['sup_eval']:.6f}")
+            # optionally feed into LossPlotter too
+            #plotter.update(ep, {**losses, **eval_losses})           
     return value_net, sup_net
 
 def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
@@ -1133,8 +1164,8 @@ def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
         # Sample random states
         states = torch.rand(num_samples, bounds_processor.lower_bounds.shape[0], dtype=type)
         policies = sup_net(states)
-        prom_values = policies['values'][:,1,:,1]
-        hiring = policies['hiring'][:,1]
+        prom_values = policies['values'][:,1,:,1] * bounds_processor.upper_bounds[K_n]
+        hiring = policies['hiring'][:,1] * bounds_processor.upper_bounds[0]
 
         values = value_net(states)['values']
         grads = get_batch_gradients(states, value_net, policies['hiring'].shape[1], range_tensor=bounds_processor.range)
@@ -1193,8 +1224,8 @@ def evaluate_plot_precise(value_net, sup_net, init_size, bounds_processor, foc_o
     values = value_net(test_states)['values'][:,p.z_0-1]
     #Evaluate policies
     policy = sup_net(test_states)
-    v_prime = policy['values'][:,p.z_0-1,:,p.z_0-1]
-    hiring = policy['hiring'][:,p.z_0-1]
+    v_prime = policy['values'][:,p.z_0-1,:,p.z_0-1] * bounds_processor.upper_bounds[K_n]
+    hiring = policy['hiring'][:,p.z_0-1] * bounds_processor.upper_bounds[0]
 
     W=get_batch_gradients(test_states, value_net,  num_y = foc_optimizer.p.num_z, range_tensor=bounds_processor.range)[:,p.z_0-1,-1].detach().numpy()
 
@@ -1265,6 +1296,62 @@ def plot_reached_states(foc_optimizer, starting_states, sup_net, value_net,
     plt.grid(True)
     plt.show()
 
+@torch.no_grad()
+def evaluate_loss(value_net, sup_net, bounds_processor, foc_optimizer,
+                  starting_points=200, horizon=10, random_paths=100):
+    """
+    Run evaluation episode without gradient updates.
+    Returns dict of losses comparable to training losses.
+    """
+    # Sample random starting states
+    state_start = torch.zeros(3,dtype=type)#.requires_grad_(True)
+    state_start[0] = bounds_processor.normalize_dim(1,0) # 1 junior worker
+    state_start[1] = bounds_processor.normalize_dim(1e-3,1) # Tiny positive seniors
+    state_start[2] = bounds_processor.normalize_dim(cc.v_grid[10],1)
+    #state_start[2] = torch.rand(1, K_v)
+    #Or if randomized. 
+    starting_states = torch.rand(1, 3,dtype=type) 
+    #Add the starting state
+    starting_states[0,:] = state_start
+
+    # Simulate environment
+    S, P, G_flat, G_starting, R_flat, V_last_bootstrap = foc_optimizer.simulate(
+        starting_states, sup_net, value_net, bounds_processor, foc_optimizer.Z_trans_tensor,
+        simulation_steps=horizon, random_paths=random_paths
+    )
+
+    N = starting_points * random_paths
+    T = horizon
+
+    # TD(λ) targets
+    tdlam_flat = td_lambda_targets_from_flat(
+        R_flat=R_flat,
+        S_flat=S,
+        P_flat=P,
+        target_value_net=value_net,  # use same net here
+        T=T, N=N,
+        V_last_bootstrap=V_last_bootstrap,
+        gamma=p.beta, lam=0.95
+    )
+
+    i = torch.arange(S.shape[0])
+    pred_values = value_net(S)['values'][i, P]
+    μ, σ = tdlam_flat.mean(), tdlam_flat.std(unbiased=False).clamp_min(1e-6)
+    tgt_n  = (tdlam_flat - μ) / σ
+    pred_n = (pred_values - μ) / σ
+    value_eval_loss = nn.HuberLoss()(pred_n, tgt_n)
+
+    # simple sup evaluation: negative mean of returns
+    adv_flat = (G_flat - pred_values.detach())
+    scale = adv_flat.std(unbiased=False).clamp_min(1e-6).detach()
+    sup_eval_loss = - (adv_flat/scale).mean() 
+    #sup_eval_loss = -(G_starting).mean()
+
+    return {
+        "value_eval": value_eval_loss.item(),
+        "sup_eval": sup_eval_loss.item(),
+    }
+
 if __name__ == "__main__":
     # Define parameters
     K = 2 #Number of tenure steps
@@ -1284,17 +1371,17 @@ if __name__ == "__main__":
     #target_W = tensor(cc_W, dtype=type)
     #NORMALIZE EVERYTHING!!!
     LOWER_BOUNDS = [0, 0 , cc.v_grid[0]] # The state space is (y,n_0,n_1,v_1).
-    UPPER_BOUNDS = [100, 200, 1.1 * cc.v_grid[-1]]
+    UPPER_BOUNDS = [20, 100, 1.1 * cc.v_grid[-1]]
 
-    num_episodes= 40000
-    minibatch_num = 4
+    num_episodes= 100000
+    minibatch_num = 8
     #Initialize
     bounds_processor = StateBoundsProcessor(LOWER_BOUNDS,UPPER_BOUNDS)
 
     
     learning_rate=[1e-3,1e-4]
     value_net, sup_net, optimizer_value, optimizer_sup, scheduler_value, scheduler_sup, foc_optimizer = initialize(bounds_processor,  STATE_DIM, 
-    K_n, K_v, HIDDEN_DIMS_CRIT, HIDDEN_DIMS_POL, learning_rate=learning_rate, weight_decay = [1e-2, 1e-2], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
+    K_n, K_v, HIDDEN_DIMS_CRIT, HIDDEN_DIMS_POL, learning_rate=learning_rate, weight_decay = [1e-4, 3e-4], pre_training_steps=0, num_epochs=num_episodes, minibatch_num=minibatch_num)
     # Train value function
     print("Training value function...")
     beg=time()
@@ -1314,49 +1401,3 @@ if __name__ == "__main__":
     torch.save(trained_value.state_dict(), "trained_value_function.pt")
     torch.save(trained_sup.state_dict(), "trained_sup_function.pt")
     print("Model saved")
-
-
-""""
-    Vectorized approach of getting future_values. Was 4 times slower than the loop version.
-        #Vectorized check
-        B   = prod_states.shape[0]
-        Z   = p.num_z
-        D   = n_1.shape[1] + 1 + v_prime.shape[1]   # total state‐dim
-        time_beg_vect = time()
-    # 1) repeat‐each to build a (B·Z)-row batch
-    # -----------------------------------------
-    # hiring: [B] → [B·Z]
-        hiring_rep = hiring.repeat_interleave(Z)
-    # n_1:     [B,K_n] → [B·Z,K_n]
-        n1_rep     = n_1.repeat_interleave(Z, dim=0)
-    # v_prime: [B,K_v,Z] → [B·Z,K_v]
-    #   permute so the Z dimension is in the middle, then flatten
-        vflat = (
-        v_prime
-        .permute(0,2,1)        # [B,Z,K_v]
-        .reshape(B*Z, -1)      # [B·Z, K_v]
-        )
-        # current_y for the gradient routine:
-        y_rep = prod_states.repeat_interleave(Z)
-
-        # 2) assemble and normalize
-        X_big = torch.cat([
-        hiring_rep.unsqueeze(1),    # [B·Z,1]
-        n1_rep,                     # [B·Z,K_n]
-        vflat                       # [B·Z, K_v]
-        ], dim=1)                       # → [B·Z, D]
-        X_big = self.bounds_processor.normalize(X_big)
-
-        # 3) forward + batched gradients
-        val_out_big = value_net(X_big)['values']  
-        #    val_out_big: [B·Z, Z]  (value at each future shock)
-        grad_big    = get_batch_gradients(
-        X_big, value_net, p.num_z,
-        range_tensor=self.bounds_processor.range,
-        )  # → [B·Z, D]
-
-        # 4) reshape back to [B,Z,...]
-        val_out = val_out_big.reshape(B, Z, -1) #This is indeed the same as the looped version above     # [B, Z, Z'] (usually Z'=Z)
-        grad    = grad_big   .reshape(B, Z, -1, Z).permute(0,1,3,2)      # [B, Z, D] #Under the permutation this is in fact the same as the looped version above.     
-        time_end_vect = time()
-"""

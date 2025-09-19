@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.4.20)  9 SEP 2025 17:13
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.4.20)  16 SEP 2025 00:06
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -780,24 +780,24 @@ Package: blkarray 2015/02/27 v0.07 Block array (dpc)
  (./main.aux)
 \openout1 = `main.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 40.
-LaTeX Font Info:    ... okay on input line 40.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 40.
-LaTeX Font Info:    ... okay on input line 40.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 40.
-LaTeX Font Info:    ... okay on input line 40.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 40.
-LaTeX Font Info:    ... okay on input line 40.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 40.
-LaTeX Font Info:    ... okay on input line 40.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 40.
-LaTeX Font Info:    ... okay on input line 40.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 40.
-LaTeX Font Info:    ... okay on input line 40.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 40.
-LaTeX Font Info:    ... okay on input line 40.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 40.
-LaTeX Font Info:    ... okay on input line 40.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 36.
+LaTeX Font Info:    ... okay on input line 36.
  (c:/Programs/texlive/2025/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
 \scratchcounter=\count472
@@ -821,7 +821,7 @@ Package caption Info: Begin \AtBeginDocument code.
 Package caption Info: subfig package v1.3 is loaded.
 Package caption Info: hyperref package is loaded.
 Package caption Info: End \AtBeginDocument code.
-Package hyperref Info: Link coloring ON on input line 40.
+Package hyperref Info: Link coloring ON on input line 36.
  (./main.out) (./main.out)
 \@outlinefile=\write5
 \openout5 = `main.out'.
@@ -874,123 +874,128 @@ Package biblatex Info: Automatic encoding selection.
 Package biblatex Info: Trying to load bibliographic data...
 Package biblatex Info: ... file 'main.bbl' found.
  (./main.bbl)
-Package biblatex Info: Reference section=0 on input line 40.
-Package biblatex Info: Reference segment=0 on input line 40.
-LaTeX Font Info:    Trying to load font information for U+msa on input line 43.
+Package biblatex Info: Reference section=0 on input line 36.
+Package biblatex Info: Reference segment=0 on input line 36.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 49.
  (c:/Programs/texlive/2025/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 43.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 49.
  (c:/Programs/texlive/2025/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
-) (./introduction.tex) (./empirics.tex
+)
 
-[1
+[0
 
-{c:/Programs/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map}{c:/Programs/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc}]
+{c:/Programs/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map}{c:/Programs/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc}] (./introduction.tex
 
-Package caption Warning: \label without proper reference on input line 21.
-See the caption package documentation for explanation.
-
-
-LaTeX Warning: Reference `tab:acrossfirms' on page 2 undefined on input line 17.
-
-
-LaTeX Warning: Citation 'enrlich2024' on page 2 undefined on input line 17.
-
-
-LaTeX Warning: Citation 'buhai2014' on page 2 undefined on input line 50.
-
-
+[1]
 
 [2]
-
-LaTeX Warning: Citation 'berger2011' on page 3 undefined on input line 59.
+Overfull \hbox (9.10483pt too wide) in paragraph at lines 24--25
+[]\OT1/cmr/m/n/12 The no{within-cohort dis-crim-i-na-tion as-sump-tion is cen-tral. The quoted in-tu-ition|\Layoffs
+ []
 
 
 
 [3]
 
-Package caption Warning: \label without proper reference on input line 71.
-See the caption package documentation for explanation.
-
-
-LaTeX Warning: Reference `tab:layoff response' on page 4 undefined on input line 66.
-
-) (./model.tex
-
-[4]
+[4]) (./empirics.tex
 
 [5]
 
 [6]
 
 [7]
-LaTeX Font Info:    Trying to load font information for U+bbm on input line 83.
- (c:/Programs/texlive/2025/texmf-dist/tex/latex/bbm-macros/ubbm.fd
-File: ubbm.fd 1999/03/15 V 1.2 Font definition for bbm font - TH
-)
+Overfull \hbox (58.76105pt too wide) in paragraph at lines 69--85
+ [][] 
+ []
 
-[8]
+
+
+[8]) (./model.tex
 
 [9]
 
 [10]
-Overfull \hbox (13.00078pt too wide) in paragraph at lines 168--169
-\OT1/cmr/m/it/12 so-ci-ated with the promised value $\OML/cmm/m/it/12 v[]\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 y; \OMS/cmsy/m/n/12 f\OML/cmm/m/it/12 n[]; v[]; z[]\OMS/cmsy/m/n/12 g\OML/cmm/m/it/12 =v[]\OT1/cmr/m/n/12 )$\OT1/cmr/m/it/12 , for which $\OML/cmm/m/it/12 M\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 y; \OMS/cmsy/m/n/12 f\OML/cmm/m/it/12 n[]\OMS/cmsy/m/n/12 g\OML/cmm/m/it/12 ; v[]; :::; v[]; :::; \OMS/cmsy/m/n/12 f\OML/cmm/m/it/12 z[]\OMS/cmsy/m/n/12 g\OT1/cmr/m/n/12 ) =
- []
-
-
-Overfull \hbox (59.9709pt too wide) in paragraph at lines 169--172
-\OT1/cmr/m/it/12 where $\OMS/cmsy/m/n/12 f\OML/cmm/m/it/12 n[]; v[]; z[]\OMS/cmsy/m/n/12 g$ \OT1/cmr/m/it/12 -- fu-ture states from solv-ing Prob-lem [][]1[][] given cur-rent state of $\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 y; \OMS/cmsy/m/n/12 f\OML/cmm/m/it/12 n[]\OMS/cmsy/m/n/12 g\OML/cmm/m/it/12 ; v[]; :::; v[]; :::; \OMS/cmsy/m/n/12 f\OML/cmm/m/it/12 z[]\OMS/cmsy/m/n/12 g\OT1/cmr/m/n/12 )$\OT1/cmr/m/it/12 . 
- []
-
-
 
 [11]
-Underfull \hbox (badness 10000) in paragraph at lines 189--190
-
- []
-
-
 
 [12]
-Underfull \hbox (badness 10000) in paragraph at lines 211--212
-
+LaTeX Font Info:    Trying to load font information for U+bbm on input line 87.
+ (c:/Programs/texlive/2025/texmf-dist/tex/latex/bbm-macros/ubbm.fd
+File: ubbm.fd 1999/03/15 V 1.2 Font definition for bbm font - TH
+)
+Overfull \hbox (55.3134pt too wide) detected at line 88
+[]
  []
 
 
 
-[13])
+[13]
 
-[14] (./appendix.tex
+[14]
+Overfull \hbox (1.33731pt too wide) in paragraph at lines 137--138
+\OT1/cmr/m/n/12 Under the as-sump-tion in Ap-pendix [][]A.5[][], the equi-lib-rium may be block re-cur-sive|independent
+ []
+
+
 
 [15]
+
+[16]) (./quantitative.tex
+
+[17]
+
+[18]
+Overfull \hbox (0.65916pt too wide) in paragraph at lines 48--49
+[]\OT1/cmr/m/it/12 Transitions. \OT1/cmr/m/n/12 I mea-sure an-nual job-to-job (E2E) and unemployment-to-employment (U2E)
+ []
+
+
+
+[19])
+
+[20]
+
+[21]
+
+Package biblatex Warning: Month out of range or not an integer
+(biblatex)                at entry 'elsby2022' on input line 89.
+
+
+
+[22]
+
+[23] (./appendix.tex
 Overfull \hbox (35.00261pt too wide) detected at line 17
 []\OML/cmm/m/it/12 ^^L\OT1/cmr/m/n/12 (1 \OMS/cmsy/m/n/12 ^^@ \OML/cmm/m/it/12 s[]\OT1/cmr/m/n/12 )(1 \OMS/cmsy/m/n/12 ^^@ \OML/cmm/m/it/12 p\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 v[]\OT1/cmr/m/n/12 )) \OMS/cmsy/m/n/12 ^^@ \OML/cmm/m/it/12 ^^L[] \OT1/cmr/m/n/12 + \OML/cmm/m/it/12 ^^Ln[]\OT1/cmr/m/n/12 (1 \OMS/cmsy/m/n/12 ^^@ \OML/cmm/m/it/12 s[]\OT1/cmr/m/n/12 )[]\OML/cmm/m/it/12 E[][] \OT1/cmr/m/n/12 = 0
  []
 
 
+
+[24]
 Overfull \hbox (42.52437pt too wide) detected at line 34
 \OMS/cmsy/m/n/12 ^^@\OML/cmm/m/it/12 ^^Ln[]\OT1/cmr/m/n/12 (1 \OMS/cmsy/m/n/12 ^^@ \OML/cmm/m/it/12 p\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 v[]\OT1/cmr/m/n/12 ))\OML/cmm/m/it/12 E[][] \OT1/cmr/m/n/12 + \OML/cmm/m/it/12 ^^LE[][][] \OMS/cmsy/m/n/12 ^^@ \OML/cmm/m/it/12 ^^Z[]^^L\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 U \OMS/cmsy/m/n/12 ^^@ \OML/cmm/m/it/12 R\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 v[]\OT1/cmr/m/n/12 )) = 0
  []
 
 
-
-[16]
 Overfull \hbox (78.20778pt too wide) detected at line 42
 [] \OT1/cmr/m/n/12 = \OML/cmm/m/it/12 y[]\OT1/cmr/m/n/12 [\OML/cmm/m/it/12 F[]\OT1/cmr/m/n/12 ([] \OML/cmm/m/it/12 n[]; []\OT1/cmr/m/n/12 ) \OMS/cmsy/m/n/12 ^^@ \OML/cmm/m/it/12 F[]\OT1/cmr/m/n/12 ([] \OML/cmm/m/it/12 n[]; []\OT1/cmr/m/n/12 )[] \OMS/cmsy/m/n/12 ^^@ \OML/cmm/m/it/12 w[] \OT1/cmr/m/n/12 + \OML/cmm/m/it/12 ^^LE[][][]
  []
 
 
+LaTeX Warning: Reference `prop:wage_cuts' on page 25 undefined on input line 47.
 
-[17]
 
-[18]
 
-[19]
+[25]
 
-[20]
+[26]
+
+[27]
+
+[28]
 Overfull \hbox (17.90707pt too wide) detected at line 170
 []
  []
@@ -1002,21 +1007,21 @@ Overfull \hbox (17.90707pt too wide) detected at line 190
 
 
 
-[21]
+[29]
 
-[22]
+[30]
 
-[23]
-<Wage growth across tenure under 30,cutoff 100.jpg, id=332, 5018.75pt x 3011.25pt>
+[31]
+<Wage growth across tenure under 30,cutoff 100.jpg, id=559, 5018.75pt x 3011.25pt>
 File: Wage growth across tenure under 30,cutoff 100.jpg Graphic file (type jpg)
 <use Wage growth across tenure under 30,cutoff 100.jpg>
 Package pdftex.def Info: Wage growth across tenure under 30,cutoff 100.jpg  used on input line 291.
 (pdftex.def)             Requested size: 352.31625pt x 211.36041pt.
 
 
-[24])
+[32])
 
-[25 <./Wage growth across tenure under 30,cutoff 100.jpg>] (./main.aux)
+[33 <./Wage growth across tenure under 30,cutoff 100.jpg>] (./main.aux)
  ***********
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-03-26>
@@ -1026,29 +1031,24 @@ L3 programming layer <2025-03-26>
 LaTeX Warning: There were undefined references.
 
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: 48CB2B99678A18081537D8102F05DDA8;2890.
-
-Package biblatex Warning: Please (re)run Biber on the file:
-(biblatex)                main
-(biblatex)                and rerun LaTeX afterwards.
-
+(rerunfilecheck)             Checksum: 4437D873A83F5C85AED61DEBC4122565;4235.
 Package logreq Info: Writing requests to 'main.run.xml'.
 \openout1 = `main.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 31238 strings out of 469626
- 592233 string characters out of 5470494
- 1390067 words of memory out of 5000000
- 57488 multiletter control sequences out of 15000+600000
- 640746 words of font info for 95 fonts, out of 8000000 for 9000
+ 31513 strings out of 469626
+ 598552 string characters out of 5470494
+ 1395142 words of memory out of 5000000
+ 57691 multiletter control sequences out of 15000+600000
+ 642747 words of font info for 101 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 84i,18n,91p,1164b,1360s stack positions out of 10000i,1000n,20000p,200000b,200000s
- <c:/Users/andre/.texlive2025/texmf-var/fonts/pk/ljfour/public/bbm/bbm12.600pk><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmex7.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmex8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmti12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm0700.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1200.pfb>
-Output written on main.pdf (25 pages, 1339062 bytes).
+ 84i,19n,91p,1306b,1507s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ <c:/Users/andre/.texlive2025/texmf-var/fonts/pk/ljfour/public/bbm/bbm12.600pk><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmex7.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmex8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmti12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt12.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm0700.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb><c:/Programs/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1200.pfb>
+Output written on main.pdf (34 pages, 1401741 bytes).
 PDF statistics:
- 480 PDF objects out of 1000 (max. 8388607)
- 399 compressed objects within 4 object streams
- 113 named destinations out of 1000 (max. 500000)
- 186 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 727 PDF objects out of 1000 (max. 8388607)
+ 630 compressed objects within 7 object streams
+ 179 named destinations out of 1000 (max. 500000)
+ 250 words of extra memory for PDF output out of 10000 (max. 10000000)
 

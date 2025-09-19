@@ -1,246 +1,222 @@
 \section{Model}
-\subsection{Environment} %Measure of workers and firms, production+costs (open+exist?)
-Time is discrete and indexed by $t$. The economy is populated by a continuum of firms with measure 1, indexed $j \in [0,1]$, and workers with measure $I$, indexed $i \in [0,I]$. Both types of agents are ex ante homogeneous and infinitely lived, with time-separable preferences and a discount factor $\beta$. Firms are owned by outside investors, able to diversify any potential risk from firm-level productivity shocks. Thus, in practice, firms maximize
-\[E_0 \sum_{t=0}^\infty \beta^t \pi_{jt}\]
-Workers are risk-averse with no access to financial markets. They consume home production $b$ when unemployed and wage $w$ when employed. Their utility is
-\[E_0 \sum_{t=0}^\infty \beta^t u(c_{it}), u(c) = \frac{c^{1-\sigma}}{1-\sigma}\]
+I present a model of a frictional labor market in which firms sign workers of varying match quality to \emph{dynamic} contracts. The model is designed to capture the heterogeneity in wage pass-through and layoffs across firms and tenure documented in the data.
+
+\subsection{Environment} % Measure of workers and firms, production+costs (open+exist?)
+Time is discrete and indexed by $t$. The economy is populated by a continuum of firms of measure $1$, indexed by $j \in [0,1]$, and a continuum of workers of measure $I$, indexed by $i \in [0,I]$. Both types of agents are ex ante homogeneous and infinitely lived, with time-separable preferences and discount factor $\beta$. Firms are owned by outside investors who diversify firm-specific productivity risk. Thus firms maximize
+\[
+E_0 \sum_{t=0}^{\infty} \beta^t \pi_{jt}.
+\]
+Workers are risk-averse and have no access to financial markets. They consume home production $b$ when unemployed and wage $w$ when employed. Their utility is
+\[
+E_0 \sum_{t=0}^{\infty} \beta^t u(c_{it}), \qquad u(c)=\frac{c^{1-\sigma}}{1-\sigma}.
+\]
+
 \subsubsection*{Production}
-Firms may pay $\kappa_e$ to start producing, and will have to pay $\kappa_f$ every period to stay open.
-Open firms employ a measure\footnote{Law of large numbers thus applies and is extensively used throughout the model (\textcite{Sun2009})} $n$ of workers to produce. Each worker-firm match may be of high or low quality, fully persistent during the existence of the match. Only the firm is aware of the quality of any individual match, but the proportion of high-quality matches in the firm, denoted by $z$ , is common knowledge. Firm production exhibits decreasing returns to scale in size $n$ and potentially quality $z$.\footnote{In the quantitative exploration, I will restrict attention to decreasing returns in quality-adjusted quantity $g(z)n$} Lastly, production is subject to shocks $y\in \mathcal{Y}$ at the firm level. The overall production is a function of a number of high quality matches $n_H$, low quality matches $n_L$, and the firm-level productivity shock $y$. Equivalently, I will write it as a function of total measure of workers $n$ and the proportion high quality matches $z$. %\[yF(n,z),\:\:\:F'_n,F'_z>0, F''_{n}<0\]
-\[yF(n_H,n_L) \equiv yF(n,z),\:\:\: n=n_H+n_L,z=\frac{n_H}{n_H+n_L}\]
-%Firm production exhibits descreasing returns to scale in quality-adjusted quantity\footnote{}
-%\[F(g(z)n)=[(z+\alpha_z(1-z))n]^\alpha, \:\: \alpha,\alpha_z<1\]
+Firms may pay $\kappa_e$ to start producing and must pay $\kappa_f$ each period to remain open. Open firms employ a measure\footnote{The law of large numbers applies and is used throughout (\textcite{Sun2009}).} $n$ of workers. Each worker–firm match is either high or low quality and remains so for the duration of the match. Only the firm observes the quality of an individual match; the proportion of high-quality matches in the firm, $z$, is common knowledge. Production exhibits decreasing returns to scale in size $n$ and, potentially, in quality $z$.\footnote{In the quantitative analysis, I restrict attention to decreasing returns in quality-adjusted quantity $g(z)n$.} Production is also subject to firm-level shocks $y \in \mathcal{Y}$. Output depends on the numbers of high- and low-quality matches, $n_H$ and $n_L$, equivalently on $n$ and $z$:
+\[
+yF(n_H,n_L)\equiv yF(n,z), \qquad n=n_H+n_L,\quad z=\frac{n_H}{n_H+n_L}.
+\]
 
-\subsubsection*{Labor Market}  %This should include description of OJS (not specifying search type?),directed search, firm entry, layoffs?
-Every period, firms just entering the market immediately hire $\tilde{n}=1$ workers. Incumbent firms hire $\tilde{n}\geq 0$ workers. Workers, both employed and unemployed, search for a job. Workers and hiring firms meet in a frictional labor market with directed search, as in \textcite{moen1997}. There is a continuum of submarkets indexed by the promised value $v$ owed to the workers. Firms choose in which submarket to post vacancies at the cost $c$ and workers choose where to search. Within each submarket, matches are formed according a constant returns to scale matching function. Due to the CRS nature of the function, tightness of a submarket $\theta_v$ is a sufficient statistic for matching probabilities. Denote these probabilities $p(\theta_v),q(\theta_v)\leq 1$ for a worker and a vacancy, respectively. 
+\subsubsection*{Labor market}  % OJS, directed search, entry, layoffs
+Each period, entering firms immediately hire $\tilde{n}=1$ workers; incumbents hire $\tilde{n}\ge 0$. Workers—both employed and unemployed—search for jobs. Matching occurs in a frictional labor market with directed search, as in \textcite{moen1997}. There is a continuum of submarkets indexed by the promised value $v$ to the worker. Firms choose in which submarket to post vacancies at cost $c$, and workers choose where to search. Within each submarket, matches are formed according to a constant-returns-to-scale matching function; market tightness $\theta_v$ suffices to determine matching probabilities. Let $p(\theta_v)$ and $q(\theta_v)\le 1$ denote the job-finding and vacancy-filling probabilities.
 
-Firms are not restricted in fielding a discrete number of vacancies, and thus can deterministically hire $\tilde{n}$ workers from submarket $v$ at the cost $\tilde{n}\frac{c}{q(\theta_v)}$. The probability of being a high quality match upon being hired is $0 \leq z_0\leq 1$, constant across agents and time. Upon hiring these workers, the firm commits to delivering expected discounted utility $v$. The core trade-off in firm hiring is between the cost of hiring $\frac{c}{q(\theta_v)}$ and the cost of employing the worker, which increases with $v$.
-%via a contract $\mathcal{C}_i=\{w_{i,\tau},s_{i,\tau}(y^\tau)\}_{\tau=t}^\infty$, specifying future productivity history-contingent wages $w$ and layoff probabilities $s$. 
-Firms are capable of downsizing via laying off proportion $0 \leq s\leq 1$ of its workforce and by incentivizing incumbent workers to find jobs elsewhere.
+Firms are not restricted to a discrete number of vacancies and can deterministically hire $\tilde{n}$ workers from submarket $v$ at cost $\tilde{n}\,c/q(\theta_v)$. The probability that a newly hired match is high quality is $z_0 \in [0,1]$, constant across agents and time. Upon hiring, the firm commits to deliver expected discounted utility $v$. The hiring trade-off is between the cost of hiring, $c/q(\theta_v)$, and the (higher) cost of employing a worker as $v$ rises. Firms can downsize by laying off a fraction $s \in [0,1]$ of their workforce and by incentivizing incumbents to find jobs elsewhere.
 
-I consider two cases of this economy: in the steady-state or, under an additional assumption (see Appendix~\ref{blocrecur}), in a Block-Recursive equilibrium (following \textcite{menzio2011} and \textcite{schaal2017}). Either way, agents do not need to keep track of the aggregate cross-sectional distribution of the economy.
+I consider two versions of the economy: a steady state and, under an additional assumption (Appendix~\ref{blocrecur}), a block-recursive equilibrium following \textcite{menzio2011} and \textcite{schaal2017}. In both cases, agents need not track the aggregate cross-sectional distribution.
+
 \subsubsection*{Timing}
-    \begin{figure}
-        \centering
+\begin{figure}
+\centering
 \begin{tikzpicture}[node distance=2mm]
-  \draw[->] (0,0) to  (10,0);
-    \filldraw[black] (0,0) circle (2pt);
+  \draw[->] (0,0) to (10,0);
+  \filldraw[black] (0,0) circle (2pt);
   \node[below, black] at (0,-2mm) {t};
-    \filldraw[black] (9,0) circle (2pt);
+  \filldraw[black] (9,0) circle (2pt);
   \node[below, black] at (9,-2mm) {t+1};
   \foreach \x/\q in {2/,4/,6/,8/}{
     \draw[line width=1pt, black] (\x,-2mm) node[below, black](a\x){\q} -- (\x,2mm);
-}
-\node [below=of a2, align=center, minimum width=1in, minimum height=1cm] {$yF(n,z)$,$w$ \\ Production and Wage };
-\node [above=of a4, align=center, minimum width=1in, minimum height=1cm] {Firm Layoffs $s$};
-\node [below=of a6, align=center, minimum width=1in, minimum height=1cm] {Hiring $\tilde{n}$ \\ Worker Search $p(\theta)$};
-\node [above=of a8, align=center, minimum width=1in, minimum height=1cm] {Prod Shock $y_{t+1}|y_t$};
+  }
+  \node [below=of a2, align=center, minimum width=1in, minimum height=1cm] {$yF(n,z)$, $w$ \\ Production and wages};
+  \node [above=of a4, align=center, minimum width=1in, minimum height=1cm] {Firm layoffs $s$};
+  \node [below=of a6, align=center, minimum width=1in, minimum height=1cm] {Hiring $\tilde{n}$ \\ Worker search $p(\theta)$};
+  \node [above=of a8, align=center, minimum width=1in, minimum height=1cm] {Productivity shock $y_{t+1}\mid y_t$};
 \end{tikzpicture}
-\caption{Within-period time line} \label{fig:Timing}
+\caption{Within-period timeline} \label{fig:Timing}
 \end{figure}
 
-Each period is divided into 4 stages, as illustrated in Figure~\ref{fig:Timing}. First, production takes place. Firm collects the output and pays wage $w$ to each worker it employs. Next, each firm lays off a fraction $s\geq 0$ of its workforce. Fired workers become unemployed, but may not search until the next period. The remaining workers, both employed and unemployed, then search for a job. This coincides with all the firm hiring $\tilde{n}$, from both entering and incumbent firms. All the hiring and search choices happen before the next productivity $y_{t+1}$ realizes and thus the agents have to rely on the expectation operator $E_{y_{t+1}|y_t}$.
-%\subsubsection*{Physical Environment}
-\subsubsection*{Information Structure and Contracts}
-Upon hiring a worker, the firm commits to deliver expected utility $v$ via a contract. A contract defines the wage and
-actions for a matched worker and firm for all future firm productivity histories $y^\tau\equiv (y_1,...,y_\tau)\in \mathcal{Y}^{\tau}$. The future history of firm productivity is common knowledge to both agents and is thus fully contractible. However, the match-specific productivity $z_{ij}$ is private information of the firm and worker's search decision $\hat{v}$ is private information of the worker. The contract $\mathcal{C}$ is then represented by 
+Each period has four stages (Figure~\ref{fig:Timing}). First, production occurs: the firm collects output and pays wage $w$ to each worker. Next, the firm lays off a fraction $s\ge 0$ of its workforce. Fired workers become unemployed and cannot search until next period. Then all workers—employed and unemployed—search, and all firms (entrants and incumbents) hire $\tilde{n}$. Hiring and search choices occur before next-period productivity $y_{t+1}$ is realized, so agents take expectations $E_{y_{t+1}\mid y_t}$.
+
+\subsubsection*{Information structure and contracts}
+Upon hiring, the firm commits to deliver expected utility $v$ via a contract. A contract specifies wages and actions for the matched pair for all future firm-productivity histories $y^\tau \equiv (y_1,\ldots,y_\tau)\in \mathcal{Y}^{\tau}$. Firm productivity histories are common knowledge and therefore fully contractible. By contrast, match-specific productivity $z_{ij}$ is private to the firm, and the worker’s search decision $\hat{v}$ is private to the worker. The contract is
 \begin{equation}
-\mathcal{C}=\{w_{\tau},s_{\tau},\hat{v}_\tau\}_{\tau=t}^\infty
+\mathcal{C}=\{w_{\tau},\,s_{\tau},\,\hat{v}_{\tau}\}_{\tau=t}^{\infty}.
 \end{equation}
-The first component captures firm's wage policy $w$ for each future productivity history. The second component captures \textit{expected} layoff probability $s$, given that the worker does not know the quality of their match. Note that these probabilities are not ex-ante: in histories where worker's information about their match quality updates, it will be reflected in all the corresponding layoff probabilities. An example of that could be a history where firm has faced multiple negative productivity shocks and was forced to lay off a vast majority of its workforce. The remaining workers will bayesian update that their match quality is now more likely to be high, and any future layoff probabilities will reflect that. 
-The last component is worker's search decision. Although this action is unobserved by the firm, I focus on contracts where the contractual recommendations are incentive-compatible. The firm thus chooses workers’ search decisions, subject to the incentive compatibility constraint that the decisions match the workers’ optimal response.
+Here $w$ is the wage policy for each future productivity history. The second component, $s$, is the \emph{expected} layoff probability from the worker’s perspective (who does not observe their match quality). These probabilities are history-dependent: in histories where information about match quality is updated, future layoff probabilities reflect the worker’s Bayesian update. For example, after multiple negative shocks that force large layoffs, remaining workers rationally assign higher probability to being high quality, and subsequent layoff probabilities adjust accordingly. The last component is the worker’s (unobserved) search decision. I focus on contracts in which recommended search is incentive compatible, i.e., the contract specifies workers’ search choices subject to the constraint that those choices are optimal for workers.
 
-%Add here a short discussion paragraph maybe???
-The contract space is completely flexible in how wages and layoffs respond to productivity histories. In a setting with a continuum of contracts at the same time, this allows the firm to choose how to treat its heterogeneous (in quality and contracts) workforce: when a negative shock hits, who to fire and for whom to cut wages. This property is central to the paper and unique to the setting: unlike model with CRS production functions, these decisions depend on the state of the entire firm. Unlike other models of firm dynamics, with Nash Bargaining (\textcite{mccrary2022}) or Sequential Bargaining (\textcite{bilal2022}), the workers in the same firm may end up with different wages, layoffs, and their responses to productivity shocks. %By taking the model to the data, I am able to quantify how different firms, depending on their size and productivity, discriminate between their junior and senior workers.
+The contract space allows fully flexible wage and layoff responses to productivity histories. With a continuum of concurrent contracts, the firm can choose how to treat a heterogeneous workforce (by quality and contract): when a negative shock hits, whom to fire and whose wages to cut. This feature is central and specific to the setting: unlike models with CRS production, these decisions depend on the entire firm state; unlike dynamic models with Nash bargaining (\textcite{mccrary2022}) or sequential bargaining (\textcite{bilal2022}), workers within the same firm may optimally face different wages, layoff risks, and responses to shocks.
+
 \subsection{Value functions}
-The above contract, and thus the problems of all the agents, can be described recursively. I start with the individual workers' problem and move on to firms managing contracts with a continuum of workers. I show that the firm problem can be reformulated with a discrete state-space.
-\subsubsection*{Worker's Problem} %Value functions, including search trade-off
-Unemployed workers consume home production $b$. Each period, they search on the submarket that offers the best tradeoff between promised future utility and job finding probability. Dropping all time subscripts and focusing on a stationary equilibrium, the value of being unemployed $U$ can be written as:
-\begin{equation} \label{unempproblem}
-    U =\max_{v} u(b) + \beta[(1 - p(\theta_v))U + p(\theta_v)v]
+The contract and all agents’ problems admit a recursive formulation. I begin with workers’ problems and then turn to firms managing a continuum of contracts. I show that the firm’s problem can be reformulated with a discrete state space.
+
+\subsubsection*{Worker’s problem} % Value functions, including search trade-off
+Unemployed workers consume $b$ and each period choose the submarket that offers the best trade-off between promised future utility and job-finding probability. In a stationary equilibrium (suppressing time subscripts), the value of unemployment $U$ is
+\begin{equation}\label{unempproblem}
+U=\max_{v}\; u(b)+\beta\big[(1-p(\theta_v))U+p(\theta_v)v\big].
 \end{equation}
 
-Consider an employed worker with an owed value $v$. Suppose a firm pays wage $w$ this period, will fire with probability $s$ and offers a lifetime expected utility $v'$ from tomorrow into the future. Then a worker faces the following search problem:
-\begin{equation} \label{empproblem}
-  v=\max_{\hat{v}} u(w) + \beta[sU + (1-s)[(1-p(\theta_{\hat{v}}))v'+p(\theta_{\hat{v}})\hat{v}]]   
+Consider an employed worker owed value $v$. Suppose the firm pays wage $w$ this period, lays off with probability $s$, and promises future value $v'$ from next period onward. The worker’s search problem is
+\begin{equation}\label{empproblem}
+v=\max_{\hat{v}}\; u(w)+\beta\Big[sU+(1-s)\big((1-p(\theta_{\hat{v}}))v'+p(\theta_{\hat{v}})\hat{v}\big)\Big].
 \end{equation}
-The optimal worker policy $\hat{v}$ depends only on the future offered utility $v'$. By raising $v'$, firm incentivizes its worker to search in higher $\hat{v}$, thus lowering the probability that the worker will leave.
-Note that this can be equivalently rewritten as 
+The optimal search target $\hat{v}$ depends only on the promised $v'$. By raising $v'$, the firm induces search in higher-$\hat{v}$ submarkets, lowering the probability that the worker exits. Equivalently,
+\[
+v=u(w)+\beta\big[sU+(1-s)R(v')\big],
+\]
+where $R(v')\equiv \max_{\hat{v}}\big[(1-p(\theta_{\hat{v}}))v'+p(\theta_{\hat{v}})\hat{v}\big]$ is the worker’s optimal continuation value given promise $v'$ and no layoff.
+
+\subsubsection*{Firm’s problem}
+A firm employs a measure $n$ of workers. Let $P(v)$ denote the distribution of promised values owed to incumbents. For each $v$, the firm chooses the wage $w_v$, layoff rate $s_v$, and next period’s productivity-history–contingent promised values $\{v_{v,y'}'\}$. The firm may also hire $\tilde{n}$ workers at value $\tilde{v}$. Each match can be high or low quality. The firm cannot set quality-contingent wages; it affects match quality only through layoffs.\footnote{Appendix~\ref{microfoundation} shows that, under sufficiently inelastic on-the-job search, this is a pooling equilibrium of a signaling game in which the firm \emph{could} set quality-contingent wages.}
+The recursive problem is
 \begin{equation*}
-  v=u(w) + \beta[sU + (1-s)R(v')]  
+\begin{split}
+J(y,n,P(v),z)=\max_{\tilde{n},\tilde{v},\,\{w_v,s_v,v'_{v,y'}\}} \;& yF(n,z) - \int w_v\,dP(v) - \tilde{n}\frac{c}{q(\tilde{v})} - \kappa_f + \beta\,E_{y'\mid y}\,J\big(y',n',P'(v)\big) \\
+\text{s.t.}\qquad & u(w_v)+\beta\big[s_v U+(1-s_v)R(v'_v)\big]=v \quad \forall v, \\
+& v'_v=E_{y'\mid y}\,v'_{v,y'} \quad \forall v, \\
+& n'=n\int (1-s_v)\big(1-p(v'_v)\big)\,dP(v)+\tilde{n}, \\
+& n'P'(v)=n\int E_{y'\mid y}\,\mathbbm{1}\{v'_{v,y'}\le v\}(1-s_v)\big(1-p(v'_v)\big)\,dP(v)+\mathbbm{1}\{\tilde{v}\le v\}\tilde{n}.
+\end{split}
 \end{equation*}
-where $R(v') \equiv \max_{\hat{v}}[(1-p(\theta_{\hat{v}}))v'+p(\theta_{\hat{v}})\hat{v}]$ the optimal future value the worker gets upon being promised $v'$ and not being laid off.
-\subsubsection*{Firm's Problem}
-A firm employs a measure $n$ of workers. Denote the distribution of their promised values $v$ that the firm owes to its workers as $P(v)$. Then for each of these values $v$, the firm has to choose the wage to pay $w_v$, the layoff rate $s_v$, and tomorrow, future productivity state-contingent promised value $v'_{v,y'}$. Firm may also hire $\tilde{n}$ workers at the value $\tilde{v}$. Each worker-firm match can be of high or low quality. I do not allow the firm to choose quality-contingent wages, thus the firm can only influence match quality via layoffs \footnote{I show in Appendix \ref{microfoundation} that, under a sufficiently low elasticity of on-the-job search, this is in fact an pooling equilibrium in a signaling game, where the firm is allowed to set quality-contingent wages.}.
-The firm's problem can then be formulated recursively as follows:
+The firm maximizes the present value of profits subject to honoring each worker’s promised value. Because search occurs before the next productivity state is realized, workers care about the expected promised value $v'_v$ rather than particular realizations $v'_{v,y'}$. The last two constraints describe the laws of motion for firm size and the distribution of promises.
+
+\paragraph{Discretizing the problem}\label{subsection:discrete}
+As written, the state includes a probability distribution—an uncountably infinite-dimensional object. I show that the state space can be discretized, yielding a countably infinite state. First, under directed search, a firm posts in a single submarket and hires at a single value $\tilde{v}$.\footnote{I rule out mixed strategies by an individual firm: if indifferent across submarkets, it posts in one of them.} Hence, all workers hired in the same period by the same firm are owed the same expected utility—both at hiring and, given no quality-contingent wages, thereafter. It is therefore equivalent to work with the CDF $P(v)$ or the PMF $\mathbb{P}(V=v)$, with $P(v)=\sum_{v'\le v}\mathbb{P}(V=v')$. For a firm of age $K<\infty$, there are at most $K$ distinct promised values with positive probability, corresponding to cohorts by tenure $k=t-t_{\text{hired}}\le K$. The state can thus be recast by tenure:
+
+\begin{lemma}\label{firmproblem}
+For a firm of age $K$, the problem $J(y,n,P(v))$ is equivalent to
 \begin{equation*}
-    \begin{split}
-    J(y,n,P(v),z) = & \max_{\tilde{n},\tilde{v},\{w_v,s_v,v'_{v,y'}\}} yF(n,z) - \int_v w_i dP(v_i) -\tilde{n}\frac{c}{q(\tilde{v})} -\kappa_f+ \beta E_{y'|y} J(y',n',P'(v)) \\
-     s.t. \: & u(w_v) + \beta [s_v U + (1-s_v)R(v'_{v})=v] \; \forall v \\
-    & v'_v = E_{y'|y} v'_{v,y'} \; \forall v \\
-    & n' = n\int_v (1-s_v)(1-p(v'_v))dP(v)+\tilde{n} \\
-    & n'P'(v) = n\int_v E_{y'|y}\mathbbm{1}_{v'_{v,y'}\leq v} (1-s_v)(1-p(v'_v))dP(v)+\mathbbm{1}_{\tilde{v}\leq v}\tilde{n}
-    \end{split}
-\end{equation*}
-Firm has to maximize its net present value of profits subject to fulfilling every worker's promised value. 
-Note that because the search decision happens before the next productivity state realizes, workers only care about the expected average promised value $v'_v$ when making their decisions rather than about any of the $v'_{v,y'}$ in particular. The latter two conditions specify the law of motion for firm size and the distribution of promised values. \\
-\textbf{Discretizing the Problem} \label{subsection:discrete} In the current formulation, this problem is intractable as it involves a probability distribution, an uncountably infinitely-dimensional object, in the state-space. I show that this state space can be discretized, thus bringing it ``down" to countably infinite states.\\
-First, note that, when hiring, a firm chooses just one value at which to hire, $\tilde{v}$. This is an outcome of the directed structure of the labor market. Since a firm optimally decides in which submarket $v$ to post vacancies \footnote{I assume no mixed strategies by a single firm: in case a firm happens to be indifferent across multiple submarkets, it will only post vacancies in one of them.}, it will only hire from that submarket and thus at that value. This means that all the workers hired at the same time by the same firm are going to be owed the same expected utility, both at the time of hiring and, due to not allowing the firm to choose quality-contingent wages, in all the future periods. Therefore, it is equivalent to work with the cdf $P(v)$ or with the related probability mass function $\mathbb{P}(V=v)$: $P(v)=\sum_{v'\leq v}\mathbb{P}(V=v')$. 
-Furthermore, for a firm of age $K<\infty$, there are at most $K$ different values $v$ such that $\mathbb{P}(V=v)>0$. These values correspond to the values owed to workers hired at different time periods, thus of different tenure at the firm $k=t-t_{hired}\leq K$.  One can then redefine the state space using tenure: 
-\begin{lemma} \label{firmproblem}
-A decision problem $J(y,n,P(v))$ of a firm of age $K$ can be equivalently represented as
-\begin{equation*}
-    \begin{split}
- J(y,\{n_k,v_k,z_k\}_{k\leq K}) =
-    %Max
-    & \max_{\tilde{n},\tilde{v},\{v'_{y',k},w_{k},s_{k}\}_{k\leq K}} 
-    %Production
-    yF(\sum_k n_k,\frac{\sum n_kz_k}{\sum n_k})-
-    %Wage
-    \sum_k w_kn_k \\
-    %Size
-    &-\tilde{n}\frac{c}{q(\tilde{v})}-\kappa_f
-    %Expectation
-    +\beta E_{y'|y} J(y',\{n'_k,v'_k,z'_k\}_{k\leq K+1}) \\
-     s.t. \: & u(w_k) + \beta [s_k U + (1-s_k)R(v'_{k+1})=v_k] \; \forall k\leq K \\
-    & v'_{k+1} = E_{y'|y} v'_{k+1,y'} \; \forall k\leq K \\
-    & n'_{k+1} = n_k(1-s_k)(1-p(v'_{k+1}))+\tilde{n}\; \forall k\leq K \\
-    & z'_{k+1} = min(\frac{z_k}{1-s_k},1)\; \forall k\leq K \\
-    & n'_0 = \tilde{n}, v'_0 = \tilde{v}, z'_0 = z_0
-    \end{split}
+\begin{split}
+J\big(y,\{n_k,v_k,z_k\}_{k\le K}\big)
+=\max_{\tilde{n},\tilde{v},\,\{v'_{y',k},w_k,s_k\}_{k\le K}} \;&
+yF\!\Big(\sum_k n_k,\;\frac{\sum_k n_k z_k}{\sum_k n_k}\Big)
+-\sum_k w_k n_k - \tilde{n}\frac{c}{q(\tilde{v})} - \kappa_f \\
+&\qquad + \beta\,E_{y'\mid y}\,J\big(y',\{n'_k,v'_k,z'_k\}_{k\le K+1}\big) \\
+\text{s.t.}\qquad
+& u(w_k)+\beta\big[s_k U+(1-s_k)R(v'_{k+1})\big]=v_k \quad \forall k\le K, \\
+& v'_{k+1}=E_{y'\mid y}\,v'_{k+1,y'} \quad \forall k\le K, \\
+& n'_{k+1}=n_k(1-s_k)\big(1-p(v'_{k+1})\big)+\tilde{n} \quad \forall k\le K, \\
+& z'_{k+1}=\min\!\Big\{\frac{z_k}{1-s_k},\,1\Big\} \quad \forall k\le K, \\
+& n'_0=\tilde{n},\quad v'_0=\tilde{v},\quad z'_0=z_0.
+\end{split}
 \end{equation*}
 \end{lemma}
-This redefinition, besides discretizing the state-space, is also useful for understanding how layoffs and wages interact within a cohort.
-Although any particular worker does not know their own match quality, they know the proportion of high quality matches in their cohort. All new hires start with a proportion $z_0$ of high quality matches, and, although it may evolve, all the workers of the same tenure $k$ will have the same probability of having a high quality match $z_k\geq z_0$. This probability is common knowledge to the firm and all its workers and depends on layoffs in the corresponding cohort. As I will show later, the average quality within a cohort has a first-order effect on its wage growth, allowing me to explore the connection between wage passthrough and layoffs within a firm. \textcolor{red}{Unclear. Clarify how using the cohort definition of the problem helps.}
 
-\subsubsection*{Free-entry and exit}
-Firms are free to enter the market and start producing upon paying an entry cost $\kappa_e$. Upon entry, firms draw a productivity shock and start with a single worker. Thus, the free-entry condition pins down the expected profits of firms upon entry:
-\begin{equation} \label{freeentry}
-    \kappa_e\geq \max_{v_0} -\frac{c}{q_{v_0}}+\beta E_y J(y,\{1,0,...\},\{v_0,...\},\{z_0,...\})
+This representation both discretizes the state space and clarifies how layoffs and wages interact within cohorts. Although workers do not know their own match quality, they know the cohort-level share of high-quality matches. New hires start with $z_0$, and while $z_k$ may evolve, all workers of the same tenure $k$ share the same probability $z_k\ge z_0$ of being high quality. This probability, common knowledge to the firm and workers, depends on layoffs in the cohort. As shown below, average cohort quality has a first-order effect on wage growth, linking wage pass-through and layoffs within the firm.
+
+\subsubsection*{Free entry and exit}
+Firms enter by paying $\kappa_e$. Upon entry, a firm draws productivity and starts with a single worker. Free entry pins down expected profits at entry:
+\begin{equation}\label{freeentry}
+\kappa_e \ge \max_{v_0}\; \Big(-\frac{c}{q(\theta_{v_0})}+\beta\,E_y\,J\big(y,\{1,0,\ldots\},\{v_0,\ldots\},\{z_0,\ldots\}\big)\Big).
 \end{equation}
-When taking the model to the data, this results in a negative connection between the cost of entry $\kappa_e$ and the probability to fill a vacancy $q(\theta)$: the cheaper it is to enter, the tighter will the labor market be, thus making it easier for workers to find jobs and harder for firms to fill vacancies.
-\\
-Similarly to new firms, incumbent firms have to pay an operating cost $\kappa_f$ every period to stay open. With $\kappa_f$ already included into the firm value function, firms stay open if 
-\begin{equation} \label{freeexit}
-    J(y,\{n_k,v_k,z_k\})\geq 0
+Empirically, this implies a negative relationship between entry costs $\kappa_e$ and vacancy-filling probabilities $q(\theta)$: cheaper entry tightens the labor market, raising job-finding rates and lowering vacancy-filling probabilities.
+
+Incumbents pay an operating cost $\kappa_f$ each period to stay open. With $\kappa_f$ already in $J$, firms remain open if
+\begin{equation}\label{freeexit}
+J\big(y,\{n_k,v_k,z_k\}\big)\ge 0.
 \end{equation}
 
 \subsection{Equilibrium}
-A complete equilibrium is a sequence of policies, matching rates, and distribution of workers and firms for each labor market $v$ such that each period
+An equilibrium is a sequence of policies, matching rates, and distributions of workers and firms across submarkets $v$ such that, each period:
 \begin{itemize}
-    \item Firms solve the problem from Lemma~\ref{firmproblem}
-    \item Workers solve search problems from Equations \ref{unempproblem} and \ref{empproblem}
-    \item Free-entry  and free exit conditions \ref{freeentry},\ref{freeexit}  are satisfied
-    \item Job-finding and vacancy-filling probabilities are consistent with the matching function
-    \item Tightness function $\theta_v$ is consistent with the firm posting and worker search strategies
-    \item Labor market clears
+\item Firms solve the problem in Lemma~\ref{firmproblem}.
+\item Workers solve \eqref{unempproblem} and \eqref{empproblem}.
+\item Free-entry and free-exit conditions \eqref{freeentry}–\eqref{freeexit} hold.
+\item Job-finding and vacancy-filling probabilities are consistent with the matching function.
+\item Tightness $\theta_v$ is consistent with firms’ posting and workers’ search strategies.
+\item The labor market clears.
 \end{itemize}
-Under an additional assumption in Appendix \ref{blocrecur}, I show that the equilibrium may be block recursive, meaning independent of the distribution of workers and firms. I use that assumption in the quantitative exploration, but not in the theoretical discussion, where instead I focus my attention on the steady-state of the economy described above.
+Under the assumption in Appendix~\ref{blocrecur}, the equilibrium may be block recursive—independent of the aggregate distributions. I use that assumption in the quantitative analysis, but not in the theoretical discussion, where I focus on the steady state described above.
 
 \subsection{Mechanism}
+I show how the model generates the empirical connection between layoffs and wage pass-through, and the associated tenure heterogeneity.
 
-\textbf{Contracts Converge}
-
-The tenure-based formulation of the problem allows me to work with a discrete, although expanding, state-space. Finally, to make the problem fully tractable, I note that wages in contracts tend to converge, suggesting that $w_k\approx w_{k+1} \forall k\geq\bar{k}$. I derive this result in the following propositions. The core idea follows \textcite{balke2022}'s Proposition 3, which states that wages in dynamic contracts tend to always follow a ``target wage". I extend their result to my model with a continuum of contracts.
-\newline
-%I adapt the Proposition 3 from \textcite{balke2022}, which establishes that wages in each match track a "target wage", to my model with a continuum of contracts. 
-To show that the wages converge, I start by characterizing the wage growth.
-\begin{proposition} \label{prop:wagegrowth}
-  For any current state $(y,\{n_k,v_k,z_k\})$, wages change according to the following relationship:
-\begin{equation} 
-    \frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} = \eta(v'_{k+1}) E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}}
-\end{equation}
-where $\eta(v'_{k+1}) = \frac{\partial log(1-p(v'))}{\partial v'}$ is the semi-elasticity of the job-finding probability with respect to the promised value $v'_{k+1}$.
+\paragraph{Wage growth}
+\begin{proposition}\label{prop:wagegrowth}
+For any current state $(y,\{n_k,v_k,z_k\})$, wages evolve according to
+\[
+\frac{1}{u'(w'_{k+1})}-\frac{1}{u'(w_k)}
+=\eta(v'_{k+1})\,E_{y'\mid y}\,\frac{\partial J\big(y',\{n'_k,v'_{y',k},z'_k\}\big)}{\partial n'_{k+1}},
+\]
+where $\eta(v'_{k+1})\equiv \frac{\partial \log(1-p(v'))}{\partial v'}\big|_{v'=v'_{k+1}}$ is the semi-elasticity of the job-finding probability with respect to the promised value.
 \end{proposition}
 \begin{proof}
-  See Appendix \ref{proof:wagegrowth}.
+See Appendix~\ref{proof:wagegrowth}.
 \end{proof}
-The relationship is at the core of the firm's insurance vs incentive provision trade-off: while the marginal value of the worker $\frac{\partial J(y',\{n'_k,v'_k,z'_k\})}{\partial n'_{k+1}}$ is positive, the firm is intent on keeping its workers, and thus chooses to backload wages, thus incentivizing the workers to stay at the cost of higher total wage payments. On the flip side, if the marginal worker value is negative, the firm will choose to lower wages, incentivizing workers to leave. This can be formalized by definining a target wage:
-%\begin{proposition} \label{prop:targetwage}
-% Fix firm's state $(y,\{n_k,v_k\})\equiv (y,n,P(v))$ and define $v^*$ such that \\ 
-% $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v^*)}=0$. Then
-%  \[ |w'_{k+1}-w^*_{v^*}|<|w_k-w^*_{v^*}| \; \forall k\]
-% Moreover, defining $\bar{k}\equiv arg\max_k v_k$,
-% \[ w'_{\bar{k}+1}-w'_{k+1}<w_{\bar{k}}-w_k \; \forall k\neq\bar{K}\]
- 
 
- \begin{definition} 
-  The target wage for cohort $k, w^*_k(y,\{n_k,v_k,z_k\}/v_k),$ is defined as the wage associated with the promised value $v^*_k(y,\{n_k,v_k,z_k\}/v_k)$, for which $M(y,\{n_k\},v_0,...,v^*_k,...,\{z_k\})=0$, where
-  \[M(y,\{n_k\},v_0,...,v_k,...,\{z_k\}) = E_{y'|y}\frac{\partial J(y',\{n'_k,v'_k,z'_k\})}{\partial n'_{k+1}},\]
-  where $\{n'_k,v'_k,z'_k\}$ -- future states from solving Problem~\ref{firmproblem} given current state of $(y,\{n_k\},v_0,...,v_k,...,\{z_k\})$. \\
-  The target wage is equal to:
-  \[ w^*_k (y,\{n_k,v_k,z_k\}/v_k) = u^{'-1}\Big( - \frac{n'_{k+1}}{\partial J(y',\{n'_k,v'_k,z'_k\})/\partial v'_{y',k+1}} \Big)\]
- \end{definition}
-The target wage captures the point where the marginal profit of a cohort $k$ reaches zero, thus making the firm indifferent between keeping or losing these workers to poaching ( it may still want to lose the low quality matches within the cohort and keep the high quality ones). I use the target wage to show convergence of wages across cohorts:
-\begin{proposition} \label{prop:targetwage}
- For each firm state $(y,\{n_k,v_k,z_k\})$ and cohort $k$ there exists a target wage $w^*_k$. To first-order:
-  \begin{enumerate}
-    \item Wage in each cohort chases the corresponding target wage: 
-    \[ w_k \leq w^*_k  \implies w_k \leq w'_{k+1} \leq w^*_k\]
-    \[w_k \geq w^*_k  \implies w^*_k \leq w'_{k+1} \leq w_k\]
-    \item Wage growth is faster the further wage is from the target wage: \textcolor{red}{Recheck} 
-    \[|w_k-w^*_k|\geq|w_{k'}-w^*_{k'}|\: \implies |w'_{k+1}-w_k|\geq|w'_{k'+1}-w'_{k'}| \]
-    \item Target wage increases in $z_k$, but does not change in $z_{k'},k'\neq k$.
-    \item All target wages change the same in response to all the other state variables:
-    \[\frac{\partial w^*_k}{\partial s} = \frac{\partial w^*_{k'}}{\partial s}\:  \forall k,k', s\neq z_k,z_{k'}\]
-  \end{enumerate}
+This relationship captures the insurance–incentives trade-off. When the marginal value of a worker,
+$E_{y'\mid y}\big[\partial J/\partial n'_{k+1}\big]$, is positive, the firm prefers to retain workers and backloads wages (raising $v'$). When the marginal value is negative, the firm lowers wages to encourage quits. This motivates a target wage:
+
+\begin{definition}
+The target wage for cohort $k$, $w^*_k\big(y,\{n_k,v_k,z_k\}/v_k\big)$, is the wage associated with the promised value $v^*_k\big(y,\{n_k,v_k,z_k\}/v_k\big)$ that solves
+\[
+M\big(y,\{n_k\},v_0,\ldots,v_k,\ldots,\{z_k\}\big)
+\equiv E_{y'\mid y}\frac{\partial J\big(y',\{n'_k,v'_k,z'_k\}\big)}{\partial n'_{k+1}}=0,
+\]
+where $\{n'_k,v'_k,z'_k\}$ are next-period states implied by Lemma~\ref{firmproblem}. The target wage equals
+\[
+w^*_k\big(y,\{n_k,v_k,z_k\}/v_k\big)
+= u'^{-1}\!\left(-\,\frac{n'_{k+1}}{\partial J\big(y',\{n'_k,v'_k,z'_k\}\big)/\partial v'_{y',k+1}}\right).
+\]
+\end{definition}
+
+At the target, the cohort’s marginal profit is zero, making the firm indifferent to poaching (while still preferring to shed low-quality matches within the cohort). The target wage governs within-firm wage movements:
+
+\begin{proposition}\label{prop:targetwage}
+For any state $(y,\{n_k,v_k,z_k\})$ and cohort $k$ there exists a target wage $w^*_k$ such that:
+\begin{enumerate}
+\item Wages move toward the target:
+\[
+w_k \le w^*_k \;\Rightarrow\; w_k \le w'_{k+1} \le w^*_k,\qquad
+w_k \ge w^*_k \;\Rightarrow\; w^*_k \le w'_{k+1} \le w_k.
+\]
+\item The farther from target, the faster the adjustment:
+\[
+|w_k-w^*_k|\ge |w_{k'}-w^*_{k'}| \;\Rightarrow\; |w'_{k+1}-w_k|\ge |w'_{k'+1}-w'_{k'}|.
+\]
+To first order:
+\item $w^*_k$ increases in $z_k$ and is unchanged in $z_{k'}$ for $k'\neq k$.
+\item All target wages respond equally to other state variables:
+\[
+\frac{\partial w^*_k}{\partial s}=\frac{\partial w^*_{k'}}{\partial s}\quad \forall k,k',\; s\neq z_k,z_{k'}.
+\]
+\end{enumerate}
 \end{proposition}
 \begin{proof}
-  See Appendix~\ref{proof:targetwage} \\
-
+See Appendix~\ref{proof:targetwage}.
 \end{proof}
-At any state and cohort, the wage adjusts towards $w^*_k$. This allows me to show that, fixing a quality of the cohort, the wages will indeed converge.
-\begin{corollary}
-  Cohorts with the same average quality have the same target wage:
-  \[z_k=z'_{k'} \implies w^*_k=w^*_{k'} \: \forall k,k'\leq K\]
-\end{corollary}
-Cohorts of the same quality have the same target wage. Results 1 and 2 from Proposition~\ref{prop:targetwage} then tell us that, no matter their promised values $v_k,v_{k'}$, the two cohorts will converge towards the same wage, with the cohort farther behind catching up over time. To confirm that wages converge in all cohorts, inclding of different qualities, I show that the qualities across cohorts also converge. To do that, I show how quality in lower value cohorts may rise and catch up via layoffs.
 
-\begin{proposition} \label{prop:qualityconv}
- Consider a firm state $(y,\{n_k,v_k\})$ and a cohort $k, z_k<1$. Layoffs are characterized by the following first-order condition:
-  \begin{equation}
-    -E_{y'|y}\frac{\partial J'}{\partial n'_{k+1}}(1-p(v'_{k+1}))+E_{y'|y}\frac{\partial J'}{\partial z'_{k+1}}\frac{\partial z'_{k+1}}{\partial s_k}\frac{1}{n_k} - \frac{R(v'_{k+1})-U}{u'(w_k)}\leq 0
-  \end{equation}
-  and $s_k \geq 0$ with complementary slackness. \\
-Moreover, cohorts with lower promised value are more subject to layoffs: 
-    \[ v_k \leq v_{k'} \implies s_k(1- z_k) n_k \geq s_{k'}(1-z_{k'})n_{k'} \: \forall k'\leq K, z_{k'}<1\]
-And, to first-order, layoffs are equally dependent on quality of any cohort:
-    \[ \frac{\partial s_k}{\partial z_k} = \frac{\partial s_k}{\partial z_{k'}} \: \forall k'\leq K\]
+Thus, at any state and for any cohort, wages adjust toward $w^*_k$. Layoffs are the firm’s only instrument to alter within-cohort quality; by item (4), they are also the only way to differentially move targets across cohorts.
+
+\begin{proposition}\label{prop:qualityconv}
+Consider a state $(y,\{n_k,v_k\})$ and a cohort $k$ with $z_k<1$. Optimal layoffs satisfy
+\[
+-\,E_{y'\mid y}\frac{\partial J'}{\partial n'_{k+1}}\big(1-p(v'_{k+1})\big)
++ E_{y'\mid y}\frac{\partial J'}{\partial z'_{k+1}}\,\frac{\partial z'_{k+1}}{\partial s_k}\,\frac{1}{n_k}
+- \frac{R(v'_{k+1})-U}{u'(w_k)} \;\le\; 0,
+\]
+with $s_k\ge 0$ and complementary slackness. Moreover, cohorts with lower promised values are more exposed to layoffs:
+\[
+v_k \le v_{k'} \;\Rightarrow\; s_k(1-z_k)n_k \;\ge\; s_{k'}(1-z_{k'})n_{k'} \quad \forall\,k'\le K,\; z_{k'}<1.
+\]
+To first order, layoff decisions load equally on quality across cohorts:
+\[
+\frac{\partial s_k}{\partial z_k}=\frac{\partial s_k}{\partial z_{k'}} \quad \forall\,k'\le K.
+\]
 \end{proposition}
 \begin{proof}
-  See Appendix~\ref{proof:qualityconv} \\
-
+See Appendix~\ref{proof:qualityconv}.
 \end{proof}
-Lower value cohorts are more subject to layoffs, no matter their quality (if below 1). However, from point 3 of Proposition~\ref{prop:targetwage}, we know that cohort quality has a long-term effect on wages via the target wage. Therefore, lower quality cohorts will catch up to higher quality ones via layoffs, due to having lower target wage prior to layoffs. Lower value cohorts will catch up to higher value cohorts naturally, and with the ``help" of layoffs if they're also lower quality.
-%This raises their quality and thus their target wage. Similarly, lower quality cohorts will have a lower target wage, making them more subject to layoffs than high quality cohorts long-term.
-%Together, this implies convergence in both quality and wage: lower quality cohorts will converge towards a lower target wage. This makes these cohorts suffer more layoffs than cohorts of higher wage, thus making them catch up in quality and, over time, in wage. 
 
-%This proposition states that, across all tenure steps, wages change in the direction of the target wage $w^*_{v^*}$. Moreover, they do so in a way that contracts the incumbent wage space, lowering the difference between the highest and all other wages. Then, for workers that have been at the firm for long enough, this process of constant movement towards the target wage will result in convergence of wages. \\
-Empirically, I show in Appendix \ref{wagegrowthK} that wage growth in France stagnates after about 10 years of tenure.  This allows me to restrict attention to finite and constant $K$ for all the firms in my quantitative exploration. Note that this is only an approximation since, as $K\rightarrow\infty$, the model approaches the problem described in Lemma \ref{firmproblem}. \\
-\textbf{Wage and Layoffs Across Tenure} \\
-I conclude the section by showing how the model delivers the heterogeneity in wage and layoff passthrough across tenure. 
+As with wages, layoffs trade off the marginal value of a worker, $E_{y'\mid y}[\partial J'/\partial n'_{k+1}]$, against the compensation cost $\big(R(v'_{k+1})-U\big)/u'(w_k)$. The distinctive term is the quality effect,
+$E_{y'\mid y}[\partial J'/\partial z'_{k+1}]\,(\partial z'_{k+1}/\partial s_k)/n_k$, since quality cannot be priced but can be \emph{selected} via layoffs. Lower-$v$ cohorts are more exposed to layoffs regardless of quality (provided $z<1$). Barring large quality gaps, these lower-$v$ cohorts also tend to be farther below their targets and, after layoffs, exhibit faster wage growth.
 
-%\begin{proposition} \label{prop:layoffs}
-%  Fix a firm state $(y,\{n_k,v_k,z_k\})$. Layoffs are characterized by the following first-order condition:
-%  \begin{equation}
-%    -E_{y'|y}\frac{\partial J'}{\partial n'_{k+1}}(1-p(v'_{k+1}))+E_{y'|y}\frac{\partial J'}{\partial z'_{k+1}}\frac{\partial z'_{k+1}}{\partial s_k}\frac{1}{n_k} - \frac{R(v'_{k+1})-U}{u'(w_k)}\leq 0
-%  \end{equation}
-%  and $s_k \geq 0$ with complementary slackness. \\
-%Moreover, cohorts with lower promised value are more subject to layoffs: 
-%    \[ v_k \leq v_{k'} \implies s_k \geq s_{k'} \: \forall k,k'\leq K, z_k,z_{k'}<1\]
-%\end{proposition}
-%\begin{proof}
-%  See Appendix \ref{proof:layoffs}
-%\end{proof}
-I first come back to the layoffs as described in Propositon~\ref{prop:qualityconv}.
-Just like wages, the trade-off for layoffs primarily revolves around the value of the marginal worker $E_{y'|y}\frac{\partial J'}{\partial n'_{k+1}}$ and the cost of having to compensate the worker $\frac{R(v'_{k+1})-U}{u'(w_k)}$. The truly unique component to layoffs is the quality effect $E_{y'|y}\frac{\partial J'}{\partial z'_{k+1}}\frac{\partial z'_{k+1}}{\partial s_k}\frac{1}{n_k}$ since, while the firm is not allowed to set quality-contingent wages, it is allowed to fire whoever it wants. \\
-Workers with higher value are more likely to be laid off. Higher tenure workers will generally have higher promised value than junior workers due to wage backloading, as described in result 1 of Proposition~\ref{prop:targetwage}. Therefore, junior workers are generally more subject to layoffs than seniors.\\
-I now connect the layoffs and wage cuts. Survivors in cohorts subjected to layoffs will receive lower wage cuts than workers in other cohorts:
-\begin{proposition} \label{prop:wage_cuts}
-Let $K_s\equiv \{k\leq K|s_k>0\}$. In states where $K_s$ is non-empty:
-  \[w'_{k+1}-w_k>w'_{k'+1}-w_{k'} \: \forall k\in K_s,k'\notin K_s\]
-\end{proposition}
-\begin{proof}
-See Appendix~\ref{proof:wage_cuts}
-\end{proof}
-The intuition behind this result is that layoffs give a second-order push-up effect on wages: since the remaining workers are now of higher quality, there is less incentive to cut those workers' wages. And, although higher tenure steps may be of even higher quality, because their quality effect has already been internalized in wages (following Proposition~\ref{prop:targetwage}), their wage cuts will in fact be larger than the cuts of just recently fired workers.
+Finally, to map these results to tenure patterns, note that higher-tenure workers generally have higher promised values than juniors due to wage backloading (Proposition~\ref{prop:targetwage}, item 1). Juniors, being owed less, are therefore more exposed to layoffs than seniors and, via the upward shift in their target wages induced by layoffs, experience smaller wage cuts (if any) than seniors.

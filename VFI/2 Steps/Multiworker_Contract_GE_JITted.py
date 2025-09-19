@@ -582,7 +582,6 @@ class MultiworkerContract:
 
         if js is None:
             self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
-        #    self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
         else:
             self.js = js       
 
@@ -717,12 +716,16 @@ class MultiworkerContract:
         
         # General equilibrium first time
         self.v_0 = U
-        self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
-        if P is None:
-            kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
-        print("kappa", kappa)
-        print("P", P)
-        self.js.update(self.v_grid,P)
+        if update_eq:
+            self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
+            if P is None:
+                kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
+            print("kappa", kappa)
+            print("P", P)
+            self.js.update(self.v_grid,P)
+        else:
+            self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
+            kappa = self.p.hire_c
 
         for ite_num in range(self.p.max_iter):
             J2 = J

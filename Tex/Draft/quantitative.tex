@@ -1,0 +1,61 @@
+\section{Quantitative Analysis}
+I calibrate the model using administrative data from France and assess whether it reproduces the empirical evidence on wage pass-through and layoffs across firms and tenure.
+
+\subsection{Solving the model}
+The tenure-based formulation yields a discrete—though expanding—state space. To make the problem fully tractable, I note that wages in contracts tend to converge, a result that follows from the propositions above. A corollary of Proposition~\ref{prop:targetwage} is that wages for cohorts with the same quality converge because they share the same target wage. I also expect quality across cohorts to converge:
+\begin{itemize}
+    \item Lower-quality cohorts (relative to others) have lower target wages;
+    \item Over time, low-quality cohorts become low-value cohorts;
+    \item By Proposition~\ref{prop:qualityconv}, low-value cohorts are laid off first;
+    \item Hence lower-quality cohorts catch up in quality and, consequently, in wages.
+\end{itemize}
+Given convergence, the practical question is how quickly it occurs—or, equivalently, how many cohorts to track. Empirically (Appendix~\ref{wagegrowthK}), wage growth in France flattens after about ten years of tenure. I therefore restrict attention to a finite and constant $K \le 10$ for all firms in the quantitative analysis. This is an approximation: as $K\to\infty$, the model converges to the problem in Lemma~\ref{firmproblem}.
+
+A second complication, common in dynamic-contract models, is the large action space because $\{v'_{y',k}\}$ grows with the number of productivity states. Appendix~\ref{dual} shows that the problem can be solved in its dual form by choosing future marginal utilities—constant across productivity realizations—instead of promised values.
+
+Lastly, I solve for a block-recursive equilibrium. As shown in Appendix~\ref{blocrecur}, such an equilibrium exists when all new hires enter at the same promised value $v_0$; any additional value associated with higher submarkets $v$ is paid as a sign-on wage. I set $v_0$ equal to the unemployment value $U$.
+
+\subsection{Model specification}
+I work at annual frequency: contracts in France are rarely updated more than once per year, which facilitates cohort tracking. I set the discount factor to $\beta=0.96$, consistent with a $4\%$ annual interest rate.
+
+I use logarithmic utility so that the composition $u'\!\circ u^{-1}(v)$ is strictly increasing; within CRRA preferences, this property holds only for log utility.
+
+Production is a concave function of quality-adjusted quantity:
+\[
+F(n,z)=[n\,(z+\alpha_z(1-z))]^{\alpha}.
+\]
+I set $\alpha=0.85$, consistent with recent work on firm dynamics (\textcite{schaal2017}; \textcite{bilal2022}).
+
+Matching follows a CES contact-rate function (as in \textcite{menzio2011}):
+\[
+p(\theta)=\theta\,(1+\theta^{\gamma})^{-1/\gamma}, \qquad
+q(\theta)=(1+\theta^{\gamma})^{-1/\gamma}.
+\]
+Idiosyncratic firm-level productivity follows a uniform Markov process as in \textcite{balke2022}: with probability $\lambda_y$ productivity is redrawn uniformly; otherwise it remains unchanged.
+
+The remaining parameters to estimate are:
+\begin{itemize}
+    \item Unemployment production $b$;
+    \item Productivity: persistence $\lambda_y$ and variance $\sigma_y$;
+    \item Search: vacancy-posting cost $c$, matching curvature $\gamma$, and on-the-job (OJS) search efficiency $\lambda_{jj}$;
+    \item Firm dynamics: entry cost $\kappa_e$ and operating cost $\kappa_f$;
+    \item Match heterogeneity: share of high-quality matches at hire $q_0$ and relative productivity of low-quality matches $\alpha_z$.
+\end{itemize}
+
+\subsection{Moments of interest}
+I target four sets of moments: transition probabilities, wage growth, productivity dynamics, and firm dynamics.
+
+\emph{Transitions.} I measure annual job-to-job (E2E) and unemployment-to-employment (U2E) transitions. For the hiring rate, I use the share of newly hired workers among all observations. U2E and E2E map directly to $c$ and $\lambda_{jj}$, respectively. I obtain an E2E rate of $6.3\%$ and a $12.8\%$ share of new hires economy-wide.
+
+\emph{Layoffs across productivity.} I track the distribution of employment-to-unemployment (E2U) rates across firms by productivity. These moments discipline match-heterogeneity parameters: the lower the relative productivity of low-quality matches $\alpha_z$, the more even highly productive firms will lay off workers. After sufficiently positive productivity shocks, firms hire; when $q_0$ (the share of high-quality new matches) is small, subsequent layoffs are more likely. I find little difference in layoff rates across productivity groups, with the range of $1$ percentage point between top and the bottom tercile.
+
+\emph{Wage growth by tenure.} I use wage growth over the first five years of tenure to discipline $b$, following \textcite{souchier2022}. Intuitively, wages rise until a cohort’s marginal profit reaches zero; the lower the cohort’s starting point (which depends on the unemployment outside option), the larger the initial wage growth. I document $6.1\%$ wage growth after five years of tenure.
+
+\emph{Productivity dynamics.} I measure the standard deviation and persistence of firm-level productivity (net of aggregate and sectoral effects) to discipline $\lambda_y$ and $\sigma_y$. Firm-level productivity is moderately persistent with coefficient $0.79$. Its standard deviation is $0.39$, the largest among productivity components, consistent with comparable estimates of $0.81$ and $0.30$ in \textcite{souchier2022}.
+
+\emph{Firm dynamics.} To discipline $\kappa_e$, I target a $6\%$ share of jobs created by entering firms. Because $\kappa_f$ affects exit and thus selection, I target an average firm size of $32.5$. For comparison, the average establishment size is $17.9$, close to $15.6$ in the 2002 U.S. Economic Census.
+
+\subsection{Untargeted moments}
+As validation, I assess whether the model reproduces the heterogeneity in layoffs and wage pass-through across firms and tenure documented in Section~\ref{sec:empirics}.
+
+Work in progress.

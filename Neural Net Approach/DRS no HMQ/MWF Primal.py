@@ -149,20 +149,18 @@ class ValueFunctionNN(nn.Module):
         self.num_y     = num_y
     def _init_weights(self):
         # 1) Trunk: He/Kaiming
-        for layer in self.trunk:
-            if isinstance(layer, nn.Linear):
-                torch.nn.init.xavier_uniform_(layer.weight, gain=torch.nn.init.calculate_gain('tanh'))
-                torch.nn.init.zeros_(layer.bias)
-        #for layer in self.value_head:
+        #for layer in self.trunk:
         #    if isinstance(layer, nn.Linear):
-        #        nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
-        #        nn.init.constant_(layer.bias, 0.01)            
+        #        torch.nn.init.xavier_uniform_(layer.weight, gain=torch.nn.init.calculate_gain('tanh'))
+        #        torch.nn.init.zeros_(layer.bias)
+        for layer in self.value_head:
+            if isinstance(layer, nn.Linear):
+                nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
+                nn.init.constant_(layer.bias, 0.01)            
     def forward(self, x):
         B = x.size(0)
-        x_tanh = 2*x - 1
-        features = self.trunk(x_tanh)                    # [B, hidden_dims[-1]]
-        values   = self.value_head(features)        # [B, num_y]
-        #values = torch.cumsum(values, dim = 1) #This is the cumulative sum of the values across num_y
+        features = self.trunk(x)                    # [B, hidden_dims[-1]]
+        values   = self.value_head(features)        # [B, num_y]        #values = torch.cumsum(values, dim = 1) #This is the cumulative sum of the values across num_y
 
         #grad_flat = self.grad_head(features)        # [B, num_y * state_dim]
         #grads = grad_flat.view(B, self.num_y, self.state_dim)  # [B, num_y, state_dim]
@@ -208,10 +206,9 @@ class PolicyNN(nn.Module):
         # 1) Trunk: He/Kaiming
         #for seq in (self.trunk, self.value_adapter, self.hiring_adapter):
         for layer in self.trunk:
-        #    for layer in seq:
                 if isinstance(layer, nn.Linear):
-                    torch.nn.init.xavier_uniform_(layer.weight, gain=torch.nn.init.calculate_gain('tanh'))
-                    torch.nn.init.zeros_(layer.bias)
+                    nn.init.kaiming_uniform_(layer.weight, nonlinearity='relu')
+                    nn.init.constant_(layer.bias, 0.0)
         # 2) Hiring_head: Xavier/Glorot
         for seq in (self.hiring_head, self.value_head):
             for layer in seq:
@@ -230,11 +227,13 @@ class PolicyNN(nn.Module):
         #hv = self.value_adapter(features)  # [B, hidden_dims[-1]]
         values_flat = self.value_head(features)            # [B, num_y * num_Kv]
         values = values_flat.view(B, self.num_y, self.K_v, self.num_y)  # [B, num_y, num_Kv]
-        values = torch.cumsum(values, dim = 1) #this is the cumulative sum of the values across num_y       
+        values = torch.cumsum(values, dim = 1) / self.num_y #this is the cumulative sum of the values across num_y       
+        values = torch.sigmoid(values)
         # hire probabilities: [B, num_y]
         #hh = self.hiring_adapter(features)  # [B, hidden_dims[-1]]
         hiring = self.hiring_head(features)          # [B, num_y]
-        hiring = torch.cumsum(hiring, dim = 1)
+        hiring = torch.cumsum(hiring, dim = 1) / self.num_y
+        hiring = torch.sigmoid(hiring)
 
         return {
             'values': values,
@@ -816,8 +815,8 @@ def simulate_deterministic(starting_states, sup_net, bounds_processor, simulatio
 
             # Forward once on the parent frontier
             pol = sup_net(states_t)                                      # hiring: [N,Z], values: [N,Z,K_v,Z]
-            hiring_y = pol['hiring'][iN, y_t]                            # [N]
-            v_prime  = pol['values'][iN, y_t, :, :]                      # [N, K_v, Z]
+            hiring_y = pol['hiring'][iN, y_t] * bounds_processor.upper_bounds[0]                           # [N]
+            v_prime  = pol['values'][iN, y_t, :, :]  * bounds_processor.upper_bounds[K_n]                    # [N, K_v, Z]
 
             # E_{y'|y} v′ for worker decisions (keep your convention)
             v_prime_exp_all = torch.einsum("bky,yz->bkz", v_prime, foc_optimizer.Z_trans_tensor)  # [N, K_v, Z]
@@ -976,8 +975,8 @@ def simulate(starting_states, sup_net, bounds_processor, Z_trans_tensor, simulat
 
         # policies at the current y
         pol      = sup_net(states)
-        hiring   = pol['hiring'][iN, y_idx]                          # [N]
-        v_prime  = pol['values'][iN, y_idx, :, :]                    # [N, K_v, Z]
+        hiring   = pol['hiring'][iN, y_idx] *  bounds_processor.upper_bounds[0]                            # [N]
+        v_prime  = pol['values'][iN, y_idx, :, :] * bounds_processor.upper_bounds[K_n]                    # [N, K_v, Z]
 
         # E_{y'|y} v′ for worker decisions (same convention as elsewhere)
         v_prime_exp_all = torch.einsum("bky,yz->bkz", v_prime, Z_trans_tensor)  # [N, K_v, Z]
@@ -1198,6 +1197,7 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         value_net.load_state_dict(torch.load("trained_value_function.pt"))
         sup_net.load_state_dict(torch.load("trained_sup_function.pt"))
         evaluate_plot_precise(value_net, sup_net, bounds_processor, foc_optimizer) 
+        print("Loading finished")
     #Initialize a target network
     target_value_net = copy.deepcopy(value_net)
     target_sup_net = copy.deepcopy(sup_net)
@@ -1267,8 +1267,8 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
                 optimizer_sup.zero_grad()                        
                 policies = sup_net(states)
                 #Gotta now do wages, hiring, and values separately
-                v_prime = policies['values'][i,prod_states.long(),:,:] #These are v'_{k,y'} for already given y
-                hiring = policies['hiring'][i,prod_states.long()] 
+                v_prime = policies['values'][i,prod_states.long(),:,:] * bounds_processor.upper_bounds[K_n]#These are v'_{k,y'} for already given y
+                hiring = policies['hiring'][i,prod_states.long()] * bounds_processor.upper_bounds[0]
                 v_prime_exp = foc_optimizer.take_expectation(v_prime,prod_states,v_prime=1) 
                 n_1,re,_ = foc_optimizer.get_fut_size(states, v_prime_exp)
                 assert (~torch.isnan(v_prime)).all() and (~torch.isnan(hiring)).all(), "sup returns NaN"
@@ -1302,8 +1302,8 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
                 with torch.no_grad():
                     policies = target_sup_net(states) #NOTE THE TARGET HERE AND IN THE SIMULATIONS!
                     #Gotta now do wages, hiring, and values separately
-                    v_prime = policies['values'][i,prod_states.long(),:,:]
-                    hiring = policies['hiring'][i,prod_states.long()] 
+                    v_prime = policies['values'][i,prod_states.long(),:,:] * bounds_processor.upper_bounds[K_n]#These are v'_{k,y'} for already given y
+                    hiring = policies['hiring'][i,prod_states.long()] * bounds_processor.upper_bounds[0]
                     v_prime_exp = foc_optimizer.take_expectation(v_prime,prod_states,v_prime=1) 
                     n_1,re,pc= foc_optimizer.get_fut_size(states, v_prime_exp)
                     
@@ -1332,7 +1332,7 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
                 predicted_grad_eps = get_batch_gradients(states_eps, value_net, policies['hiring'].shape[1], range_tensor=bounds_processor.range)[i,prod_states.long(),:]
                 mon_loss_grad = torch.relu( (predicted_grad_eps[:,-1] - predicted_grad[:,-1]) / 1e-2).pow(2).mean() #Monotonicity loss for the gradient
                 smoothness_loss =((predicted_grad_eps[:,-1] - predicted_grad[:,-1])/1e-2).pow(2).mean() #Smoothness loss for the gradient
-                mon_loss_value = torch.relu( predicted_grad[:,-1]).pow(2).mean() #The grad should be negative, so we penalize negative values
+                mon_loss_value = torch.relu( predicted_grad[:,-1]).pow(2).mean() #The grad should be negative, so we penalize positive values
                 tot_value_loss = (value_loss + λ * value_grad_loss ) + 1e-2 * (mon_loss_grad + 0 * smoothness_loss + mon_loss_value) #+ value_reg #Combine the losses
                 tot_value_loss.backward()
                 #torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm = 1.0) #Clip the gradients to avoid exploding gradients

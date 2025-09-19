@@ -1,0 +1,127 @@
+\section{Motivating evidence}\label{sec:empirics}
+I start by documenting the relationship between layoffs and wage cuts using French matched employer-employee data. I look at how layoff rates and wage passthrough to firm-level productivity shocks vary across firms and worker tenure and find large heterogeneity across both dimensions, unreconcilable with theories of exogenous wage rigidity. I will use these facts as testable implications of my model. 
+
+\subsection{Data}
+I use administrative data from France between 2009 and 2019. The 4 keys variables I need for my analysis: wages, layoffs, productivity, and tenure -- are either directly available or can be constructed thanks to the richness of the data. I combine a panel of workers from social security data containing 1/12th of the French labor force, which gives me information on wages, layoffs, and tenure, with annual data on firm balance sheet, which gives me firm productivity.  For the sample, I focus on prime age workers (25-55 years old) and private jobs with wages $5\%$ above the national minimum wage at the time. Appendix~\ref{sample} provides more details on the sample selection. The remaining sample has 265000 unique firms and 880000  unique workers per year. In the rest of the subsection I describe how I construct the 4 key variables.
+
+I measure labor productivity using value added per worker, as provided in the balance sheet data. I model labor productivity $y_{fst}$ at firm $f$ in sector $s$ at time $y$ as 
+\[ \log y_{fst} = \log a_t + \log b_{st}+ \log x_{fst}\]
+where $a_t$ is the aggregate component, $b_{st}$ is a sectoral component and $x_{fst}$ is a firm-level component. I residualize $\log y_{fst}$ on time dummies to extract the common time component. I then measure the sectoral component $\log b_{st}$ as the average productivity across firms with a sector, and compute the firm component $\log x_{fst}$ as the residual. In the rest of the section, I will focus on the firm's responses to the firm-specific component $x_{fst}$ in order to abstract from any larger general equilibrium effects.
+
+I measure wages as annual, CPI-adjusted labor earnings divided by the number of days worked. Labor earnings are net of payroll taxes but before income
+taxes and they include all types of compensations, including bonuses and payment in kinds, but excludes stock options. I residualize the log of wages on occupation, firm, and region dummies as well as on a quadratic polynomial of worker experience. I focus on job stayer wage growth $\Delta \log w_{ift}$ for workers continuously employed at firm $f$ in years $t-1,t$.
+After computing the growth rate of both productivity and wages, I remove the $5\%$ outliers from both the bottom and top of each year's distributions. \\
+I measure layoffs as breaks in employment spells longer than 4 weeks. The intuition is that job-to-job transitions usually do not entail long employment breaks, and, given low job-finding rate in France, it is unlikely for recently laid off workers to find employment within a month. There is still, however, risk of both false positives and negatives, as well as risk of misrepesenting voluntary worker movements into medium-term non-employment as layoffs. In Appendix~\ref{LFS} I use the French Labor Force Survey to measure layoffs as quarterly movements from employment into unemployment, as reported by the workers themselves. 
+
+Lastly, worker's tenure at the firm is given as direct variable in the data. For my analysis, I look at the first 5 years of tenure as beyond that there is little difference across cohorts.
+\subsection{Wages and layoffs across firms}
+I begin my analysis by confirming the existing finding that firms exhibiting the most rigid wages layoff the most workers ( see \textcite{enrlich2024} for an example). \\
+To facilitate the comparison, I first group firms based on their average layoff rates into terciles $d \in D$.
+Then, for each group, I measure the response of wage growth to firm productivity shocks. Define the growth rate of residualized wages for worker $i$ in firm $f$ between years $t$ and $t-1$ as $\Delta \log w_{ift}$ and define the growth rate of firm productivity as $\Delta \log(x_{ft})$.
+The response of wages to firm-level shocks across firms is computed using the following regression:
+%\[\theta^{w,y}_d = \frac{Cov(\Delta \log(w_{ift}),\sum_{\tau=-1}^1 \Delta y_{ft+\tau})}{Cov(\Delta \log(y_{ift}),\sum_{\tau=-1}^1 \Delta y_{ft+\tau})}\]
+%where $y$ is the firm-level productivity, $\log(w_{ift})$ is the log residualized wage, $\sum_{\tau=-1}^1 \Delta y_{ft+\tau}$ is the 3-year sum of firm productivity growth. Although my model differs from that of \textcite{guiso2005}, I find it useful to report these statistics, instead of simple covariances, as they have been extensively studied in literature, and used for similar kind of empirics in papers close to mine.
+\[ \Delta \log w_{ift} = \sum_{d \in D} \mathbf{1}_{f \in d}(\alpha^d + \beta^{d}\Delta \log(x_{ft})) + \epsilon_{ift}\]
+
+The average layoff rates and the estimates of wage passthrough across firms are shown in Table~\ref{tab:acrossfirms}. The firms with the low layoff rate would raise wages by $1.7\%$ in response to $100\%$ productivity shock. Firms in the medium tercile, with an average layoff rate of $1.5\%$, would raise wages only by $1.2\%$ in response to a similar shock. Lastly, firms with large layoff rates, averaging $9.7\%$, would in fact lower wages by $0.2\%$ in response to a positive shock. \\
+The results show that firms that lay off the largest share of their workers also exhibit the least responsive wages, all the way down to negatively responsive. This result is perfectly consistent with both the classical story of ``firm resort to layoffs because they cannot cut wages'' and my story.
+
+\begin{table} 
+  \centering
+  \begin{tabular}{lcc}
+    \hline
+    & \multicolumn{1}{c}{Layoff rate} & \multicolumn{1}{c}{Wage Change} \\   
+    \hline
+     
+    Low Layoff Rate    & $0.05\%$  &  $0.017^{***}$             \\     
+                    &    &  $(0.0006)$              \\     
+    Med. Layoff Rate    & $1.5\%$  &  $0.012^{**}$              \\     
+                    &    &  $(0.0008)$              \\     
+    High Layoff Rate    &  $9.7\%$  &  $-0.002^{***}$                 \\     
+                    &    &  $(0.0006)$              \\  
+    \hline
+  \end{tabular}
+  \caption{Wage Passthrough across firms. Data: DADS Panel + FARE, 2009-2019}
+  \label{tab:acrossfirms}
+\end{table}
+
+\subsection*{Wages and layoffs across tenure} %Do I have this across both firms and tenure at the same time tho? I'm pretty sure I fucking don't...
+%So then the question would be: what if the across firm heterogeneity is in fact just due to tenure differences? For that, I would need singificant composition differences in tenure across firms though.
+%Regardless, kinda important to do these together, even if I don't interact them per se.
+Beyond the heterogeneity across firms, I now document that the connection between rigid wages and layoffs exists even within firms, across worker tenure. Only the heterogeneity in layoff rates has been previously documented (\textcite{buhai2014}). \\
+I introduce worker's tenure $ten \in T$ at the firm, provided to me directly in the employer-employee data. Unlike the previous analysis, where I immediately grouped firms based on their layoff rates, I look at each worker cohort separately, up to 5 years of tenure. For this, I run 2 separate regressions. The first regression, similarly to the estimation across firms, measure the response of wages to firm-level shocks, but now across tenure:
+%\[\theta^{w,y}_{ten} = \frac{Cov(\Delta \log(w_{ift}),\sum_{\tau=-1}^1 \Delta y_{ft+\tau})}{Cov(\Delta \log(y_{ift}),\sum_{\tau=-1}^1 \Delta y_{ft+\tau})}\]
+\begin{equation} \label{reg:wage_tenure}
+\Delta \log w_{ift} = \sum_{ten \in Ten} \mathbf{1}_{ift \in ten}(\alpha^{ten} + \beta^{ten}\Delta \log(x_{ft})) + \epsilon_{ift} 
+\end{equation}  
+The second regression estimates the layoff rate using the individual worker's $i$ layoff event from the firm $f$ at year $t$, $EU_{ift}:$
+\[ EU_{ift} = \sum_{ten \in Ten} \mathbf{1}_{ift \in ten}\alpha^{ten}  + \epsilon_{ift}\] 
+Alongside the general wage passthrough, I look at its asymmetry. At the core of the connection between wage cuts and layoffs is negative productivity shocks as those are the times when firms are most incentivized to use these tools. Although downward wage rigidity is well established in the literature (eg \textcite{hazell2021}), its heterogeneity across tenure has not been explored. To estimate it, I modify the regression~\ref{reg:wage_tenure} by interacting the productivity growth $\Delta \log(x_{ft})$ with the indicator of the negative shock $\mathbf{1}_{\Delta < 0}$.
+\[ \Delta \log w_{ift} = \sum_{ten \in Ten} \mathbf{1}_{ift \in ten}(\alpha^{ten} + \beta^{ten}\Delta \log(x_{ft}) + \tilde{\beta}^{ten} \mathbf{1}_{\Delta < 0}\Delta \log(x_{ft})) + \epsilon_{ift} \] 
+
+The Table~\ref{tab:tenure} shows the results. %Should I incorporate the neg_shock (uninteracted with id_shock_diff) effect into the wage passthrough table??? because otherwise, how do I explain that the coefficients don't average out?
+I find that junior workers experience the smallest wage passthrough on average. However, senior workers experience up to 5.5 times much lower layoff rate than the juniors. In terms of downward wage rigidity, junior workers benefit from it the most. While their response to the positive shocks is the largest, the response to negative shocks is almost zero. Compared to the recent hires, all the further cohorts have a lot less asymmetry in the passthrough of productivity shocks and are thus more subject to pay cuts than juniors. \\ 
+I interpret this finding as indicating of the tradeoff between wage cuts and layoffs at the level of cohorts. Both whenever and wherever the firms layoff workers, they do not cut the wages of the survivors.
+The heterogeneous treatment of cohorts cannot be explained by standard stories of wage rigidity (minimum wage, sectoral bargaining, morale costs) without additional tweaks. Similarly, severance payments in France rise with tenure only barely (extra payment worth $\approx$ 20 hours of work per each of seniority). 
+
+%\subsection*{Productivity and Wage Dispersion Response to Layoffs}
+% Besides broader cross-sectional statistics computed above, my model has precise implications about what happens exactly when the firms lay off their workers. I will test these predictions by looking at the responses of labor productivity and wage dispersion to firm layoffs.
+%\subsection*{Labor productivity response to layoffs} %When a firm fires, total production goes down, but per person goes up.
+%Qualitatively, would that be true with the basic DRS? Or would the productivity stay the same? lol I feel stupid that I'm unsure
+% No, that wouldn't be true in ANY case!!! 
+% BUT WAIT!!! I was looking at the response to productivity shock y, not to layoffs. And, when y going down means L going up, we wouldn't see layoffs!
+% In fact, in such a case, we would see layoffs when y goes up! and that might in fact be consistent with total prod going down, but avg going up.
+% Generally ridiculous tho
+%I use labor share within the firm as well as the per worker share. My model would predict that, upon layoffs, the labor share (which, in my model, is total production) would fall, but due to both quality improvements and downsizing, the per worker productivity will go up, in a similar vein to \textcite{berger2011}. To test that, I regress both measures of labor share on layoffs:
+%\[ l_share_{f,t} = EU_{ft} + \epsilon_{ft}\]
+
+\begin{table}
+  \centering
+  \begin{tabular}{lcccc}
+    \hline
+    & \multicolumn{1}{c}{Layoff rate} & \multicolumn{1}{c}{Avg Wage Passthrough} & \multicolumn{1}{c}{Response to Pos Shock} &  \multicolumn{1}{c}{Response to Neg Shock} \\
+    \hline
+     
+    $<$ 1 year        &  $11\%^{***}$  &  $0.000^{}$   &  $0.022^{***}$ &  $0.002^{***}$ \\     
+                        &  $(0.0002)$ & $(0.004)$     &  $(0.004)$  &   $(0.003)$   \\     
+    1-2 years        &  $5\%^{***}$  &  $0.004^{}$     &   $0.014^{***}$ & $0.020^{***}$   \\      
+                        &  $(0.0002)$ & $(0.004)$     &  $(0.004)$   &  $(0.003)$    \\     
+    2-3 years        &  $3\%^{***}$   & $0.008^{**}$     &  $0.013^{**}$ & $0.020^{***}$    \\      
+                        &  $(0.0002)$ & $(0.002)$     &  $(0.002)$ &   $(0.003)$    \\     
+    3-4 years        & $2\%^{***}$   & $0.008^{*}$     &  $0.012^{*}$ &   $0.015^{***}$    \\ 
+                        &  $(0.0002)$  & $(0.003)$    &    $(0.003)$ & $(0.004)$   \\     
+    4-5 years        & $2\%^{***}$   & $0.017^{***}$     & $0.010^{***}$ &   $0.024^{***}$   \\     
+                        &  $(0.0002)$  &  $(0.004)$   &    $(0.004)$ &  $(0.004)$   \\  
+
+    \hline
+  \end{tabular}
+  \caption{Layoffs and Wages passthrough across tenure. Columns 3 and 4 represent asymmetric passthroughs to positive and negative shocks. Data: DADS Panel + FARE, 2009-2019.} %\textcolor{red}{Standard errors need to be via block bootstrap} }
+  \label{tab:tenure}
+\end{table}
+\subsection{Senior/junior wage gap response to layoffs} %When a firm fires, wage differential across tenure should go down
+Lastly, I  change the angle of the analysis slightly and look at how the wage gap between senior and junior workers responds to layoffs. Unlike the analysis before, I do not look at the general crossection, nor do I even incorporate productivity shocks. The intent is to look precisely at how layoffs, occurring generally at the junior level, affect the wage inequality within the firm. If the interpretation of the prior results is correct, we should see that the wage gap contracts upon layoffs. \\
+
+%LOOK AT THE LAYOFFS OF JUNIORS VS SENIORS??? FOR JUNIORS THE EFFECT SHOULD BE NEGATIVE AND FOR THE SENIORS POSITIVE
+
+%Following Proposition~\ref{prop:qualityconv}, the model predicts that junior workers will be the first to get cut during a layoff round. Then, following \ref{proof:wage_cuts}, it predicts that the remaining workers will higher wage growth. The immeadiate implication of this is that, following layoffs, we should expect the wage dispersion across cohorts to contract. To check this in the data, I look at how the wage ratio between senior and junior workers responds to layoffs. 
+For each firm-year, I compute the median tenure and take the ratio of wages of workers above and below the median $\bar{w}_{sen,f,t}/\bar{w}_{jun,f,t}$. I then compute log difference of this ratio across time and regress it on layoffs:
+\[ \Delta \log (\bar{w}_{sen,f,t}/\bar{w}_{jun,f,t}) = EU_{ft} + \epsilon_{ft} \]
+
+The estimate is shown in Table~\ref{tab:layoff_response}. While, on average, the wage ratio is rising over time (likely, in response to new hires arriving into the firm), it is also falling in response to layoffs occurring, suggesting that the surviving juniors in fact enjoyed a better wage growth than the surviving seniors. These results are thus consistent with the interpretation that firms fire junior workers and then cut wages of the surviving juniors by less than of the surviving seniors.
+
+\begin{table}
+  \centering
+  \begin{tabular}{lc}
+    \hline
+    & \multicolumn{1}{c}{Layoff}  \\
+    \hline
+     
+    Intercept        &  $0.0031^{***}$       \\     
+                        &  $(0.0001)$           \\     
+    EU        & $-0.0036^{***}$      \\     
+              &  $(0.0006)$ \\  
+    \hline
+  \end{tabular}
+  \caption{Senior/junior wage log change in response to layoffs. Data: DADS Panel + FARE, 2009-2019.}
+  \label{tab:layoff_response}
+\end{table}
