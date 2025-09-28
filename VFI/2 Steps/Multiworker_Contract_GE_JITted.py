@@ -8,7 +8,7 @@ import opt_einsum as oe
 import matplotlib.pyplot as plt
 import subprocess
 import shlex
-
+import os
 from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
 from search_GE import JobSearchArray
@@ -17,8 +17,13 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.interpolate import splrep
 from scipy.interpolate import splev
 from itertools import product #To clean up the code: use nested loops but without actual ugly nesting
+
 import numba as nb
-from numba import cuda, float64, prange
+from numba import njit, cuda, float64, prange
+import numpy as np
+
+
+#from numba import cuda, float64, prange
 
 import pickle
 import datetime
@@ -26,7 +31,6 @@ from time import time
 import math
 
 ax = np.newaxis
-
 
 # Set up the basic configuration for the logger
 logging.basicConfig(
@@ -496,14 +500,14 @@ class MultiworkerContract:
             Initialize with a parameter object.
             :param input_param: Input parameter object, can be None
         """
-    
+
         self.log = logging.getLogger('MWF with Hiring')
         self.log.setLevel(logging.INFO)
         self.K = 2
         K = 2
         self.p = input_param
         #Deep loops
-        self.indices = list(product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n1), range(self.p.num_v) ,range(self.p.num_q)))
+        self.indices = list(product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n1), range(self.p.num_v) ,range(self.p.num_q))) 
         self.indices_no_v = list(product(range(self.p.num_z), range(self.p.num_n), range(self.p.num_n1),range(self.p.num_q)))
 
         self.deriv_eps = 1e-4 # step size for derivative
@@ -718,11 +722,31 @@ class MultiworkerContract:
         # General equilibrium first time
         self.v_0 = U
         self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
-        if P is None:
-            kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
-        print("kappa", kappa)
-        print("P", P)
-        self.js.update(self.v_grid,P)
+        critU = 1
+
+        if update_eq:
+         while critU > 1e-3:
+            U2 = U
+            if P is None:
+                kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
+            print("kappa", kappa)
+            print("P", P)
+            self.js.update(self.v_grid,P)
+            _, ru, _ = self.getWorkerDecisions(U, employed=False)
+            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
+            U = 0.2 * U + 0.8 * U2
+            critU = np.abs(U-U2)
+            self.v_0 = U
+            self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)            
+        else: 
+         kappa = self.p.hire_c
+         self.js.update(self.v_grid,self.prob_find_vx)
+         while critU > 1e-3:
+            U2 = U
+            _, ru, _ = self.getWorkerDecisions(U, employed=False)
+            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
+            U = 0.2 * U + 0.8 * U2
+            critU = np.abs(U-U2)
 
         for ite_num in range(self.p.max_iter):
             J2 = J
@@ -1204,4 +1228,4 @@ class MultiworkerContract:
 #mwc_GE_J = objects['mwc_Rho_J']
 #mwc_GE_W = objects['mwc_Rho_W']
 #mwc_GE=MultiworkerContract(p)
-#(mwc_GE_J,mwc_GE_W,mwc_GE_Wstar,mwc_GE_sep,mwc_GE_n0,mwc_GE_n1)=mwc_GE.J(mwc_GE_J,mwc_GE_W,1)
+#model=mwc_GE.J_sep(update_eq=1,s=20.0)

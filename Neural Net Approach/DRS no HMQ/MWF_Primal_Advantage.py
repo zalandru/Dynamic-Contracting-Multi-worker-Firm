@@ -15,6 +15,12 @@ import opt_einsum as oe
 from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
 from search_tensor import JobSearchArray
+import os, pathlib, matplotlib
+os.environ.setdefault("MPLBACKEND", "Agg")
+OUTDIR = pathlib.Path(os.environ.get("OUT_DIR", "runs/local/plots"))
+OUTDIR.mkdir(parents=True, exist_ok=True)
+print(f"[mpl backend] {matplotlib.get_backend()}")
+print(f"[plots dir]   {OUTDIR.resolve()}")
 import matplotlib.pyplot as plt
 from time import time
 import math
@@ -23,6 +29,26 @@ from plotter import LossPlotter
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 from time import time
 import torch.optim.lr_scheduler as lr_scheduler
+#For the cluster saving
+from pathlib import Path
+from datetime import datetime
+
+plt.figure(); plt.plot(np.arange(5))
+test_png = OUTDIR / f"smoketest_{int(time())}.png"
+plt.savefig(test_png, dpi=120, bbox_inches="tight"); plt.close()
+print(f"[saved] {test_png}")
+
+
+
+def savefig_now(basename: str, fig=None, ext="png", dpi=150):
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    path = OUTDIR / f"{basename}_{ts}_{os.getpid()}.{ext}"
+    (fig or plt).tight_layout()
+    (fig or plt).savefig(path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig) if fig else plt.close()
+    print(f"[saved] {path}", flush=True)
+    return path
+
 p = Parameters()
 tensor = torch.tensor
 # Set random seeds for reproducibility
@@ -1043,7 +1069,8 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         state_start = torch.zeros(state_dim,dtype=type)#.requires_grad_(True)
         state_start[0] = bounds_processor.normalize_dim(1,0) # 1 junior worker
         state_start[1] = bounds_processor.normalize_dim(1e-3,1) # Tiny positive seniors
-        state_start[2] = torch.rand(1, K_v)
+        #state_start[2] = torch.rand(1, K_v)
+        state_start[2] = bounds_processor.normalize_dim(cc.v_grid[10],1)
         #Or if randomized. 
         starting_states = torch.rand(starting_points_per_iter, state_dim,dtype=type) 
         #Add the starting state
@@ -1145,7 +1172,8 @@ def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
     plt.xlabel("State (normalized)")
     plt.ylabel("Promised Values")
     plt.grid()
-    plt.show()
+    savefig_now("policy_eval_promised_values"); plt.close()
+    #plt.show()
 
     # Plotting the results
     plt.figure(figsize=(10, 6))
@@ -1154,7 +1182,8 @@ def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
     plt.xlabel("State (normalized)")
     plt.ylabel("Hiring")
     plt.grid()
-    plt.show()
+    savefig_now("policy_eval_hiring"); plt.close()
+    #plt.show()
 
     # Plotting the results
     plt.figure(figsize=(10, 6))
@@ -1163,7 +1192,8 @@ def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
     plt.xlabel("State (normalized)")
     plt.ylabel("Values")
     plt.grid()
-    plt.show()
+    savefig_now("value_eval"); plt.close()
+    #plt.show()
 
     # Plotting the results
     plt.figure(figsize=(10, 6))
@@ -1172,7 +1202,8 @@ def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
     plt.xlabel("State (normalized)")
     plt.ylabel("Rho Grads")
     plt.grid()
-    plt.show()
+    savefig_now("grad_eval"); plt.close()
+    #plt.show()
 
 def evaluate_plot_precise(value_net, sup_net, init_size, bounds_processor, foc_optimizer):
     """
@@ -1223,7 +1254,8 @@ def evaluate_plot_precise(value_net, sup_net, init_size, bounds_processor, foc_o
     plt.legend()  # To show the label in the legend
 
     plt.tight_layout()  # Adjust spacing for better visualization
-    plt.show()
+    #plt.show()
+    savefig_now("policy_eval_precise"); plt.close()
 def plot_reached_states(foc_optimizer, starting_states, sup_net, value_net, 
                         bounds_processor, sim_steps=10, random_paths=5,
                         dim_x=0, dim_y=1):
@@ -1262,7 +1294,8 @@ def plot_reached_states(foc_optimizer, starting_states, sup_net, value_net,
     cbar = plt.colorbar(sc)
     cbar.set_label("Productivity state (y index)")
     plt.grid(True)
-    plt.show()
+    #plt.show()
+    savefig_now("policy_eval_reached_states"); plt.close()
 
 if __name__ == "__main__":
     # Define parameters

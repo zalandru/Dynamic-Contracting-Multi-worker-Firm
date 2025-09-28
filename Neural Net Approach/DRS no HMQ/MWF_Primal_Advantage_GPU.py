@@ -15,20 +15,35 @@ import opt_einsum as oe
 from primitives import Preferences
 from probabilities import createPoissonTransitionMatrix,createBlockPoissonTransitionMatrix
 from search_tensor import JobSearchArray
-import matplotlib.pyplot as plt
 from time import time
 import math
 import copy
-from ranger21 import Ranger21 as RangerOptimizer
 from plotter import LossPlotter
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 from time import time
 import torch.optim.lr_scheduler as lr_scheduler
 # ---- set once, at top of your entrypoint (BEFORE importing torch.compile paths) ----
-import os
+import os, pathlib, matplotlib
+os.environ.setdefault("MPLBACKEND", "Agg")
+OUTDIR = pathlib.Path(os.environ.get("OUT_DIR", "runs/local/plots"))
+OUTDIR.mkdir(parents=True, exist_ok=True)
+print(f"[mpl backend] {matplotlib.get_backend()}")
+print(f"[plots dir]   {OUTDIR.resolve()}")
+import matplotlib.pyplot as plt
+#For the cluster saving
+from pathlib import Path
+from datetime import datetime
 # make caches persistent across runs, not random Temp dirs
 #os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", r"C:\Users\andre\.cache\torch\inductor")
 #os.environ.setdefault("TRITON_CACHE_DIR",        r"C:\Users\andre\.cache\triton")
+def savefig_now(basename: str, fig=None, ext="png", dpi=150):
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    path = OUTDIR / f"{basename}_{ts}_{os.getpid()}.{ext}"
+    (fig or plt).tight_layout()
+    (fig or plt).savefig(path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig) if fig else plt.close()
+    print(f"[saved] {path}", flush=True)
+    return path
 
 p = Parameters()
 tensor = torch.tensor
@@ -531,7 +546,8 @@ class FOCresidual:
             v_prime  = pol['values'][iN, y_idx, :, :] * self.bounds_processor.upper_bounds[K_n]                   # [N, K_v, Z]
 
             # E_{y'|y} v′ for worker decisions (same convention as elsewhere)
-            v_prime_exp_all = torch.einsum("bkz,yz->bky", v_prime, Z_trans_tensor)  # [N, K_v, Z]
+            #v_prime_exp_all = torch.einsum("bkz,yz->bky", v_prime, Z_trans_tensor)  # [N, K_v, Z]
+            v_prime_exp_all = v_prime @ Z_trans_tensor.T
             v_prime_exp     = v_prime_exp_all[iN, :, y_idx]                            # [N, K_v]
             re, pc = foc_optimizer.getWorkerDecisions(v_prime_exp)
             size = states_d[:,:K_n]
@@ -751,6 +767,7 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
     state_start[1] = bounds_processor.normalize_dim(1e-3,1) # Tiny positive seniors
     state_start[2] = bounds_processor.normalize_dim(cc.v_grid[10],1)
     horizon = 128
+    random_paths = 2000 
     print("Training...")
     # Training loop
     for episode in tqdm(range(num_episodes)):
@@ -773,13 +790,13 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         #if horizon <= 8:
         #    random_paths = np.minimum(p.num_z ** horizon, 1000).astype(int)
         #else:
-        random_paths = 10000 
         #Do both simulations: start with a deterministic one just a few periods ahead, then a random one from the last states
         #Now use those states to simulate further, but with random paths
         
         #beg= time()
         with torch.amp.autocast(device_type=amp_device_type, dtype=amp_dtype):
-            states, prod_states, G_flat, G_starting, R_flat, V_last_bootstrap = foc_optimizer.simulate(starting_states, sup_net, target_value_net, bounds_processor, foc_optimizer.Z_trans_tensor, horizon, random_paths) #This is the set of states we will use to train the value function.
+            with torch.no_grad():
+                states, prod_states, G_flat, G_starting, R_flat, V_last_bootstrap = foc_optimizer.simulate(starting_states, sup_net, target_value_net, bounds_processor, foc_optimizer.Z_trans_tensor, horizon, random_paths) #This is the set of states we will use to train the value function.
         #end = time()
             #print("Simul time", end - beg)
             if (ep) % (num_episodes/20) == 0:
@@ -788,27 +805,31 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
                 for d in range(S_det.shape[1]):
                     col = S_det[:, d]
                     print(f"dim {d}: mean={col.mean():.4g}, std={col.std():.4g}, min={col.min():.4g}, max={col.max():.4g}")
-            i = torch.arange(states.shape[0],device=device)
+            if ep == 1:
+                i = torch.arange(states.shape[0],device=device)
 
 
             #Train the value net
+            # value branch: fully detached copies
+            S_v, P_v, G_v, R_v, Vv = states.detach(), prod_states.detach(), G_flat.detach(), R_flat.detach(), V_last_bootstrap.detach()
+
             #optimizer_value.zero_grad()
             # Build TD(λ) targets (time-major reconstruction uses sim_steps_ep and N)
             N = starting_points_per_iter * random_paths
             T = horizon
             tdlam_flat = td_lambda_targets_from_flat(
-            R_flat=R_flat,
-            S_flat=states,
-            P_flat=prod_states,
+            R_flat=R_v,
+            S_flat=S_v,
+            P_flat=P_v,
             target_value_net=target_value_net,
             T=T, N=N,
-            V_last_bootstrap=V_last_bootstrap,
+            V_last_bootstrap=Vv,
             gamma=p.beta, lam=0.95
             )
             value_output = value_net(states.detach())
             assert (~torch.isnan(value_output['values'])).all(), "value returns NaN"
             pred_values = value_output['values']  
-            pred_values = pred_values[i,prod_states.detach().long()]
+            pred_values = pred_values[i,P_v.long()]
             tgt= tdlam_flat.detach()
             μ  = tgt.mean()
             σ = tgt.std(unbiased=False).clamp_min(1e-6)
@@ -816,8 +837,8 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
             tgt_n  = (tgt  - μ) / σ
             pred_n = (pred_values - μ) / σ
             #Add a quick monotonicity loss
-            states_v = states.detach() + delta_v
-            values_v = value_net(states_v.detach())['values'][i,prod_states.detach().long()]
+            states_v = S_v + delta_v
+            values_v = value_net(states_v)['values'][i,P_v.long()]
             mon_loss = torch.relu( values_v - pred_values).mean() #value function should be decreasing in v, so zero out cases where pred_values > values_v
             value_loss =  nn.HuberLoss()(pred_n, tgt_n) + 1e+2 * mon_loss
 
@@ -825,10 +846,10 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
             #I first train the sup net on this
             adv_flat = (G_flat - pred_values.detach()) #+ 0.5 * (R_flat - pred_values.detach()) #Advantage is TD error + immediate reward - baseline
             scale = adv_flat.std(unbiased=False).clamp_min(1e-6).detach()
-            policy = sup_net(states.detach()) #maybe I just track it in the simulation?
-            policy_v = sup_net(states.detach() + delta_v)
-            mon_loss_sup = torch.relu(-( policy_v['values'][i,prod_states.detach().long(),:,:] - policy['values'][i,prod_states.detach().long(),:,:])).mean() #v'(v) should be increasing in v
-            mon_loss_hiring = torch.relu( policy_v['hiring'][i,prod_states.detach().long()] - policy['hiring'][i,prod_states.detach().long()]).mean() #hiring(v) should be decreasing in v
+            policy = sup_net(S_v) #maybe I just track it in the simulation?
+            policy_v = sup_net(S_v + delta_v)
+            mon_loss_sup = torch.relu(-( policy_v['values'][i,P_v.long(),:,:] - policy['values'][i,P_v.long(),:,:])).mean() #v'(v) should be increasing in v
+            mon_loss_hiring = torch.relu( policy_v['hiring'][i,P_v.long()] - policy['hiring'][i,P_v.long()]).mean() #hiring(v) should be decreasing in v
             sup_loss = - (adv_flat/scale).mean() + 1e+2 * mon_loss_sup + 1e+2 * mon_loss_hiring
 
             #This ain't an advantage, but tbf my policy ain't random here, so do I even need it?
@@ -859,12 +880,12 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
         #sup_loss.backward()
         #torch.nn.utils.clip_grad_norm_(sup_net.parameters(), max_norm = 1.0) #Clip the gradients to avoid exploding gradients
         #optimizer_sup.step()
-        #scheduler_sup.step()
+        scheduler_sup.step()
         #value_loss.backward()
         #torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm = 1.0) #Clip the gradients to avoid exploding gradients
         #optimizer_value.step()
         #Later I can consider adding my usual stuff but let's try these basics for now
-        #scheduler_value.step()  # or just .step(episode)
+        scheduler_value.step()  # or just .step(episode)
 
         #Collect your raw loss scalars
         losses = {
@@ -920,7 +941,8 @@ def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
     plt.xlabel("State (normalized)")
     plt.ylabel("Promised Values")
     plt.grid()
-    plt.show()
+    savefig_now("policy_eval_promised_values"); plt.close()
+    #plt.show()
 
     # Plotting the results
     plt.figure(figsize=(10, 6))
@@ -929,7 +951,8 @@ def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
     plt.xlabel("State (normalized)")
     plt.ylabel("Hiring")
     plt.grid()
-    plt.show()
+    savefig_now("policy_eval_hiring"); plt.close()
+    #plt.show()
 
     # Plotting the results
     plt.figure(figsize=(10, 6))
@@ -938,7 +961,8 @@ def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
     plt.xlabel("State (normalized)")
     plt.ylabel("Values")
     plt.grid()
-    plt.show()
+    savefig_now("value_eval"); plt.close()
+    #plt.show()
 
     # Plotting the results
     plt.figure(figsize=(10, 6))
@@ -947,7 +971,8 @@ def evaluate_plot_sup(value_net, sup_net, bounds_processor, num_samples=1000):
     plt.xlabel("State (normalized)")
     plt.ylabel("Rho Grads")
     plt.grid()
-    plt.show()
+    savefig_now("grad_eval"); plt.close()
+    #plt.show()
 
 def evaluate_plot_precise(value_net, sup_net, init_size, bounds_processor, foc_optimizer):
     """
@@ -998,7 +1023,8 @@ def evaluate_plot_precise(value_net, sup_net, init_size, bounds_processor, foc_o
     plt.legend()  # To show the label in the legend
 
     plt.tight_layout()  # Adjust spacing for better visualization
-    plt.show()
+    #plt.show()
+    savefig_now("policy_eval_precise"); plt.close()
 def plot_reached_states(foc_optimizer, starting_states, sup_net, value_net, 
                         bounds_processor, sim_steps=10, random_paths=5,
                         dim_x=0, dim_y=1):
@@ -1037,7 +1063,8 @@ def plot_reached_states(foc_optimizer, starting_states, sup_net, value_net,
     cbar = plt.colorbar(sc)
     cbar.set_label("Productivity state (y index)")
     plt.grid(True)
-    plt.show()
+    #plt.show()
+    savefig_now("reached_states"); plt.close()
 
 @torch.no_grad()
 def evaluate_loss(value_net, sup_net, bounds_processor, foc_optimizer,
@@ -1123,7 +1150,7 @@ if __name__ == "__main__":
     LOWER_BOUNDS = [0, 0 , cc.v_grid[0]] # The state space is (y,n_0,n_1,v_1).
     UPPER_BOUNDS = [20, 100, 1.1 * cc.v_grid[-1]]
 
-    num_episodes= 10000
+    num_episodes= 40000
     minibatch_num = 8
     #Initialize
     bounds_processor = StateBoundsProcessor(LOWER_BOUNDS,UPPER_BOUNDS).to(device)
