@@ -1089,13 +1089,23 @@ class Simulator:
         # Step 1: Keep only employed individuals
         employed = sdata.sort_values(['i', 't']).copy()
         employed['e2u_emp'] = (employed.groupby('i')['d'].shift(1) == Event.e2u)
+        # I
         employed = employed.query('e == 1')
 
         # Step 2: Sort by individual and time
         employed = employed.sort_values(['i', 't'])
+        employed = employed.sort_values(['i', 'f', 't']).copy()
+        employed['lw'] = np.log(employed['w'])
 
-        # Step 3: Compute log wage growth (log difference)
-        employed['w_growth_rate'] = (np.log(employed.groupby('i','f')['w']) - np.log(employed.groupby('i','f')['w'].shift(1)))  #Does this include J2J transitioners??? Also if a guy is employed in one firm, then unemployed for 3 years, then employed again, would shift give the wage difference? I think it would, so I need to filter out the ones that are not employed in the previous period
+        # previous time within (i,f)
+        employed['t_prev'] = employed.groupby(['i','f'])['t'].shift(1)
+
+        # Step 3: Compute log wage growth (log difference):
+        employed['w_growth_rate'] = employed.groupby(['i','f'])['lw'].diff()
+
+        # optional: drop growth if last observation wasn’t the immediately prior period
+        employed.loc[employed['t_prev'] != employed['t'] - 1, 'w_growth_rate'] = np.nan
+        #employed['w_growth_rate'] = (np.log(employed.groupby('i','f')['w']) - np.log(employed.groupby('i','f')['w'].shift(1)))  #Does this include J2J transitioners??? Also if a guy is employed in one firm, then unemployed for 3 years, then employed again, would shift give the wage difference? I think it would, so I need to filter out the ones that are not employed in the previous period
         #So I'm doing groupby 'i','f' to make sure that I only take the wage growth within the same firm, and not across firms
         #sdata['w_growth_rate'] = np.log(sdata.query('e==1').groupby('i')['w']) - np.log(sdata.query('e==1').groupby('i')['w'].shift(1)) #No this is kinda trash, it just a single growth rate 7 years back
         #So I need to take the average wage growth for each tenure group, and then sum them up

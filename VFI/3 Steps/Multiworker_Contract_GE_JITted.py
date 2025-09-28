@@ -83,8 +83,8 @@ def impose_increasing_policy(A0):
 @nb.njit(cache=True)
 def impose_increasing_foc(A0):
     A = np.copy(A0)
-    for v in range(1,A.shape[3]):
-        A[...,v,:,:] = np.maximum(A[...,v,:,:],A[...,v-1,:,:])
+    for v in range(1,A.shape[-1]):
+        A[...,v] = np.maximum(A[...,v],A[...,v-1])
     return A
 @nb.njit(cache=True)
 def impose_increasing_fsep(A0):
@@ -613,6 +613,30 @@ def smooth_all_v_axes_inplace(
         smooth_along_single_v_axis_inplace(
             J, W, Rho, rho_grid, v_axis=v_ax, step_idx=st, s=s, k=k
         )
+#Helpers for finite differences
+def _broadcast_1d_to_axis(vec_1d, ndim, axis):
+    """Return a view that broadcasts a 1D vector along 'axis' in an 'ndim'-D tensor."""
+    index = [None] * ndim
+    index[axis] = slice(None)
+    return vec_1d[tuple(index)]
+
+def _finite_diff_along_axis(F, x, axis):
+    """
+    Central finite difference of F w.r.t. 1D grid x along given axis.
+    Uses forward/backward at the boundaries.
+    """
+    Fm = np.moveaxis(F, axis, -1)            # put target axis last
+    out = np.empty_like(Fm)
+
+    # forward / backward differences (note parentheses on the backward!)
+    out[..., 0]  = (Fm[..., 1]  - Fm[..., 0])  / (x[1]  - x[0])
+    out[..., -1] = (Fm[..., -1] - Fm[..., -2]) / (x[-1] - x[-2])
+
+    # central differences
+    denom = (x[2:] - x[:-2])                  # 1D; broadcasts over the leading dims
+    out[..., 1:-1] = (Fm[..., 2:] - Fm[..., :-2]) / denom
+
+    return np.moveaxis(out, -1, axis)
 class MultiworkerContract:
     """
         This solves a contract model with DRS production, hirings, and heterogeneous match quality.
@@ -750,15 +774,15 @@ class MultiworkerContract:
         self.W[...,0] = self.W[...,0] + self.pref.utility(self.unemp_bf.min())/(1-self.p.beta)
 
         #Setting up size and quality grids already in the matrix for
-        #self.size = np.zeros_like(self.W)
-        #self.q = np.zeros_like(self.W)
-        #self.size[...,0] = self.N_grid[self.grid[1]]
-        #self.q[...,0] = self.p.q_0
-        #for i in range(2,K + 1):
-        #    self.size[...,i-1] = self.N_grid1[self.grid[i]]
-        #for k in range(1,K):
-        #    self.q[...,k] +=  self.Q_grid[self.grid[L.ax_qs[k-1]]] #Will this work? Worried about the fact that L.ax_qs is a list.
-        del self.w_matrix, 
+        self.size = np.zeros_like(self.W)
+        self.q = np.zeros_like(self.W)
+        self.size[...,0] = self.N_grid[self.grid[1]]
+        self.q[...,0] = self.p.q_0
+        for i in range(2,K + 1):
+            self.size[...,i-1] = self.N_grid1[self.grid[i]]
+        for k in range(1,K):
+            self.q[...,k] +=  self.Q_grid[self.grid[L.ax_qs[k-1]]] #Will this work? Worried about the fact that L.ax_qs is a list.
+       # del self.w_matrix
     def J_sep(self,Jg=None,Wg=None,Ug=None,Rhog=None,P=None,kappa=None,n_g = None, sep_g = None,update_eq=1,s=1.0):    
         """
         Computes the value of a job for each promised value v
@@ -770,8 +794,8 @@ class MultiworkerContract:
         N_grid1 = self.N_grid1
         Q_grid = self.Q_grid
         grid = self.grid
-        #size = self.size
-        #q = self.q
+        size = self.size
+        q = self.q
         indices = self.indices
         indices_no_v = self.indices_no_v
         layout = self.layout
@@ -797,11 +821,11 @@ class MultiworkerContract:
         else:
             Rho = np.copy(Rhog) 
         if n_g is None:
-            n_star = np.zeros_like(W)   
+            n_star = np.zeros_like(W)   # The last dimension represents cohorts
         else:
             n0_star = n_g
         if sep_g is None:
-            sep_star = np.zeros_like(W)
+            sep_star = np.zeros_like(W) # The last dimension represents cohorts
         else:
             sep_star = sep_g
         # create representation for J1p
@@ -835,36 +859,41 @@ class MultiworkerContract:
         print("W shape", W.shape)        
 
 
-        #These are SOOOOO MANY THOUGH. I don't think I have ram space for all this...
+
         EW_star = np.copy(W) #These are all W shape now in order to be useable for every cohort. The zero index will usually be empty tho
         #EJ_star = np.copy(J)
         ERho_star = np.copy(J)
         #EJderiv = np.zeros_like(J)
         Jderiv = np.zeros_like(W)
-        rho_star = np.zeros_like(W) #except the zero dimension here. That one will be empty
+        rho_star = np.zeros_like(W[...,1:]) #removed the 0 dimension, that way expanding rho_star inside the state should work immediately
         #sep_star1 = np.zeros_like(J) #probably better to just make it multidimensional
         #n1_star = np.zeros_like(J)   
-        q_star  = np.zeros_like(W)   
-
+        q_star  = np.zeros_like(W)
+        EJinv = np.empty_like(W[..., 1:])   
+        base = J.shape
         Rhoderiv = np.zeros_like(J)
-        Rhod0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n1, self.p.num_v, self.p.num_q, self.p.num_n))
-        #Rhod1 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n1, self.p.num_v, self.p.num_q, self.p.num_n1)) 
-        Rhod0_diff = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n1, self.p.num_v, self.p.num_q, self.p.num_n-1))  
-        Ihire = np.zeros_like(J,dtype=bool)     
+        #Rhod0 = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n1, self.p.num_v, self.p.num_q, self.p.num_n)) #Nope, gotta change this (usual shape) + add extra dimension at the end
+        Rhod0      = np.zeros(base + (self.p.num_n,), dtype=dtype)
+        Rhod0_diff = np.zeros(base + (self.p.num_n - 1,), dtype=dtype)
+
+        Ihire = np.zeros_like(J, dtype=bool)
         #Wd0 = np.zeros_like(Rhod0)
 
         #Separations related variables
         sep_grid = np.linspace(0,1,20)
-        n1_s = np.zeros((self.p.num_z, self.p.num_n, self.p.num_n1, self.p.num_v, self.p.num_q, sep_grid.shape[0]))
-        q_s = np.zeros_like(n1_s)
-        foc_sep = np.zeros_like(n1_s)
-        J_s = np.zeros_like(n1_s)
-        J_s_deriv = np.zeros_like(J_s)
+        
+        slice_shape = W.shape + (sep_grid.shape[0],)
+        n_s =   np.zeros(slice_shape, dtype = dtype) #Was called n1_s. Again, I gotta add an extra dimension at the end. Actually, 2, also for each fut size we talking about?
+        #Although... if we using n1_s only within each layoff choice, we can instead just redo this guy every time
+        q_s =       np.zeros(slice_shape, dtype = dtype)
+        foc_sep =   np.zeros(slice_shape, dtype = dtype)
+        J_s =       np.zeros(slice_shape, dtype = dtype)
+        J_s_deriv = np.zeros(slice_shape, dtype = dtype)
         #sep_reshaped = np.zeros_like(J_s) + sep_grid[ax,ax,ax,ax,ax,:]
-        #sep_grid_exp = sep_grid[ax,ax,ax,ax,ax,:]
+        sep_grid_exp = _broadcast_1d_to_axis(sep_grid, Rho.ndim + 1, -1) #oor should there be an extra dim in here?
 
         # prepare expectation call
-        Ez = oe.contract_expression('anmvq,az->znmvq', J.shape, self.Z_trans_mat.shape)
+        Ez = oe.contract_expression('a...,az->z...', J.shape, self.Z_trans_mat.shape)
         #Ex = oe.contract_expression('b,bx->x', U.shape, self.X_trans_mat.shape)
         log_diff = np.zeros_like(EW_star)
 
@@ -873,20 +902,33 @@ class MultiworkerContract:
         
 
         #First U + GE solve
+        #Baseline W for GE: 1 most senior worker, that's all (? the weird part here is that these values are really all arbitrary, we just want a range that makes sense rly)
+        W_max = W[self.p.z_0-1, ..., -1].max()
         critU = 1
-        while critU > 1e-3:
+        if update_eq:
+         while critU > 1e-3:
             # General equilibrium first time
             self.v_0 = U
-            self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, 0, 1, :, 0, 1].max(),self.p.num_v)
+            self.v_grid = np.linspace(U.min(),W_max,self.p.num_v) #So, this is now a value of the guy on the 2nd step... Is that right? Does that check out? 
             if P is None:
-                kappa, P = self.GE(Ez(Jp, self.Z_trans_mat),Ez(W[...,1], self.Z_trans_mat)[self.p.z_0-1,0,1,:,0])
+                kappa, P = self.GE(Ez(Jp, self.Z_trans_mat))
             self.js.update(self.v_grid,P)
             U2 = U
-            _, ru, _ = self.getWorkerDecisions(EU, employed=False)
-            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
+            _, ru, _ = self.getWorkerDecisions(U, employed=False)
+            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
             U = 0.2 * U + 0.8 * U2
             critU = np.abs(U-U2)
-        critU = 1
+        else:
+         if kappa is None:  
+            kappa = self.p.hire_c
+            self.js.update(self.v_grid,self.prob_find_vx)
+            while critU > 1e-3:
+                U2 = U
+                _, ru, _ = self.getWorkerDecisions(U, employed=False)
+                U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
+                U = 0.2 * U + 0.8 * U2
+                critU = np.abs(U-U2)
+
         print("kappa", kappa)
         print("P", P)
         for ite_num in range(self.p.max_iter):
@@ -898,7 +940,7 @@ class MultiworkerContract:
             n_star2 =  np.copy(n_star)            
             q_star2 =   np.copy(q_star)                       
             # we compute the expected value next period by applying the transition rules
-            EW = Ez(Wp, self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
+            EW = Ez(Wp[...,1:], self.Z_trans_mat) #I can't do it like this... right? Or can I? Ez is ambiguous for me actually. I removed the bottom step too lower the computational costs
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
             EJ = Ez(Jp, self.Z_trans_mat)
             ERho = Ez(Rhop, self.Z_trans_mat)
@@ -916,113 +958,165 @@ class MultiworkerContract:
             log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
 
             
-        
-            Rhoderiv[:, :, 0, ...] = (Rho[:, :, 1,  ...] - Rho[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
-            Rhoderiv[:, :, -1, ...] = Rho[:, :, -1,  ...] - Rho[:, :, -2,  ...]/ (N_grid1[-1] - N_grid1[-2])
-            Rhoderiv[:, :, 1:-1, ...] = (Rho[:, :, 2:,  ...] - Rho[:, :, :-2, ...]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])  
-            Jderiv = Rhoderiv-rho_grid[ax,ax,ax,:,ax]*W[...,1]
-            EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
-            #Hey... is this EJinv correct? Doesn't it require also sep_star1?
+            # Now I need this... looped, for every iv (and, if iv is not the latest, then using N_grid instead of N_grid1)
+            #Rhoderiv[:, :, 0, ...] = (Rho[:, :, 1,  ...] - Rho[:, :, 0, ...]) / (N_grid1[1] - N_grid1[0])
+            #Rhoderiv[:, :, -1, ...] = Rho[:, :, -1,  ...] - Rho[:, :, -2,  ...]/ (N_grid1[-1] - N_grid1[-2])
+            #Rhoderiv[:, :, 1:-1, ...] = (Rho[:, :, 2:,  ...] - Rho[:, :, :-2, ...]) / (N_grid1[ax, ax, 2:, ax, ax] - N_grid1[ax, ax, :-2, ax, ax])  
+            #Jderiv = Rhoderiv-rho_grid[ax,ax,ax,:,ax]*W[...,1] #Current derivative of J wrt n
+            #EJinv=(Jderiv+self.w_grid[ax,ax,ax,:, ax]-self.fun_prod*self.prod_nd)/self.p.beta #creating expected job value as a function of today's value            
+            #Hey... is this EJinv correct? Doesn't it require also sep_star1? Yes, it does, but I do that later in the foc itself 
+            for i, v_axis in enumerate(layout.ax_vs):
+                step_idx = i + 1  # trailing "step" in W/Jderiv matches the i-th v-axis
+                if step_idx < self.K - 1:
+                    n_axis = layout.ax_ns[step_idx]   # the junior size just above this step
+                    xgrid  = N_grid                   # juniors' grid
+                else:
+                    n_axis = layout.ax_n1             # seniors' size
+                    xgrid  = N_grid1                  # seniors' grid
 
+                # ∂Rho/∂n_{step} along its own axis
+                dR = _finite_diff_along_axis(Rho, xgrid, axis=n_axis)
+
+                # rho_grid along THIS v-axis
+                rho_v = _broadcast_1d_to_axis(self.rho_grid, Rho.ndim, v_axis)
+
+                # take W at this step (last axis of W is "step")  → shape == J/Rho
+                W_step = W[..., step_idx]
+
+                # J' for this step
+                Jderiv[..., step_idx] = dR - rho_v * W_step
+                w_v = _broadcast_1d_to_axis(self.w_grid, Rho.ndim, v_axis)
+                EJinv[..., step_idx] = (Jderiv[..., step_idx] + w_v - self.fun_prod * self.prod_nd) / self.p.beta
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
             #Because of this, the values are modified with size according to the following formula:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
 
             #FOC for future Rho
-            inv_utility_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[...,ax,:,:]*EU+(1-sep_star[...,ax,:,:])*(EW[..., ax, :]+re[..., ax, :])))
-            foc_2ndpart = - size[..., ax, :, 1] * (1-sep_star1[...,ax,:,:])*rho_grid[ax, ax, ax, ax, :, ax] -\
-                 size[..., ax, :,0] * (1-sep_star[...,ax,:,:]) / inv_utility_1d                         
-            foc = rho_grid[ax, ax, ax, :, ax, ax] - (EJinv[:, :, :, ax, :, :] / (pc[...,ax,:] * (1 - sep_star1[...,ax,:])))* (log_diff[...,ax,:] / self.deriv_eps) #first dim is productivity, second is future marg utility, third is today's margial utility
-            foc = foc*(size[..., ax, :,0] * (1-sep_star[...,ax,:,:])+size[..., ax, :,1] * (1-sep_star1[...,ax,:])) + foc_2ndpart
-            foc = impose_increasing_foc(foc)
-            assert (np.isnan(foc) & (pc[..., ax, :] > 0)).sum() == 0, "foc has NaN values where p>0"
+            # 3 cases: 
+            # a) if the lowest step, we do the junior wage, but the foc is still simple, like in case b, just substitute rho with 1/inv_utility_1d
+            # b) Middle steps are basic af: fut_rho - rho = eta * (EJinv/(pc * (1-sep_star)) (for that cohort)
+            # c) The senior case: basically what we have below except instead of inv_utility_1d we have rho_grid for the cohort right below the seniors
+            foc_all =  np.zeros(W[...,1:].shape + (rho_grid.shape[0],),dtype= dtype) #or should it be like W[...,1:]? At the very least I know I won't utilize the jun step (or the last one)
+            fut_rho = _broadcast_1d_to_axis(self.rho_grid, Rho.ndim + 1, -1)
+            # Also no??? This still not right... should it have an extra dimension for each cohort then?? That's kinda fucked ngl. Also would require a 2d interpolation...
+            # Alternatively, I do them one-by-one... ah wait! it's ook! Essentially, for each k dimension, the extra future_rho dimension will just be the coorresponding rho! So, still enormous, but not deadly
+            for k in range(1,self.K):
+                if k==1:
+                    inv_utility_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_star[...,0,ax]*EU+(1-sep_star[...,0,ax])*(EW[..., 0, ax]+re[..., 0, ax])))
+                    #Need a reminder on the original dimensions here... what was it again? Okay, maybe I do it differently: put the rho_star dimension at the end, no?
+                     #Gotta make rho_grid with a bunch of axes except the very last one
+                    foc = fut_rho - 1 / inv_utility_1d - (EJinv[..., 0, ax] / (pc[...,0, ax] * (1 - sep_star[...,0,ax])))* (log_diff[...,0, ax] / self.deriv_eps)
+                if (k > 1) & (k < self.K - 1): #Middle cohorts
+                    curr_rho = _broadcast_1d_to_axis(self.rho_grid, Rho.ndim + 1, layout.ax_vs[k-1]) #Check whether this is the coorrect dim!!!
+                    foc = fut_rho - curr_rho - (EJinv[..., k-1, ax] / (pc[...,k-1, ax] * (1 - sep_star[...,k-1,ax])))* (log_diff[...,k-1, ax] / self.deriv_eps)
+                if (k == self.K - 1): #Senior cohort
+                    sen_rho = _broadcast_1d_to_axis(self.rho_grid, Rho.ndim + 1, layout.ax_vs[k])
+                    jun_rho = _broadcast_1d_to_axis(self.rho_grid, Rho.ndim + 1, layout.ax_vs[k-1])
+                    foc_2ndpart = - size[..., k, ax] * ( 1 -sep_star[...,k,ax]) * sen_rho - size[..., k-1, ax] * ( 1 -sep_star[...,k-1,ax]) * jun_rho
+                    foc = fut_rho - (EJinv[...,k-1,ax]) / (pc[...,k-1, ax] * (1 - sep_star[...,k-1,ax]))* (log_diff[...,k-1, ax] / self.deriv_eps) #Is this correct?? Or should this be k instead of k-1? Formally either one is ok so let's keep it consistent
+                    foc = foc*(size[..., k-1, ax] * (1-sep_star[..., k-1, ax])+size[..., k, ax] * (1-sep_star[...,k,ax])) + foc_2ndpart
+                else:
+                    print("wtf? not all k cases covered")
+                foc = impose_increasing_foc(foc)
+                assert (np.isnan(foc) & (pc[...,k-1] > 0)).sum() == 0, "foc has NaN values where p>0"
+                foc_all[...,k-1,:] = foc
 
-            #beg_cpu=time()
-            #rho_star = solve_rho(
-            #    rho_grid, N_grid, N_grid1, foc, rho_star, self.p.num_z, self.p.num_n, self.p.num_n1, self.p.n_bar1, self.p.num_v, self.p.num_q) 
-            #end_cpu=time()
-            #rho_star = impose_increasing_policy(rho_star)
-            #print("Parallel time", end_cpu-beg_cpu)
             #FOC for Separations
-            tenure = ite_num % 2
+            tenure = ite_num % self.K #each period we do just 1 layoff choice (ig? or does this matter only for seniors)
             if ite_num>=20:
                 #WHAT IF. We just do a direct derivative wrt s??? Like, we know what q_s and n1_s are. Inteprolate directly onto them, which will already give us the total derivative of J wrt s, no?
-                if tenure == 0:  
-                    sen_el = np.argmin(np.abs(sep_grid - sep_star1[..., None]), axis=-1)
+                # Tenure is just the k we're working on. Later, if I want to, I can turn it into a loop
+                sep_el = np.argmin(np.abs(sep_grid - sep_star[..., tenure, None]), axis=-1)
+                sen_sep = sep_grid[sen_el]
+
+                if tenure == self. K - 1:  #the senior case
+                    sen_el = np.argmin(np.abs(sep_grid - sep_star[..., -1, None]), axis=-1)
                     sen_sep = sep_grid[sen_el]
-                    n1_s = np.maximum((size[...,0,ax]*(1-sep_grid_exp)+size[...,1,ax] * (1-sen_sep[...,ax])) * pc_star[...,ax],N_grid1[0])
-                    n1_s = np.minimum(n1_s,N_grid1[-1])
-                    q_s = np.fmin((size[...,0,ax] * np.minimum(self.p.q_0,1-sep_grid_exp)+size[...,1,ax] * np.minimum(q[...,ax],1-sen_sep[...,ax])) / (size[...,0,ax]*(1-sep_grid_exp)+size[...,1,ax]*(1-sen_sep[...,ax])),1)               
-                    sep_star0 = np.copy(sep_star)
-                    sep_star[...] = 0
-                else:
-                    jun_el = np.argmin(np.abs(sep_grid - sep_star[..., None]), axis=-1)
+                    n_s[...,-1,:] = np.maximum((size[...,-2,ax]*(1-sep_grid_exp)+size[...,-1,ax] * (1-sen_sep[...,ax])) * pc_star[...,-1,ax],N_grid1[0])
+                    n_s[...,-1,:] = np.minimum(n_s[...,-1],N_grid1[-1])
+                    q_s[...,-1,:] = np.fmin((size[...,-2,ax] * np.minimum(q[...,-2,ax],1-sep_grid_exp)+size[...,-1,ax] * np.minimum(q[...,-1,ax],1-sen_sep[...,ax])) / (size[...,-2,ax]*(1-sep_grid_exp)+size[...,-1,ax]*(1-sen_sep[...,ax])),1)               
+                    sep_star0 = np.copy(sep_star[...,-1])
+                    sep_star[...,k-1] = 0
+                if tenure == self.K - 2: #all the other cases there is no "merging". ah, besides also right below the sep
+                    jun_el = np.argmin(np.abs(sep_grid - sep_star[..., -2, None]), axis=-1)
                     jun_sep = sep_grid[jun_el]
-                    n1_s = np.maximum((size[...,0,ax]*(1-jun_sep[...,ax])+size[...,1,ax] * (1-sep_grid_exp)) * pc_star[...,ax],N_grid1[0])
-                    q_s = np.fmin((size[...,0,ax] * np.minimum(self.p.q_0,1-jun_sep[...,ax])+size[...,1,ax] * np.minimum(q[...,ax],1-sep_grid_exp)) / (size[...,0,ax]*(1-jun_sep[...,ax])+size[...,1,ax]*(1-sep_grid_exp)),1)               
-                    sep_star0 = np.copy(sep_star1)
-                    sep_star1[...] = 0
-                  
+                    n_s[...,-1,:] = np.maximum((size[...,-2,ax]*(1-jun_sep[...,ax])+size[...,-1,ax] * (1-sep_grid_exp)) * pc_star[...,-1,ax],N_grid1[0])
+                    n_s[...,-1,:] = np.minimum(n_s[...,-1],N_grid1[-1])
+                    q_s[...,-1,:] = np.fmin((size[...,-2,ax] * np.minimum(q[...,-2,ax],1-jun_sep[...,ax])+size[...,-1,ax] * np.minimum(q[...,-1,ax],1-sep_grid_exp)) / (size[...,-2,ax]*(1-jun_sep[...,ax])+size[...,-1,ax]*(1-sep_grid_exp)),1)               
+                    sep_star0 = np.copy(sep_star[...,-2])
+                    sep_star[...,-2] = 0
+                else: #Now here there is no merging. And theeese can indeed be solved for every time if I want to!
+                    k = tenure # starts from 0, so k is the cohort we're firing
+                    sep_el = np.argmin(np.abs(sep_grid - sep_star[..., k, None]), axis=-1)
+                    sen_sep = sep_grid[sep_el]
+                    n_s[...,k+1,:] = size[...,k,ax] * (1-sep_grid_exp) * pc_star[...,k,ax] #Or with pc_star, maybe it should be just k? Yup, since pc starts at 0
+                    q_s[...,k+1,:] =  size[...,k,ax] * pc_star[...,k,ax] * np.minimum(q[...,k,ax],1-sep_grid_exp)/ n_s[...,k+1]
+                #I stopped here before sleep. Questions:
+                #a) Why ERho_s? Isn't this EJ_s? Since we've removed EW's here
+                #b) Doing this Js_int thing is hard. Even the points.append part is currently incorrect since all the states must be unraveled first
                 ERho_s = ERho - size[...,1] * rho_grid[ax,ax,ax,:,ax] * EW
                 points = []
-                n0_sz = np.repeat(n0_star2[...,ax], sep_grid.shape[0], axis=-1)
+                n_s[...,0,:] = np.repeat(n_star2[...,0,ax], sep_grid.shape[0], axis=-1)
                 rho_sz = np.repeat(rho_star2[...,ax], sep_grid.shape[0], axis=-1)
                 for iz in range(self.p.num_z):
-                    points.append( tuple_into_2darray((n0_sz[iz, ...], n1_s[iz,...], rho_sz[iz, ...], q_s[iz,...])))
+                    points.append( tuple_into_2darray((n_s[iz,...], rho_sz[iz, ...], q_s[iz,...]))) #This probably won't work: all these guys got an extra "per cohort" dimension, those need to be unraveled first
                 J_s = Js_int(J_s,ERho_s,N_grid,N_grid1,rho_grid,Q_grid,points,self.p.num_z)
-
+                #Here I can probably do the same fin diff approach as above... actually no, I don't need it! In fact, if I do only one coohort layoff per iteration, this is fine              
                 J_s_deriv[...,0] = (J_s[...,1] - J_s[...,0]) / (sep_grid[1] - sep_grid[0])
                 J_s_deriv[...,-1] = (J_s[...,-1] - J_s[...,-2]) / (sep_grid[-1] - sep_grid[-2]) 
-                J_s_deriv[..., 1:-1]    = (J_s[...,2:] - J_s[...,:-2]) / (sep_reshaped[...,2:] - sep_reshaped[...,:-2]) 
+                J_s_deriv[..., 1:-1]    = (J_s[...,2:] - J_s[...,:-2]) / (sep_grid_exp[...,2:] - sep_grid_exp[...,:-2]) 
 
                 if tenure == 0:
-                    inv_util_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_reshaped * EU[...,ax] + (1-sep_reshaped) * (EW_star[...,ax] + re_star[...,ax])))
-                    foc_sep = J_s_deriv - size[...,ax,0] * (re_star[...,ax]+EW_star[...,ax] - EU) / inv_util_1d
+                    inv_util_1d = self.pref.inv_utility_1d(self.v_0-self.p.beta*(sep_grid_exp * EU + (1-sep_grid_exp) * (EW_star[...,0,ax] + re_star[...,0,ax])))
+                    foc_sep = J_s_deriv - size[...,ax,0] * (re_star[...,0,ax]+EW_star[...,0,ax] - EU) / inv_util_1d
                 else:
-                    foc_sep = J_s_deriv - size[...,ax,1] * (re_star[...,ax]+EW_star[...,ax] - EU) * rho_grid[ax,ax,ax,:,ax,ax]
+                    rho = _broadcast_1d_to_axis(self.rho_grid, Rho.ndim + 1, layout.ax_vs[tenure-1])
+                    foc_sep = J_s_deriv - size[...,tenure,ax] * (re_star[...,tenure,ax]+EW_star[...,tenure,ax] - EU) * rho
                 foc_sep = impose_increasing_fsep(-foc_sep)
 
             #FOC for hiring
             points = []
             for iz in range(self.p.num_z):
-                points.append( tuple_into_2darray((n1_star2[iz, ...], rho_star2[iz, ...], q_star2[iz, ...])))
+                points.append( tuple_into_2darray((n1_star2[iz, ...], rho_star2[iz, ...], q_star2[iz, ...]))) #Similarly to the above, need to get the correct states here
             Rhod0 = Rhod0_int(Rhod0,ERho,N_grid1,rho_grid,Q_grid,points,self.p.num_z,self.p.num_n)
-            n0_star[...] = 0
+            n_star[...,0] = 0
             Ihire = ((Rhod0[...,1] - Rhod0[...,0]) / (N_grid[1] - N_grid[0]) > kappa/self.p.beta) & (size[...,0] + size[...,1] < self.p.n_bar)
             Rhod0_diff = impose_increasing_fsep( - (Rhod0[..., 1:] - Rhod0[..., :-1]) / (N_grid[1:]-N_grid[:-1])) 
                 #n0_star = n0(Rhod0_diff, n0_star, N_grid, Ihire, kappa / self.p.beta)
                 #n0_star = impose_decreasing_policy(n0_star)
 
-            rho_star,n0_star,sep = solve_policies(ite_num,rho_star,n0_star,sep_star,foc_sep,sep_grid, kappa / self.p.beta,Ihire,Rhod0_diff,rho_grid, N_grid, N_grid1, foc, self.p.num_z, self.p.num_n, self.p.num_n1, self.p.n_bar1, self.p.num_v, self.p.num_q,tenure)
+            rho_star,n_star[...,0],sep = solve_policies(ite_num,rho_star,n_star[...,0],sep_star,foc_sep,sep_grid, kappa / self.p.beta,Ihire,Rhod0_diff,rho_grid, N_grid, N_grid1, foc, self.p.num_z, self.p.num_n, self.p.num_n1, self.p.n_bar1, self.p.num_v, self.p.num_q,tenure)
             rho_star = impose_increasing_policy(rho_star)
             n0_star = impose_decreasing_policy(n0_star)
             if ite_num >= 20:
-                if tenure==0:
-                    sep_star = 0.4 * impose_increasing_policy(sep) + 0.6 * sep_star0
-                else:
-                    sep_star1 = 0.4 * impose_decreasing_policy(sep) + 0.6 * sep_star0
-                    sep_star1 = np.minimum(sep_star1, 1-1e-2) #Cannot fire more than 99% of seniors so that we do not reach literal zero
-            print("n0_star", n0_star.min(),n0_star.max())    
-            print("sep jun", sep_star.min(),sep_star.max())
-            print("sep sen", sep_star1.min(),sep_star1.max())
+                sep_star[...,tenure] = 0.4 * impose_increasing_policy(sep) + 0.6 * sep_star0
+                if tenure == self.K - 1:
+                    sep_star[...,tenure] = np.minimum(sep_star[...,tenure], 1-1e-2) #Cannot fire more than 99% of seniors so that we do not reach literal zero
+            print("n0_star", n_star[...,0].min(),n_star[...,0].max())    
+            print("sep jun", sep_star[...,0].min(),sep_star[...,0].max())
+            print("sep sen", sep_star[...,1:].min(),sep_star[...,1:].max())
 
-            #Getting n1_star and q_star
-            pc_trans = np.moveaxis(pc,3,0)
-            rho_trans = np.moveaxis(rho_star,3,0)            
-            pc_temp = np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3)
-            n1_star = np.maximum((size[...,0]*(1-sep_star)+size[...,1]*(1-sep_star1))*pc_temp,N_grid1[0])
-            n1_star = np.minimum(n1_star,N_grid1[-1])
-            q_star = np.fmin((size[...,0]* np.minimum(self.p.q_0,1-sep_star)+size[...,1]*np.minimum(q,1-sep_star1))/(size[...,0]*(1-sep_star)+size[...,1]*(1-sep_star1)),1)
-            print("q_star", q_star[self.p.z_0-2,self.p.num_n-1,0,50, :])
+            #Getting n1_star and q_star        
+            for k in range(1,self.K):
+                pc_trans = np.moveaxis(pc[...,k-1],3,0)
+                rho_trans = np.moveaxis(rho_star[...,k-1],3,0)   #wait, do I need these anymore? kind of unclear... gotta remember how this works first. Once I've figured this out, this part is ok (I'm p sure)
+                pc_temp[...,k-1] = np.moveaxis(interp_multidim_extra_dim(rho_trans,rho_grid,pc_trans),0,3) #This I'll need to change most surely? Do like a full multidimensional interpolation? OOr... doo this for each k!
+            n_star[...,-1] = np.maximum((size[...,-2]*(1-sep_star[...,-2])+size[...,-1]*(1-sep_star[...,-1]))*pc_temp,N_grid1[0])
+            n_star[...,1:-1] = size[...,:-2] * (1- sep_star[...,:-2]) * pc_temp[...,:-2] #May not be exactly right
+            n_star = np.minimum(n_star[...,-1],N_grid1[-1])
+            q_star[...,-1] = np.fmin((size[...,-2]* np.minimum(q[...,-2],1-sep_star[...,-2])+size[...,-1]*np.minimum(q[...,-1],1-sep_star[...,-1]))/(size[...,-2]*(1-sep_star[...,-2])+size[...,-1]*(1-sep_star[...,-1])),1)
+            q_star[...,1:-1] = size[...,:-2] * pc_temp[...,:-2] * np.minimum(q[...,:-2],1-sep_star[...,:-2])/ n_star[...,1:-1] #May not be exactly right
+            
+            #print("q_star", q_star[self.p.z_0-1,self.p.num_n-1,0,50, :])
 
             #Future optimal expectations
             #ERho_star = interp_multidim(n0_star,N_grid,np.moveaxis(Rhod0,-1,0))
             points = []
             for iz in range(self.p.num_z):
-                points.append( tuple_into_2darray((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...])))
+                points.append( tuple_into_2darray((n0_star[iz,...],n1_star[iz, ...], rho_star[iz, ...], q_star[iz, ...]))) #Again, same compication
             #ERho_star = Js_int(ERho_star,ERho,N_grid,N_grid1,rho_grid,Q_grid,points,self.p.num_z) #Do it like this so as to use all the new policies
             #EW_star = Js_int(EW_star,EW,N_grid,N_grid1,rho_grid,Q_grid,points,self.p.num_z)
-            ERho_star, EW_star =  Values_int(ERho_star,EW_star,ERho,EW,N_grid,N_grid1,rho_grid,Q_grid,points,self.p.num_z)
+            ERho_star, EW_star =  Values_int(ERho_star,EW_star,ERho,EW,N_grid,N_grid1,rho_grid,Q_grid,points,self.p.num_z) #Why like this? Ah, just to avooid some loops
 
 
 
@@ -1033,19 +1127,21 @@ class MultiworkerContract:
             _, re_star, pc_star = self.getWorkerDecisions(EW_star)
             # Update firm value function 
             wage_jun = self.pref.inv_utility(self.v_0-self.p.beta*(sep_star*EU+(1-sep_star)*(EW_star+re_star)))
-            J= self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n0_star - \
-                wage_jun*size[...,0]  + self.p.beta *  (ERho_star - rho_star*n1_star*EW_star) #Note it's not EJ_star here anymore. To make the function faster
+            J= self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n_star[...,0] - \
+                wage_jun*size[...,0]  + self.p.beta * ERho_star #Note it's not EJ_star here anymore. To make the function faster
             #J = impose_decreasing(J)
             assert np.isnan(J).sum() == 0, "J has NaN values"
-
-            Rho = self.fun_prod*self.prod - self.p.k_f - sum_wage - kappa*n0_star - \
-                wage_jun*size[...,0] + \
-                rho_grid[ax,ax,ax,:,ax]*size[...,1]*W[...,1] + self.p.beta * (ERho_star - rho_star*n1_star*EW_star)
+            for k in range(1,self.K):
+                J   += - rho_star[...,k]*n_star[...,k]*EW_star[...,k-1] #EW_star doesn't have the zero cohort, hencewhy k-1
+            Rho = J
+            for k in range(1,self.K):                
+                Rho += self.rho_grid[self.grid[layout.ax_vs[k-1]]]*size[...,k]*W[...,k]  
+                
             #Rho_alt = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]                    
             assert np.isnan(Rho).sum() == 0, "Rho has NaN values"  
             # Update worker value function
-            W[...,1] = self.pref.utility(self.w_matrix[...,1]) + \
-                self.p.beta * (sep_star1 * EU + (1 - sep_star1) * (EW_star + re_star)) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
+            W[...,1:] = self.pref.utility(self.w_matrix[...,1:]) + \
+                self.p.beta * (sep_star[...,1:] * EU + (1 - sep_star[...,1:]) * (EW_star + re_star)) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
             W = impose_increasing_W(W)
             assert np.isnan(W).sum() == 0, "W has NaN values"
 
@@ -1059,18 +1155,23 @@ class MultiworkerContract:
             J= .2 * J + .8 * J2
             W[...,1:] = .2 * W[...,1:] + .8 * W2[...,1:] #we're completely ignoring the 0th step
 
-            # Updating J1 representation
-            st= time()
-            for iz, in0, in1, iq in indices_no_v:
-                Wp[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,W[iz,in0,in1,:,iq,1],s=s))
-                Rhop[iz,in0,in1,:,iq] = splev(rho_grid, splrep(rho_grid,Rho[iz,in0,in1,:,iq],s=s))
-            end=time()
-            if (ite_num % 100 == 0):
-                print("Time to fit the spline", end - st)
-            
-            #TRYING AGAIN WITH THE BASIC RHO
-            Jp = Rhop - size[...,1]*rho_grid[ax,ax,ax,:,ax]*Wp      
+            # Updating J,W,Rho representation 
+            smooth_all_v_axes_inplace(
+            J=J, W=W, Rho=Rho,
+            rho_grid=rho_grid,
+            v_axes=layout.ax_vs,           # smooth along ALL v-axes
+            step_indices=None,             # defaults to [1, 2, ..., K-1]
+            s=s,                        # your smoothing strength
+            k=3,                    # spline order
+            )
+            Jp = Rhop 
+            for k in range(1,self.K):
+                if k < self.K - 1:
+                    Jp += - self.N_grid[self.grid[layout.ax_ns[k]]] * self.rho_grid[self.grid[layout.ax_vs[k-1]]] * Wp[...,k]
+                else:
+                    Jp += - self.N_grid1[self.grid[layout.ax_n1]] * self.rho_grid[self.grid[layout.ax_vs[k-1]]] * Wp[...,k]        
 
+    
             # Compute convergence criteria
             error_j1i = array_exp_dist(Rho,Rho2,100) #np.power(J - J2, 2).mean() / np.power(J2, 2).mean()  
             error_w1 = array_dist(W[...,1:], W2[...,1:])
@@ -1208,7 +1309,7 @@ class MultiworkerContract:
         with open(filename, "wb") as output_file:
             pickle.dump(all_results, output_file)
         print(f"Results for p = {key} have been appended to {filename}.")
-    def GE(self,EJ,W,kappa_old=None,J=None,n0_star=None):
+    def GE(self,EJ,kappa_old=None,J=None,n0_star=None):
         #Find kappa, which is the hiring cost firms have to pay per worker unit
         #BIG NOTE: For now I'm assuming that all the firms start at the same productivity level, p.z_0-1, rather than the Schaal assumption of them drawing their productivity upon entering.
         #Quick method: Envelope Theorem
