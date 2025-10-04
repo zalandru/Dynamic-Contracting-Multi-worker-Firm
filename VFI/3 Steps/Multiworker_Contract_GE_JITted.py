@@ -471,7 +471,19 @@ def Rhod0_int(Rhod0,ERho,N_grid1,rho_grid,Q_grid,points,num_z,num_n):
         Rhod0[iz,...,in00] =  flat_result.reshape(shape)
     return Rhod0
 @nb.njit(cache=True,parallel=True)
-def Js_int(Js,ERho_s,N_grid,N_grid1,rho_grid,Q_grid,points,num_z):
+def Js_int(Js, ERho_s, grids, points, num_z):
+    """
+    K-agnostic version of Js_int:
+      - 'grids' is a tuple of 1D arrays, one per dimension of ERho_s (excluding z).
+      - 'points[iz]' is a 2D array (n_pts x n_dims) matching 'grids'.
+    """
+    shape = Js[0, ...].shape
+    for iz in prange(num_z):
+        flat = multilinear_interp(points[iz], grids, ERho_s[iz, ...])
+        Js[iz, ...] = flat.reshape(shape)
+    return Js
+
+def Js_int_old(Js,ERho_s,N_grid,N_grid1,rho_grid,Q_grid,points,num_z):
     shape = Js[0,...].shape
     for iz in prange(num_z):
         flat_result = multilinear_interp(points[iz], ((N_grid, N_grid1, rho_grid, Q_grid)), ERho_s[iz, ...])
@@ -619,7 +631,8 @@ def _broadcast_1d_to_axis(vec_1d, ndim, axis):
     index = [None] * ndim
     index[axis] = slice(None)
     return vec_1d[tuple(index)]
-
+def _repeat_last_dim(x, m):
+    return np.repeat(x[..., np.newaxis], m, axis=-1)
 def _finite_diff_along_axis(F, x, axis):
     """
     Central finite difference of F w.r.t. 1D grid x along given axis.
@@ -891,7 +904,10 @@ class MultiworkerContract:
         J_s_deriv = np.zeros(slice_shape, dtype = dtype)
         #sep_reshaped = np.zeros_like(J_s) + sep_grid[ax,ax,ax,ax,ax,:]
         sep_grid_exp = _broadcast_1d_to_axis(sep_grid, Rho.ndim + 1, -1) #oor should there be an extra dim in here?
-
+        grid_tuple = ( (self.N_grid,) * (self.K-1)          # junior n-axes: currently only one
+             + (self.N_grid1,)         # seniors
+             + tuple([self.rho_grid]*(self.K-1))
+             + tuple([self.Q_grid]*(self.K)) )
         # prepare expectation call
         Ez = oe.contract_expression('a...,az->z...', J.shape, self.Z_trans_mat.shape)
         #Ex = oe.contract_expression('b,bx->x', U.shape, self.X_trans_mat.shape)
@@ -1028,6 +1044,8 @@ class MultiworkerContract:
                 # Tenure is just the k we're working on. Later, if I want to, I can turn it into a loop
                 sep_el = np.argmin(np.abs(sep_grid - sep_star[..., tenure, None]), axis=-1)
                 sen_sep = sep_grid[sen_el]
+                n_s = n_star2[...,ax]
+                q_s = q_star2[...,ax]
 
                 if tenure == self. K - 1:  #the senior case
                     sen_el = np.argmin(np.abs(sep_grid - sep_star[..., -1, None]), axis=-1)
@@ -1051,16 +1069,43 @@ class MultiworkerContract:
                     sen_sep = sep_grid[sep_el]
                     n_s[...,k+1,:] = size[...,k,ax] * (1-sep_grid_exp) * pc_star[...,k,ax] #Or with pc_star, maybe it should be just k? Yup, since pc starts at 0
                     q_s[...,k+1,:] =  size[...,k,ax] * pc_star[...,k,ax] * np.minimum(q[...,k,ax],1-sep_grid_exp)/ n_s[...,k+1]
+                
                 #I stopped here before sleep. Questions:
                 #a) Why ERho_s? Isn't this EJ_s? Since we've removed EW's here
                 #b) Doing this Js_int thing is hard. Even the points.append part is currently incorrect since all the states must be unraveled first
-                ERho_s = ERho - size[...,1] * rho_grid[ax,ax,ax,:,ax] * EW
-                points = []
-                n_s[...,0,:] = np.repeat(n_star2[...,0,ax], sep_grid.shape[0], axis=-1)
+                #ERho_s = ERho - size[...,1] * rho_grid[ax,ax,ax,:,ax] * EW #Why is this even current size and rho??? If we want to do EJ_s, we want the future ones! So should I instead consider n_star * rho_star here??? Ah... no, these guys are gon be the future ones
+                ERho_s = ERho
+                for k in range(1,self.K):
+                    ERho_s += - size[...,k] * self.rho_grid[self.grid[layout.ax_vs[k-1]]] * EW[...,k-1] #Am I sure the k's are correct here? In particular, I'm unsure about rho_grid
+                #n_s[...,0,:] = np.repeat(n_star2[...,0,ax], sep_grid.shape[0], axis=-1)
                 rho_sz = np.repeat(rho_star2[...,ax], sep_grid.shape[0], axis=-1)
+                n_sz_list = []
+                rho_sz_list = []
+                q_sz_list = []
+                for k in range(self.K):
+                    n_sz_list.append(n_star[...,k,:])
+                    q_sz_list.append(q_star[...,k,:])
+                    if k>0:
+                        rho_sz_list.append(rho_star[...,k-1,:])
+                points = []
                 for iz in range(self.p.num_z):
-                    points.append( tuple_into_2darray((n_s[iz,...], rho_sz[iz, ...], q_s[iz,...]))) #This probably won't work: all these guys got an extra "per cohort" dimension, those need to be unraveled first
-                J_s = Js_int(J_s,ERho_s,N_grid,N_grid1,rho_grid,Q_grid,points,self.p.num_z)
+                    coords = []
+                    # n 
+                    for arr in n_sz_list:
+                        coords.append(arr[iz, ...])
+                    for arr in rho_sz_list:
+                        coords.append(arr[iz, ...])
+                    # q(0..K-1)
+                    for arr in q_sz_list:
+                        coords.append(arr[iz, ...])
+                    points.append(tuple_into_2darray(tuple(coords)))  # your helper flattens to (n_pts x n_dims)
+                
+                #for iz in range(self.p.num_z):
+                #    points.append( tuple_into_2darray((n_s[iz,...], rho_sz[iz, ...], q_s[iz,...]))) #This probably won't work: all these guys got an extra "per cohort" dimension, those need to be unraveled first
+                #J_s = Js_int(J_s,ERho_s,N_grid,N_grid1,rho_grid,Q_grid,points,self.p.num_z)
+                # --- Interpolate J_s over the sep grid for all states (K-agnostic) ---
+                J_s = Js_int(J_s, ERho_s, grid_tuple, points, self.p.num_z)
+                
                 #Here I can probably do the same fin diff approach as above... actually no, I don't need it! In fact, if I do only one coohort layoff per iteration, this is fine              
                 J_s_deriv[...,0] = (J_s[...,1] - J_s[...,0]) / (sep_grid[1] - sep_grid[0])
                 J_s_deriv[...,-1] = (J_s[...,-1] - J_s[...,-2]) / (sep_grid[-1] - sep_grid[-2]) 

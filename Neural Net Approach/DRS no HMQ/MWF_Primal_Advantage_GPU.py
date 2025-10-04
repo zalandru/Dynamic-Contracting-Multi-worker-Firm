@@ -847,7 +847,7 @@ def train(state_dim, value_net, sup_net, optimizer_value, optimizer_sup, schedul
             adv_flat = (G_flat - pred_values.detach()) #+ 0.5 * (R_flat - pred_values.detach()) #Advantage is TD error + immediate reward - baseline
             scale = adv_flat.std(unbiased=False).clamp_min(1e-6).detach()
             policy = sup_net(S_v) #maybe I just track it in the simulation?
-            policy_v = sup_net(S_v + delta_v)
+            policy_v = sup_net(states_v)
             mon_loss_sup = torch.relu(-( policy_v['values'][i,P_v.long(),:,:] - policy['values'][i,P_v.long(),:,:])).mean() #v'(v) should be increasing in v
             mon_loss_hiring = torch.relu( policy_v['hiring'][i,P_v.long()] - policy['hiring'][i,P_v.long()]).mean() #hiring(v) should be decreasing in v
             sup_loss = - (adv_flat/scale).mean() + 1e+2 * mon_loss_sup + 1e+2 * mon_loss_hiring

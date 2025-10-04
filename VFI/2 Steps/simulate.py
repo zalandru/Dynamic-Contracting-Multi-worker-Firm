@@ -497,7 +497,7 @@ class Simulator:
             F = allocate_workers_to_vac_determ(n_hire[t,F_set],F_set,F,Id,I_find_job) #Am I sure it's the entire F??? seems a little sus ngl. yes, it's ok, it only updates for I_find_job rows
             E[I_find_job]   = 1
             S[I_find_job]   = 1
-            R[I_find_job]   = model.v_0 #Bonus noted in the actual wage, computed below
+            R[I_find_job]   = model.v_0 #Bonus noted in the actual wage, computed below #WAIT THIS ISN'T ACTUAL RHO THO. tbf I don't think I actually utilize this guy anywhere
             D[Ie_e2e]   = Event.j2j
             D[Iu_u2e]   = Event.u2e  
 
@@ -606,12 +606,13 @@ class Simulator:
         w = np.zeros((nt,2))
 
         #Time 0 append with no update
-        W[(F==1) & (S==1)] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[z, n0, n1, ...], bounds_error=False, fill_value=None) ((rho,q)) )
+        coords = np.array([[rho,q]])
+        W[(F==1) & (S==1)] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[z, n0, n1, ...]) (coords) )
         W[(F==1) & (S>1)] = np.log(rho)
         Y[F==1] = np.log(prod[0])
-        W1[(F==1) & (S>1)] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[z, n0, n1, ...,1], bounds_error=False, fill_value=None) (((rho,q)))
+        W1[(F==1) & (S>1)] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[z, n0, n1, ...,1]) (coords)
         #Firm info, added for every employed worker
-        P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[z, n0, n1, ...], bounds_error=False, fill_value=None) ((rho,q))
+        P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[z, n0, n1, ...]) (coords)
 
         all_df.append(pd.DataFrame({ 'i':range(ni+extra),'t':0, 'f':F, 
                 'z':Z_array, 'w':W , 'Pi':P, 'D': D, 'S': S, 'n0': N0_array, 'n1': N1_array,
@@ -623,13 +624,14 @@ class Simulator:
         rr = range(1,nt) 
 
         for t in rr:
+            coords = np.array([[RHO[t-1],Q[t-1]]])
             #Update firm decisions first
-            RHO[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
-            pr_j2j = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
-            pr_sep = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
-            pr_sep1 = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star1[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))            
-            Q[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
-            Vs[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            RHO[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[Z[t-1], N0[t-1],N1[t-1], ...]) (coords)
+            pr_j2j = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[Z[t-1], N0[t-1],N1[t-1], ...]) (coords)
+            pr_sep = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[Z[t-1], N0[t-1],N1[t-1], ...]) (coords)
+            pr_sep1 = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star1[Z[t-1], N0[t-1],N1[t-1], ...]) (coords)            
+            Q[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[Z[t-1], N0[t-1],N1[t-1], ...]) (coords)
+            Vs[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[Z[t-1], N0[t-1],N1[t-1], ...]) (coords)
             w[t,1] = RHO[t]
             #if (disable_fire & (t>np.floor(nt/2).astype(int))):
             #    Q[t] = Q[t-1]
@@ -667,7 +669,7 @@ class Simulator:
             #Update firm size
             N1[t] = ((F==1) & (S>1)).sum()
             if allow_hiring:
-                N0[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+                N0[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[Z[t-1], N0[t-1],N1[t-1], ...]) (coords)
                 #Discretize n0:
                 n0_int = np.floor(N0[t])
                 N0[t] = n0_int + np.random.binomial(1, N0[t]-n0_int)
@@ -677,7 +679,8 @@ class Simulator:
                 F[ni:ni+N0[t]] = 1 #these guys now employed
                 S[ni:ni+N0[t]] = 1 #they're juniors
                 D[ni:ni+N0[t]] = Event.u2e #they don't actually have to be hired from unemp btw           
-            w[t,0] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[Z[t], N0[t], N1[t], ...], bounds_error=False, fill_value=None) ((RHO[t],Q[t])) ) #Is this time inconsistent??? Given that prod is decided later?
+            coords = np.array([[RHO[t],Q[t]]])
+            w[t,0] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[Z[t], N0[t], N1[t], ...]) (coords) ) #Is this time inconsistent??? Given that prod is decided later?
             W[ni:ni+N0[t]] = w[t,0] #junior wage paid
             ni = ni + N0[t] #add the extra workers 
 
@@ -686,9 +689,9 @@ class Simulator:
             I_sen = (F==1) & (S>1) #Seniors that didn't leave
             W[I_sen] = np.log(w[t,1])
             D[I_sen] = Event.ee
-            W1[I_sen] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[Z[t], N0[t], N1[t], ...,1], bounds_error=False, fill_value=None) ((RHO[t],Q[t]))
+            W1[I_sen] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[Z[t], N0[t], N1[t], ...,1]) (coords)
             #Firm info, added for every employed worker
-            P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[Z[t], N0[t], N1[t], ...], bounds_error=False, fill_value=None) ((RHO[t],Q[t]))
+            P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[Z[t], N0[t], N1[t], ...]) (coords)
             Y[F==1] = np.log(prod[t])
             N0_array[F==1] = N0[t]
             N1_array[F==1] = N1[t]
@@ -702,6 +705,7 @@ class Simulator:
         all_df.loc[all_df.f==0,['z','n0','n1', 'y', 'w', 'Pi', 'S', 'pr_e2u', 'pr_j2j', 'W1', 'vs']] = 0
         all_df['n'] = all_df['n0'].values + all_df['n1'].values              
         return all_df
+
 
     def simulate_firm_sep(self,z,n0,n1,rho,q,nt, force_sep=True,allow_hiring=True,allow_fire=True,allow_leave=True,update_z=False, z_dir=None,seed=False):
         """
@@ -757,12 +761,12 @@ class Simulator:
         w = np.zeros((nt,2))
 
         #Time 0 append with no update
-        W[(F==1) & (S==1)] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[z, n0, n1, ...], bounds_error=False, fill_value=None) ((rho,q)) )
+        W[(F==1) & (S==1)] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[z, n0, n1, ...]) ((rho,q)) )
         W[(F==1) & (S>1)] = np.log(rho)
         Y[F==1] = np.log(prod[0])
-        W1[(F==1) & (S>1)] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[z, n0, n1, ...,1], bounds_error=False, fill_value=None) (((rho,q)))
+        W1[(F==1) & (S>1)] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[z, n0, n1, ...,1]) (((rho,q)))
         #Firm info, added for every employed worker
-        P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[z, n0, n1, ...], bounds_error=False, fill_value=None) ((rho,q))
+        P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[z, n0, n1, ...]) ((rho,q))
 
         all_df.append(pd.DataFrame({ 'i':range(ni+extra),'t':0, 'f':F, 
                 'z':Z_array, 'w':W , 'Pi':P, 'D': D, 'S': S, 'n0': N0_array, 'n1': N1_array,
@@ -775,12 +779,12 @@ class Simulator:
 
         for t in rr:
             #Update firm decisions first
-            RHO[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
-            pr_j2j = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
-            pr_sep = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
-            pr_sep1 = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star1[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))            
-            Q[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
-            Vs[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+            RHO[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[Z[t-1], N0[t-1],N1[t-1], ...]) ((RHO[t-1],Q[t-1]))
+            pr_j2j = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[Z[t-1], N0[t-1],N1[t-1], ...]) ((RHO[t-1],Q[t-1]))
+            pr_sep = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[Z[t-1], N0[t-1],N1[t-1], ...]) ((RHO[t-1],Q[t-1]))
+            pr_sep1 = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star1[Z[t-1], N0[t-1],N1[t-1], ...]) ((RHO[t-1],Q[t-1]))            
+            Q[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[Z[t-1], N0[t-1],N1[t-1], ...]) ((RHO[t-1],Q[t-1]))
+            Vs[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[Z[t-1], N0[t-1],N1[t-1], ...]) ((RHO[t-1],Q[t-1]))
             w[t,1] = RHO[t]
             #Update probabilities for the data
             pr_j2j_array[F==1] = pr_j2j
@@ -826,7 +830,7 @@ class Simulator:
             #Update firm size
             N1[t] = ((F==1) & (S>1)).sum()
             if allow_hiring:
-                N0[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[Z[t-1], N0[t-1],N1[t-1], ...], bounds_error=False, fill_value=None) ((RHO[t-1],Q[t-1]))
+                N0[t] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.n0_star[Z[t-1], N0[t-1],N1[t-1], ...]) ((RHO[t-1],Q[t-1]))
                 #Discretize n0:
                 n0_int = np.floor(N0[t])
                 N0[t] = n0_int + np.random.binomial(1, N0[t]-n0_int)
@@ -836,7 +840,7 @@ class Simulator:
                 F[ni:ni+N0[t]] = 1 #these guys now employed
                 S[ni:ni+N0[t]] = 1 #they're juniors
                 D[ni:ni+N0[t]] = Event.u2e #they don't actually have to be hired from unemp btw           
-            w[t,0] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[Z[t], N0[t], N1[t], ...], bounds_error=False, fill_value=None) ((RHO[t],Q[t])) ) #Is this time inconsistent??? Given that prod is decided later?
+            w[t,0] = np.log(RegularGridInterpolator((model.rho_grid, model.Q_grid), model.w_jun[Z[t], N0[t], N1[t], ...]) ((RHO[t],Q[t])) ) #Is this time inconsistent??? Given that prod is decided later?
             W[ni:ni+N0[t]] = w[t,0] #junior wage paid
             ni = ni + N0[t] #add the extra workers 
 
@@ -845,9 +849,9 @@ class Simulator:
             I_sen = (F==1) & (S>1) #Seniors that didn't leave
             W[I_sen] = np.log(w[t,1])
             D[I_sen] = Event.ee
-            W1[I_sen] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[Z[t], N0[t], N1[t], ...,1], bounds_error=False, fill_value=None) ((RHO[t],Q[t]))
+            W1[I_sen] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[Z[t], N0[t], N1[t], ...,1]) ((RHO[t],Q[t]))
             #Firm info, added for every employed worker
-            P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[Z[t], N0[t], N1[t], ...], bounds_error=False, fill_value=None) ((RHO[t],Q[t]))
+            P[F==1] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[Z[t], N0[t], N1[t], ...]) ((RHO[t],Q[t]))
             Y[F==1] = np.log(prod[t])
             N0_array[F==1] = N0[t]
             N1_array[F==1] = N1[t]
@@ -1278,35 +1282,35 @@ class Simulator:
         return(moms_mean, moms_var,moms_unt_mean,moms_unt_var)
 
 #Okay, gotta debug
-def get_results_for_p(p,all_results):
+#def get_results_for_p(p,all_results):
     # Create the key as a tuple
     #key = (p.num_z,p.num_v,p.num_n,p.n_bar,p.num_q,p.q_0,p.prod_q,p.hire_c,p.k_entry,p.k_f,p.prod_alpha,p.dt)
-    key = (p.num_z,p.num_v,p.num_n,p.n_bar,p.num_q,p.q_0,p.prod_q,p.hire_c,p.prod_alpha,p.dt,p.u_bf_m)
+#    key = (p.num_z,p.num_v,p.num_n,p.n_bar,p.num_q,p.q_0,p.prod_q,p.hire_c,p.prod_alpha,p.dt,p.u_bf_m)
     # Check if the key exists in the saved results
-    if key in all_results:
-        print(key)
-        return all_results[key]
-    else:
-        print(f"No results found for p = {key}")
-        return None
-from primitives import Parameters
-p = Parameters()
-import pickle
-import matplotlib.pyplot as plt
-import numpy as np
-from plots import Plots
-import cProfile
-import pstats
-import os
+#    if key in all_results:
+#        print(key)
+#        return all_results[key]
+#    else:
+#        print(f"No results found for p = {key}")
+#        return None
+#from primitives import Parameters
+#p = Parameters()
+#import pickle
+#import matplotlib.pyplot as plt
+#import numpy as np
+#from plots import Plots
+#import cProfile
+#import pstats
+#import os
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-model_path = os.path.join(script_dir, "model_GE.pkl")
-print("Loading model from:", model_path)
-with open(model_path, "rb") as file:
-    all_results = pickle.load(file)
-model = get_results_for_p(p,all_results)
-sim = Simulator(model,p)
-sim.simulate_moments_rep(1)
+#script_dir = os.path.dirname(os.path.abspath(__file__))
+#model_path = os.path.join(script_dir, "model_GE.pkl")
+#print("Loading model from:", model_path)
+#with open(model_path, "rb") as file:
+#    all_results = pickle.load(file)
+#model = get_results_for_p(p,all_results)
+#sim = Simulator(model,p)
+#sim.simulate_moments_rep(1)
 
 
 """ 
