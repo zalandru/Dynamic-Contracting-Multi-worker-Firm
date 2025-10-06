@@ -396,10 +396,9 @@ def solve_policies(ite_num, rho_star, sep_star, foc_sep, sep_grid,
     for iz in prange(num_z):
         for iv in prange(num_v):
             for iq in prange(num_q):
-                        #if cond_rho:
-                        #rho_star[iz, iv, iq] = interp(0,
-                        #                                            foc[iz, :, iv, iq],
-                        #                                            rho_grid)
+                        rho_star[iz, iv, iq] = interp(0,
+                                                                    foc[iz, iv, :, iq],
+                                                                    rho_grid)
                         if ite_ge_20:
                             sep_star[iz, iv, iq] = interp(0,
                                                                     foc_sep[iz, iv, iq, :],
@@ -430,7 +429,14 @@ def Values_int(ERho_star,EW_star,ERho,EW,rho_grid,Q_grid,points,num_z):
         flat_result = multilinear_interp(points[iz], (( rho_grid, Q_grid)), EW[iz, ...])
         EW_star[iz,...] =  flat_result.reshape(shape)        
     return ERho_star,EW_star
-
+@nb.njit(cache=True)
+def get_EJpi(EJpi,q_star2,Q_grid,EJ,num_z,num_v,num_q):
+            for iz in prange(num_z):
+                for iv_current in prange(num_v):
+                    for iq in prange(num_q):
+                        for iv_future in prange(num_v):
+                            EJpi[iz,iv_current,iv_future,iq] = interp(q_star2[iz,iv_current,iq],Q_grid, EJ[iz,iv_future,:])
+            return EJpi
 class MultiworkerContract:
     """
         This solves a contract model with DRS production, hirings, and heterogeneous match quality.
@@ -473,8 +479,9 @@ class MultiworkerContract:
         # Production Function in the Model
         self.fun_prod_onedim = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
         self.fun_prod = self.fun_prod_onedim.reshape((self.p.num_z,) + (1,) * (self.J_grid.ndim - 1))
+        self.qual_prod_onedim =  1 * self.Q_grid  + self.p.prod_q * (1 - self.Q_grid)
         self.qual_prod = 1 * self.Q_grid[ax,ax,:]  + self.p.prod_q * (1 - self.Q_grid[ax,ax,:]) #Quality adjustment for the productivity
-        self.unemp_bf = self.p.u_bf_m #Half of the lowest productivity. Kinda similar to Shimer-like estimates who had 0.4 of the average
+        self.unemp_bf = self.p.u_bf_m 
 
         # Wage and Shadow Cost Grids
         self.w_grid = np.linspace(self.p.min_wage, self.fun_prod.max(), self.p.num_v ) #Note that this is not the true range of possible wages as this excludes the size part of the story
@@ -588,10 +595,10 @@ class MultiworkerContract:
         sep_star1 = np.zeros_like(J) #probably better to just make it multidimensional
         n1_star = np.zeros_like(J)   
         q_star  = np.zeros_like(J)   
-
+        EJpi = np.zeros((self.p.num_z, self.p.num_v, self.p.num_v, self.p.num_q))
 
         #Separations related variables
-        sep_grid = np.linspace(0,1,20)
+        sep_grid = np.linspace(0,0.95,19)
         n1_s = np.zeros((self.p.num_z, self.p.num_v, self.p.num_q, sep_grid.shape[0]))
         q_s = np.zeros_like(n1_s)
         foc_sep = np.zeros_like(n1_s)
@@ -613,25 +620,25 @@ class MultiworkerContract:
         self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, :, 0].max(),self.p.num_v)
         critU = 1
 
-        if update_eq:
-         while critU > 1e-3:
-            U2 = U
+        #if update_eq:
+        # while critU > 1e-1:
+        #    U2 = U
             #P_xv = self.matching_function(J[self.p.z_0-1, :, 0])
             #self.js.update(self.v_grid,P_xv)
             #relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
             #error_js = self.js.update(W[self.p.z_0-1, :, 0], P_xv, type=1, relax=relax)
-            _, ru, _ = self.getWorkerDecisions(U, employed=False)
-            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
-            U = 0.2 * U + 0.8 * U2
-            critU = np.abs(U-U2)
-        else: 
-         self.js.update(self.v_grid,self.prob_find_vx)
-         while critU > 1e-5:
-            U2 = U
-            _, ru, _ = self.getWorkerDecisions(U, employed=False)
-            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
-            U = 0.2 * U + 0.8 * U2
-            critU = np.abs(U-U2)
+        #    _, ru, _ = self.getWorkerDecisions(U, employed=False)
+        #    U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
+        #    U = 0.2 * U + 0.8 * U2
+        #    critU = np.abs(U-U2)
+        #else: 
+        # self.js.update(self.v_grid,self.prob_find_vx)
+        # while critU > 1e-1:
+        #    U2 = U
+        #    _, ru, _ = self.getWorkerDecisions(U, employed=False)
+        #    U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
+        #    U = 0.2 * U + 0.8 * U2
+        #    critU = np.abs(U-U2)
 
         for ite_num in range(self.p.max_iter):
             J2 = J
@@ -663,7 +670,6 @@ class MultiworkerContract:
             #The foc is supa basic:
             #rho_prime - rho = eta * EJ'(v',q') #For q, I can use q_star. Actually though, if I remember it correctly, this is slightly painful, can start with the basic version first ig?
             
-            #EJpi = np.interp(q_star2,Q_grid,EJ[]) #The complication is that q_star is a function of the current state, not the future state
             #Soo the foc would be with double iv, current (2nd dim) and future (last dim)
             #EJpi woould depend on both iv's. In a loop way, this would go like
             #for iz in range(self.p.num_z):
@@ -671,7 +677,8 @@ class MultiworkerContract:
             #        for iq in range(self.p.num_q):
             #            for iv_future in range(self.p.num_v):
             #                EJpi[iz,iv_current,iq,iv_future] = np.interp(q_star2[iz,iv_current,iq],Q_grid, EJ[iz,iv_future,:])
-            # foc = rho_grid[ax, ax, ax, :] - rho_grid[ax,:,ax,ax] -EJpi * log_diff[] / self.deriv_eps
+            EJpi = get_EJpi(EJpi,q_star2,Q_grid,EJ,self.p.num_z,self.p.num_v,self.p.num_q)
+            foc = rho_grid[ax, ax, :, ax] - rho_grid[ax, :, ax, ax] -EJpi * log_diff[:,ax,...] / self.deriv_eps #keep in mind that log_diff here is NOT accounting for future quality
             # But I guess log_diff would have to be similar as well ah... what a pain man. W/e, let's do that later if we want
             
 
@@ -680,27 +687,38 @@ class MultiworkerContract:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
 
             #FOC for future Rho
-            EJpi = EJ
-            foc = rho_grid[ax, :, ax] - EJpi * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
-            for iz in range(self.p.num_z):
-                for iq in range(self.p.num_q):
-                    rho_star[iz, :, iq] = np.interp(rho_grid,
-                                                              impose_increasing(foc[iz, :, iq]),
-                                                              rho_grid)
+            #EJpi = EJ
+            #foc = rho_grid[ax, :, ax] - EJpi * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
+            #for iz in range(self.p.num_z):
+            #    for iq in range(self.p.num_q):
+            #        rho_star[iz, :, iq] = np.interp(rho_grid,
+            #                                                  impose_increasing(foc[iz, :, iq]),
+            #                                                  rho_grid)
 
             #FOC for Separations
             if ite_num>=20:
                 #WHAT IF. We just do a direct derivative wrt s??? Like, we know what q_s and n1_s are. Inteprolate directly onto them, which will already give us the total derivative of J wrt s, no?
-                q_s = np.fmin(q[...,ax] / (1-sep_grid_exp),1)               
+                #q_s = np.fmin(q[...,ax] / (1-sep_grid_exp),1)
+                q_s = np.fmin(self.Q_grid[:,ax] / (1-sep_grid[ax,:]),1)               
                 sep_star0 = np.copy(sep_star)
                 sep_star[...] = 0
                   
                 ERho_s = ERho - rho_grid[ax,:,ax] * EW
-                points = []
-                rho_sz = np.repeat(rho_star2[...,ax], sep_grid.shape[0], axis=-1)
+                #points = []
+                #rho_sz = np.repeat(rho_star2[...,ax], sep_grid.shape[0], axis=-1)
+                #for iz in range(self.p.num_z):
+                #    points.append( tuple_into_2darray((rho_sz[iz, ...], q_s[iz,...])))
+                #J_s = Js_int(J_s,ERho_s,rho_grid,Q_grid,points,self.p.num_z)
+                #Alternatively, I can double interpolate this?
+                J_s_f = np.zeros_like(J)
                 for iz in range(self.p.num_z):
-                    points.append( tuple_into_2darray((rho_sz[iz, ...], q_s[iz,...])))
-                J_s = Js_int(J_s,ERho_s,rho_grid,Q_grid,points,self.p.num_z)
+                    for iq in range(self.p.num_q):
+                        J_s_f[iz,:,iq] = np.interp(rho_star[iz,:,iq],self.rho_grid,ERho_s[iz,:,iq]) #First, we interpolate the v component, always the same
+                J_s = np.zeros_like(J_s_deriv) + J_s_f[...,ax]
+                for iz in range(self.p.num_z):
+                 for iv in range(self.p.num_v):
+                    for iq in range(self.p.num_q):                
+                        J_s[iz,iv,iq,:] = np.interp(q_s[iq,:],self.Q_grid,J_s_f[iz,iv,:])# Next, interpolate the future quality component. So we get EJ'(rho*,q'(q,sep))
 
                 J_s_deriv[...,0] = ((1-sep_grid[1]) * J_s[...,1] - (1-sep_grid[0]) * J_s[...,0]) / (sep_grid[1] - sep_grid[0])
                 J_s_deriv[...,-1] = ((1-sep_grid[-1]) * J_s[...,-1] - (1-sep_grid[-2]) * J_s[...,-2]) / (sep_grid[-1] - sep_grid[-2]) 
@@ -793,21 +811,21 @@ class MultiworkerContract:
                         break
                     # ------ or update search fsunction parameter using relaxation ------
                     else:
-                            P_xv = self.matching_function(Jp[self.p.z_0-1, :, 0])
+                            P_xv = self.matching_function(J[self.p.z_0-1, :, 0])
                             relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
                             #error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
                             error_js = self.js.update(W[self.p.z_0-1, :, 0], P_xv, type=1, relax=relax)
                             #error_js = self.js.update(self.v_grid, P)
                             #self.js.update(self.v_grid,P)
                             #Update U multiple times
-                            critU= 1
-                            while critU > 1e-3:
-                                U2 = U
-                                EU = U
-                                _, ru, _ = self.getWorkerDecisions(EU, employed=False)
-                                U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
-                                U = 0.2 * U + 0.8 * U2
-                                critU = np.abs(U-U2)/U2                            
+                            #critU= 1
+                            #while critU > 1e-1:
+                            #    U2 = U
+                            #    EU = U
+                            #    _, ru, _ = self.getWorkerDecisions(EU, employed=False)
+                            #    U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
+                            #    U = 0.2 * U + 0.8 * U2
+                            #    critU = np.abs(U-U2)/U2                            
 
                 else:
                     # -----  check for termination ------
@@ -892,83 +910,14 @@ class MultiworkerContract:
             all_results = {}
             print("No existing file found. Creating a new one.")
         # Use a tuple as the key
-        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt,self.p.u_bf_m)
+        key = (self.p.num_z,self.p.num_v,self.p.z_corr,self.p.prod_var_z,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.s_job,self.p.kappa,self.p.dt,self.p.u_bf_m,self.p.min_wage)
         
         all_results[key] = self
         #Save the updated dictionary back to the pickle file        
         with open(filename, "wb") as output_file:
             pickle.dump(all_results, output_file)
         print(f"Results for p = {key} have been appended to {filename}.")
-    def GE(self,EJ,W,kappa_old=None,J=None,n0_star=None):
-        #Find kappa, which is the hiring cost firms have to pay per worker unit
-        #BIG NOTE: For now I'm assuming that all the firms start at the same productivity level, p.z_0-1, rather than the Schaal assumption of them drawing their productivity upon entering.
-        #Quick method: Envelope Theorem
-        if (kappa_old is not None) and (n0_star[self.p.z_0-1,0,0,0,0] > 0) and (n0_star[self.p.z_0-1,0,0,0,0] <= 0):
-            print("Fast kappa method")
-            kappa = np.divide( -self.p.k_entry + J[self.p.z_0-1,0,0,0,0] + n0_star[self.p.z_0-1,0,0,0,0] * kappa_old, n0_star[self.p.z_0-1,0,0,0,0] )
-        else:
-        #Slow precise method: Directly compute all this
-            print("Slow kappa method")
-            kappa_grid = np.linspace(0,50,50)
-            n0_k = np.zeros((50))
-            J_diff = (EJ[self.p.z_0-1,1:,0,0,0] - EJ[self.p.z_0-1,:-1,0,0,0] ) / (self.N_grid[1:] - self.N_grid[:-1])
-            n0_k[:] = np.interp(-kappa_grid / self.p.beta,impose_increasing(-J_diff),self.N_grid[1:])
-            n0_k[(EJ[self.p.z_0-1,1,0,0,0] - EJ[self.p.z_0-1,0,0,0,0]) / (self.N_grid[1] - self.N_grid[0]) - kappa_grid / self.p.beta <= 0] = 0
-            entry = -n0_k * kappa_grid -self.p.k_f + self.p.beta * np.interp(n0_k,self.N_grid,EJ[self.p.z_0-1,:,0,0,0])
-            entry = - kappa_grid - self.p.k_f + self.p.beta *EJ[self.p.z_0-1,1,0,0,0] #Simplifying assumption: entering firms always just hire 1 guy
-            kappa = np.interp(-self.p.k_entry,impose_increasing(-entry),kappa_grid)
 
-        #Smoothing the kappa
-        if kappa_old is not None:
-            smooth = 0.1
-            kappa = smooth * kappa + (1-smooth) * kappa_old
-        
-
-        print("kappa", kappa)
-        #if kappa_old is not None:
-        #    print("difference between the two methods")
-        #Find the sign-on bonus
-        # Sign-on formula: u(w*(1-beta))/(1-beta)+beta*v_0=v_m. This is basically allowing the worker to split their bonus forever
-        # The issue with this is that, theoretically, this should then impact all worker future utility...
-        # Man I didn't expect this to be such an annoying bottleneck
-        # For now, try this still: u(w*(1-beta)) = (v_m - beta*v_0) * (1-beta), so w=u^{-1}[(v_m - beta*v_0) * (1-beta)] / (1-beta)
-        # Okay, this didn't work lmao
-        # Instead, augment v_0 somehow??? util( inv_util[v_0 * (1-beta)] + signon * (1-beta) ) / (1-beta) = v_m
-        #assert np.all((EW - self.p.beta * self.v_0) * (1-self.p.u_rho) + 1 >= 0)
-        #signon_bonus = self.pref.inv_utility(self.v_grid - self.p.beta * self.v_0)
-        signon_bonus = self.pref.inv_utility(self.v_grid - self.v_0) - self.pref.inv_utility(self.v_grid[0] - self.v_0) #-1 to compensate the initial difference
-        #Andrei: WTF is this sign_on bonus?? I can't even back out the initial formula here. The 2nd part is super confusing
-        #u(w_bon)+v_0=v_m makes sense. the 2nd part doesnt. I guess it's some kind of correction?? In case v_grid[0]<v_0? But I don't see how it could be theoretically founded...
-        #u(w_bon+u^-1(v_grid[0]-v_0))+v_0=v_m is the original formula here #Is the idea here to normalize w_bon to 0? I think so, right???
-        #So this guy isn't tooooooooooo bad... but it still blows up super quickly
-        #An alternative could be that, upon being signed, they get the bonus wage in addition to the unemp production
-        # u(w_bon+unemp.bf)+beta*v_0=v_m, so w_bon = u^{-1}(v_m-beta*v_0)-unemp.bf
-        #signon_bonus = self.pref.inv_utility(self.v_grid - self.p.beta * self.v_0)-self.unemp_bf
-        #By the way, is the timing... working out? Because like this I'm very explicitly stating that, upon hiring, workers have 1 period of being useless.
-        #Moreover, that period is not part of the unemployment period, like this I would genuinely have a worker be useless for 1 period.
-
-
-        #signon_bonus = self.pref.inv_utility((self.v_grid - self.p.beta * self.v_0) * (1 - self.p.beta)) / (1 - self.p.beta) #This is the bonus firms have to pay right upon hiring
-        #signon_bonus = (self.pref.inv_utility(self.v_grid * (1 - self.p.beta)) - self.pref.inv_utility(self.v_0 * (1 - self.p.beta))) / (1 - self.p.beta)
-        signon_bonus[signon_bonus < 0] = 0
-        #Another signon bonus alternative: just linear!!!
-        #signon_bonus = self.v_grid - self.p.beta * self.v_0
-        #print("signon", signon_bonus)
-
-        # Given kappa, find the tightness
-        q=np.minimum(self.p.hire_c/(kappa-signon_bonus),1)
-        #print("q",q)
-        theta = self.pref.q_inv(q)
-        theta[signon_bonus>kappa-self.p.hire_c]=0 #Hiring cost should be lower now, since chance of hiring<1 AND firms have to pay the sign-on
-
-        #This is eqUvalent to kappa < sign-on + hire_c/1, suggesting that we need q>1. OR, if sign-on>kappa, that we need q<0.
-        #Get the job-finding probability for each submarket
-        P = q * theta
-        print("P",P)
-        #plt.plot(self.v_grid, P, label='Probability of finding a job across submarkets')       
-        #plt.show() # this will load image to console before executing next line of code
- 
-        return kappa, P
     def append_results_to_pickle(self, J, W, U, Rho, P, kappa, EW_star, sep_star, pickle_file="results_GE.pkl"):
         # Step 1: Load the existing data from the pickle file
         try:
@@ -982,8 +931,7 @@ class MultiworkerContract:
         new_results = self.save_results_for_p(J, W, U, Rho, P, kappa, EW_star, sep_star)
 
         # Step 3: Use a tuple (p.num_z, p.num_v, p.num_n) as the key
-        key = (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt,self.p.u_bf_m)
-
+        key = (self.p.num_z,self.p.num_v,self.p.z_corr,self.p.prod_var_z,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.s_job,self.p.kappa,self.p.dt,self.p.u_bf_m,self.p.min_wage)
         # Step 4: Add the new results to the dictionary
         all_results[key] = new_results
 
@@ -1004,7 +952,7 @@ class MultiworkerContract:
         'kappa': kappa,
         'EW_star': EW_star,
         'sep_star': sep_star,
-        'p_value': (self.p.num_z,self.p.num_v,self.p.num_n,self.p.n_bar,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.hire_c,self.p.prod_alpha,self.p.dt,self.p.u_bf_m)
+        'p_value': (self.p.num_z,self.p.num_v,self.p.z_corr,self.p.prod_var_z,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.s_job,self.p.kappa,self.p.dt,self.p.u_bf_m,self.p.min_wage)
     }    
     def construct_z_grid(self):
         """
@@ -1041,10 +989,13 @@ class MultiworkerContract:
                                 1 / self.p.sigma) #Andrei: the formula of their matching function, applied to each particula job value J1       
         
         
-         
-#from primitives import Parameters
-#p = Parameters()
+
+def debug():     
+    from primitives import Parameters
+    p = Parameters()
 
 
-#mwc_GE=MultiworkerContract(p)
-#model=mwc_GE.J_sep(update_eq=0,s=20.0)
+    mwc_GE=MultiworkerContract(p)
+    model=mwc_GE.J_sep(update_eq=1,s=20.0)
+
+#debug()
