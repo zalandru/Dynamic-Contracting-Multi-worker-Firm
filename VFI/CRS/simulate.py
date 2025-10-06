@@ -98,6 +98,13 @@ def create_lag_i(df,time_col,colnames,lag):
     # join and return
     return(df.join(dlag))
 
+def create_year_lag_by(df, colnames, lag, by=('i','firm_spell_id'), time='year'):
+    sfx = f"_l{lag}" if lag > 0 else f"_f{-lag}"
+    base = df.reset_index().sort_values(list(by) + [time])
+    for c in colnames:
+        base[c + sfx] = base.groupby(list(by))[c].shift(lag)
+    return base
+
 
 def create_lag(df,time_col,colnames,lag):
     """ the table should be index by i,year
@@ -324,6 +331,7 @@ class Simulator:
         P  = np.zeros(ni)            # firm profit
         S  = np.zeros(ni,dtype=int)  # number of periods in current spell
         pr = np.zeros(ni)            # probability, either u2e or e2u
+        N  = np.zeros(ni)            # number of workers in an onservation
 
         # we create a long sequence of firm innovation shocks where we store
         # a sequence of realized Z, we store realized Z_t+1 | Z_t for each
@@ -372,6 +380,7 @@ class Simulator:
                 P[Ix_u2e]  = vf_interpolator[p.z_0-1] (coords)
                 #np.interp(R[Ix_u2e], model.rho_grid, model.Vf_J[p.z_0-1,:,0])  # interpolate wage
                 S[Ix_u2e]  = 1
+                N[Ix_u2e]  = 1
 
                 # workers not finding a job
                 Ix_u2u     = bool_index_combine(Ix,~meet_u2e)
@@ -458,11 +467,14 @@ class Simulator:
                 df_all = pd.concat([df_all, df], axis =0)
 
         # append match output
-        df_all['f'] = model.fun_prod[(df_all.z, df_all.x)]
+        df_all['f'] = model.fun_prod_onedim[(df_all.z)] * np.interp(df_all.q,model.Q_grid,model.qual_prod_onedim)
         df_all.loc[df_all.e==0,'f'] = 0
 
         # construct a year variable called t4
         df_all['year'] = (df_all['t'] - (df_all['t'] % 4))//4
+
+        #construct yearly tenure
+        df_all['tenure'] = np.floor(df_all['s'] / 4)
 
         # make earnings net of taxes (w is in logs here)
         df_all['w_gross'] = df_all['w']      
@@ -475,6 +487,13 @@ class Simulator:
         # measurement error is outside the model, so we apply it after the taxes
         if INCLUDE_WERR:
             df_all['w'] = df_all['w'] + p.prod_err_w * np.random.normal(size=len(df_all['w']))
+
+        #Firm id
+        df_all['fid'] = np.where(
+            df_all['h'] >= 0,
+            (df_all['h'] - (df_all['s'] - 1)) % nl,  # nl
+            -1
+            ).astype(int)
 
         # sort the data
         df_all = df_all.sort_values(['i', 't'])
@@ -960,7 +979,7 @@ class Simulator:
         # ------  earnings and value added moments at yearly frequency  -------
         # compute firm output and sizes at year level
         hdata = (sdata.set_index(['i', 't'])
-                      .pipe(create_lag_i, 't', ['d'], -1)
+                      .pipe(create_lag_i, 't', ['d'], -1) #is this a yearly or a quarterly lag? I think this is a quarterly one, no?
                       .reset_index()
                       .query('h>=0')
                       .assign(c_e2u=lambda d: d.d_f1 == Event.e2u,
@@ -998,13 +1017,27 @@ class Simulator:
         moms['cov_dydy_l4'] = cov['dlypwe']['dlypwe_l4']
 
         # compute wages at the yearly level, for stayers
+
         sdata['s2'] = sdata['s']
         sdata['es'] = sdata['e']
         sdata['w_exp'] = np.exp(sdata['w'])
-        sdata['e2u'] = sdata['d'].eq(Event.e2u).astype(int)
 
-        sdata_y = sdata.groupby(['i', 'year']).agg({'w_exp': 'sum', 'h': 'min', 's': 'min', 's2': 'max', 'e': 'min', 'es': 'sum', 'e2u': 'max'})
-        sdata_y = sdata_y.pipe(create_year_lag, ['e', 's'], -1).pipe(create_year_lag, ['e', 'es','e2u'], 1)
+        sdata_y_f = (sdata.set_index(['i', 't'])
+                      .pipe(create_lag_i, 't', ['d'], -1)
+                      .reset_index()
+                      .assign(e2u=lambda d: d.d_f1 == Event.e2u)) #Now THIS is the correct layoff, just like in hdata
+        sdata_y_f = sdata_y_f.groupby(['i', 'year','fid']).agg({'w_exp': 'mean', 's': 'min', 's2': 'max', 'e': 'min','es': 'sum', 'e2u': 'max', 'tenure' : 'max', 'h': 'min'}).query('fid>=0') #note that w_exp is averaged, not summed!!! so that the number of quarters employed wouldnt matter
+        #wait... but h is... changing every year, too!!!
+        sdata_y_f['w'] = np.log(sdata_y_f['w_exp'])
+        sdata_y_f = (sdata_y_f.join(hdata.ypw, on="h")
+               .pipe(create_year_lag_by, ['w','ypw','tenure'], 1, by=('i','fid'))
+               .assign(dw=lambda d: d.w - d.w_l1,
+                       dypw=lambda d: d.ypw - d.ypw_l1,
+                       dten=lambda d: d.tenure - d.tenure_l1)
+                .query('dten >= 0')) #because I do this create_year_lag_by, the wage and prod differences are already only within the same firm, unless it just happens to be reused
+        #however, dten is negative sometimes... what gives?
+        sdata_y = sdata.groupby(['i', 'year']).agg({'w_exp': 'sum', 'h': 'min', 's': 'min', 's2': 'max', 'e': 'min', 'es': 'sum'}) #wait, do I want the sum of the wages here? I guess if the workers are here the whole time, it's no biggie?
+        sdata_y = sdata_y.pipe(create_year_lag, ['e', 's'], -1).pipe(create_year_lag, ['e', 'es'], 1)
         # make sure we stay in the same spell, and make sure it is employment
         sdata_y = sdata_y.query('h>=0').query('s+3==s2')
         sdata_y['w'] = np.log(sdata_y['w_exp'])
@@ -1052,8 +1085,20 @@ class Simulator:
                                     .assign(diff=lambda d: d.w - d.w_l2)['diff'].mean())
 
         #Andrei: extra moments of my own
+        #I think I need my own dataset, just like the french one, where oone observation is worker*firm*year
+        #sdata_y_h = sdata.groupby(['i', 'year','h']).agg({'w_exp': 'sum', 's': 'min', 's2': 'max', 'e': 'min','es': 'sum', 'e2u': 'max', 'u2e': 'max','j2j': 'max'}) #here e=0 will only exist if H=-1
+        #sdata_y_h = sdata_y_h.pipe(create_year_lag, ['e', 's','e2u'], -1).pipe(create_year_lag, ['e', 'es'], 1) #wait, should'nt the e2u lag be forward rather than behind? because, if it's behind, this guy has alrdy been fired and now found a new job
+        #sdata_y_h = sdata_y_h.query('h>=0') #only employed.
+        #sdata_y_h['w'] = np.log(sdata_y_h['w_exp'])        
+        #sdata_y_h = (sdata_y_h.join(hdata.ypw, on="h")
+        #            .pipe(create_year_lag, ['ypw', 'w', 's'], 1)
+        #            .assign(dw=lambda d: d.w - d.w_l1,
+        #                  dypw=lambda d: d.ypw - d.ypw_l1))
         #1. Rate of new hires out of all the employed workers
         moms['pr_new_hire'] = sdata.eval('s==1 & e==1').sum() / sdata.eval('e==1').sum()
+        #moms['pr_new_hire_an'] = sdata_y_h.eval('s==1 & e==1').sum() / sdata_y_h.eval('e==1').sum() #Not sure if this works, since we query that the workers are stayers... for the whole year too
+        #moms['pr_new_hire_an_alt'] = sdata_y_h.eval('(u2e==1 | j2j ==1) & e==1').sum() / sdata_y_h.eval('e==1').sum() #Here I am directly checking for the event. yep, all 3 are the same...
+        #This must be because there're too few unemployed people!!! I don't see no oother reason
         #2. Tenure profile of wages at 7.5 years (how did Souchier do that?)
         # Step 1: Keep only employed individuals
         #employed = sdata_y.sort_values(['i', 'year']).copy()
@@ -1107,7 +1152,7 @@ class Simulator:
         
         del wid_2spells 
         #del sdata_y 
-        self.sdata_y = sdata_y
+        self.sdata_y = sdata_y_f #Note that this is the h one!!!
 
         self.moments = moms
         return self
@@ -1130,9 +1175,9 @@ class Simulator:
         # Regress log wage growth on the interaction between tenure and firm productivity shock 
         #We get hdata['id_shock_sum'] as the cumulative log shock over the 3 years
         #employed['tenure'] = employed['s']
-        model_wage_ten = feols('dw ~ i(s, dypw)', data=sdata_y)
+        model_wage_ten = feols('dw ~ i(tenure, dypw)', data=sdata_y)
         moms_untarg['wage_pass_ten'] = model_wage_ten.coef() #This is HUGE so far. more than 1 for S==2!!!  Even bigger if I use id_shock_diff??? Surprising ngl
-        model_wage_ten = feols('dw ~ dypw + s * dypw', data=sdata_y) #the dypw coefficient is negative????
+        model_wage_ten = feols('dw ~ dypw + tenure * dypw', data=sdata_y) #the dypw coefficient is negative????
         moms_untarg['wage_pass_ten_simple'] = model_wage_ten.coef()  
         #It's also very weird after the first 2 tenures for some reason
         #Ah shit, should I actually be looking at the first 2 guys?? 
@@ -1142,11 +1187,11 @@ class Simulator:
         # And then you don't wanna raise wages much in anticipation of future seniors? That kinda sucks ngl. 
         # Is there any way to deal with this outside of more steps? Maybe I don't let firms internalize the combination???
         # But then the value function is quite literally incorrect! Okay gotta focus some more on Neural Nets ig
-        model_e2u_ten = feols('e2u_l1 ~ C(s)', data=sdata_y)
+        model_e2u_ten = feols('e2u ~ C(tenure)', data=sdata_y)
         moms_untarg['sep_ten'] = model_e2u_ten.coef() #So far it's only juniors getting fired. Surprisingly, their firing rates are not very high, only 8%      
-        model_e2u_pass_ten = feols('e2u_l1 ~ i(s, dypw)', data=sdata_y)
+        model_e2u_pass_ten = feols('e2u ~ i(tenure, dypw)', data=sdata_y)
         moms_untarg['sep_pass_ten'] = model_e2u_pass_ten.coef()        
-        model_e2u_pass_ten = feols('e2u_l1 ~ dypw + s * dypw', data=sdata_y)
+        model_e2u_pass_ten = feols('e2u ~ dypw + tenure * dypw', data=sdata_y)
         moms_untarg['sep_pass_ten_simple'] = model_e2u_pass_ten.coef()  #exactly as we would expect! Negative id_shock_sum coef (-0.08), negative basic tenure coef (very small though? -0.002), POSITIVE interaction term, meaning that layoffs of seniors respond less to shock     
         self.moments_untargeted = moms_untarg
         return self
@@ -1224,7 +1269,7 @@ def debug(load):
     def get_results_for_p(p,all_results):
         # Create the key as a tuple
         #key = (p.num_z,p.num_v,p.num_n,p.n_bar,p.num_q,p.q_0,p.prod_q,p.hire_c,p.k_entry,p.k_f,p.prod_alpha,p.dt)
-        key = (p.num_z,p.num_v,p.num_n,p.n_bar,p.num_q,p.q_0,p.prod_q,p.hire_c,p.prod_alpha,p.dt,p.u_bf_m)
+        key = (p.num_z,p.num_v,p.z_corr,p.prod_var_z,p.num_q,p.q_0,p.prod_q,p.s_job,p.kappa,p.dt,p.u_bf_m,p.min_wage)
         #    # Check if the key exists in the saved results
         if key in all_results:
             print(key)
@@ -1250,11 +1295,11 @@ def debug(load):
             all_results = pickle.load(file)
             model = get_results_for_p(p,all_results)
     else:
-        from Multiworker_Contract_J import MultiworkerContract
+        from Multiworker_Contract_GE_JITted import MultiworkerContract
         mwc_J=MultiworkerContract(p)
         model=mwc_J.J_sep(update_eq=0,s=40)
 
     sim = Simulator(model,p)
     sim.simulate_val().computeMoments().model_evaluation()
 
-debug(load=True)
+#debug(load=True)
