@@ -500,6 +500,8 @@ class Simulator:
 
         self.sdata = df_all
         return(self)
+
+
     def simulate_firm(self,z,n0,n1,rho,q,nt, allow_hiring=True,allow_fire=True,allow_leave=True,update_z=False, z_dir=None,seed=False,disable_fire=False):
         """
         simulates a path of a particular firm from initial state [z,n0,n1,rho,q]
@@ -814,22 +816,20 @@ class Simulator:
         all_df['n'] = all_df['n0'].values + all_df['n1'].values              
         return all_df
 
-    def simulate_force_ee(self,X0,Z0,H0,R0,nt,update_x=True, update_z=True, pb=False):
+    def simulate_force_ee(self,Q0,Z0,H0,R0,nt, update_z=True, pb=False):
         """
         init should give the vector of initial values of X,Z,rho
         we start from this initial value and simulate forward
         one can choose to update x, z using update_z and update_x
         one can choose to show a progress bar with pb=True
         """
-        X  = X0.copy() # current value of the X shock
         R  = R0.copy() # current value of rho
         H  = H0.copy() # location in the firm shock history (so that workers share common histories)
         Z  = Z0.copy() # location in the firm shock history (so that workers share common histories)
-
-        ni = len(X)
+        Q  = Q0.copy() # cohort quality
+        ni = len(Z)
         W  = np.zeros(ni)     # log-wage
         W1 = np.zeros(ni)     # value to the worker
-        Ef = np.zeros(ni)     # effort
         Vs = np.zeros(ni)     # search decision
         tw = np.zeros(ni)     # target wage
 
@@ -841,7 +841,24 @@ class Simulator:
         model = self.model
         nl = self.Zhist.shape[1]
         all_df = []
-
+        #Initialize interpolators
+        rho_interpolator = np.empty(self.p.num_z, dtype=object)
+        j2j_interpolator = np.empty_like(rho_interpolator)
+        sep_interpolator = np.empty_like(rho_interpolator)
+        q_interpolator = np.empty_like(rho_interpolator)
+        ve_interpolator = np.empty_like(rho_interpolator)
+        vf_interpolator = np.empty_like(rho_interpolator)
+        vf_w_interpolator = np.empty_like(rho_interpolator)
+        rhoj2j_interpolator = np.empty_like(rho_interpolator)
+        for iz in range(self.p.num_z):     
+                    rho_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[iz, ...]) 
+                    j2j_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.pe_star[iz, ...]) 
+                    sep_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.sep_star[iz, ...]) 
+                    q_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[iz, ...]) 
+                    ve_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[iz, ...])
+                    vf_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[iz, ...])
+                    vf_w_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[iz, ...])
+                    rhoj2j_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_j2j[iz, ...])
         if pb:
             rr = tqdm(range(nt))
         else:
@@ -850,38 +867,31 @@ class Simulator:
         for t in rr:
 
             # we store the outcomes at the current state
-            for ix in range(self.p.num_x):
-                for iz in range(self.p.num_z):
-                    Ixz_ee = (X == ix) & (Z == iz)
+            for iz in range(self.p.num_z):
+                    Ixz_ee = (Z == iz)
                     if Ixz_ee.sum() == 0: continue
-
-                    Y[Ixz_ee] = np.log(model.fun_prod[iz,ix])
-                    pr_sep[Ixz_ee] = np.interp( R[Ixz_ee], model.rho_grid , model.qe_star[iz,:,ix])
-                    pr_j2j[Ixz_ee] = np.interp( R[Ixz_ee], model.rho_grid , model.pe_star[iz,:,ix])
+                    coords = np.column_stack((R[Ixz_ee], Q[Ixz_ee]))
+                    Y[Ixz_ee] = np.log(model.fun_prod_onedim[iz]) #* np.interp(Q[Ixz_ee],model.Q_grid,model.qual_prod_onedim) This is productivity WITHOUT quality!!!
+                    pr_sep[Ixz_ee] = sep_interpolator[iz] (coords)
+                    pr_j2j[Ixz_ee] = j2j_interpolator[iz] (coords)
                     W[Ixz_ee] = np.interp(R[Ixz_ee], model.rho_grid, np.log(model.w_grid))  # interpolate wage
-                    W1[Ixz_ee] = np.interp(R[Ixz_ee], model.rho_grid, model.Vf_W1[iz, :, ix] )  # value to the worker
-                    P[Ixz_ee] = np.interp(R[Ixz_ee], model.rho_grid, model.Vf_J[iz, :, ix])  # interpolate firm Expected profit 
-                    Vs[Ixz_ee] = np.interp(R[Ixz_ee], model.rho_grid, model.ve_star[iz, :, ix])  # interpolate firm Expected profit 
-                    tw[Ixz_ee] = np.log(model.target_w[iz,ix])
+                    W1[Ixz_ee] = vf_w_interpolator[iz] (coords)  # value to the worker
+                    P[Ixz_ee] = vf_interpolator[iz] (coords)  # interpolate firm Expected profit 
+                    Vs[Ixz_ee] = ve_interpolator[iz] (coords)
+                    tw[Ixz_ee] = np.log(np.interp(Q[Ixz_ee],model.Q_grid,model.target_w[iz,:]))
 
-            ef = np.log(model.pref.inv_utility(model.pref.effort_cost(pr_sep)))
             all_df.append(pd.DataFrame({ 'i':range(ni),'t':t, 'h':H, 
-                'x':X , 'z':Z, 'r':R, 'w':W , 'Pi':P, 
-                'pr_e2u':pr_sep, 'pr_j2j':pr_j2j , 'y':Y, 'W1':W1, 'vs':Vs, 
-                'target_wage':tw, 'effort': ef }))
+                'q':Q , 'z':Z, 'r':R, 'w':W , 'Pi':P, 
+                'pr_e2u':pr_sep, 'pr_j2j':pr_j2j , 'y':Y, 'W1':W1, 'vs':Vs, 'target_wage':tw}))
+                
 
             # we update the different shocks
-            for ix in range(self.p.num_x):
-                for iz in range(self.p.num_z):
-                    Ixz_ee = (X == ix) & (Z == iz)
+            for iz in range(self.p.num_z):
+                    Ixz_ee = (Z == iz)
                     if Ixz_ee.sum() == 0: continue
-                    R[Ixz_ee] = np.interp(R[Ixz_ee], model.rho_grid, model.rho_star[iz,:,ix]) # find the rho using law of motion
-
-            if update_x:
-                for ix in range(self.p.num_x):
-                    Ixz_ee = (X == ix) 
-                    if Ixz_ee.sum() == 0: continue
-                    X[Ixz_ee] = np.random.choice(self.p.num_x, Ixz_ee.sum(), p=model.X_trans_mat[:,ix])
+                    coords = np.column_stack((R[Ixz_ee], Q[Ixz_ee]))
+                    R[Ixz_ee] = rho_interpolator[iz] (coords) # find the rho using law of motion
+                    Q[Ixz_ee] = q_interpolator[iz] (coords)
 
             if update_z:
                 for iz in range(self.p.num_z):
@@ -974,6 +984,7 @@ class Simulator:
 
         moms['pr_u2e'] = (d.eq(Event.u2e)).sum() / (d.isin([Event.u2e, Event.uu])).sum()
         moms['pr_j2j'] = (d.eq(Event.j2j)).sum() / (d.isin([Event.j2j, Event.ee, Event.e2u])).sum()
+        moms['pr_j2j_an'] = 1 - ( 1 - moms['pr_j2j']) ** 4 
         moms['pr_e2u'] = (d.eq(Event.e2u)).sum() / (d.isin([Event.j2j, Event.ee, Event.e2u])).sum()
 
         # ------  earnings and value added moments at yearly frequency  -------
@@ -1025,8 +1036,8 @@ class Simulator:
         sdata_y_f = (sdata.set_index(['i', 't'])
                       .pipe(create_lag_i, 't', ['d'], -1)
                       .reset_index()
-                      .assign(e2u=lambda d: d.d_f1 == Event.e2u)) #Now THIS is the correct layoff, just like in hdata
-        sdata_y_f = sdata_y_f.groupby(['i', 'year','fid']).agg({'w_exp': 'mean', 's': 'min', 's2': 'max', 'e': 'min','es': 'sum', 'e2u': 'max', 'tenure' : 'max', 'h': 'min'}).query('fid>=0') #note that w_exp is averaged, not summed!!! so that the number of quarters employed wouldnt matter
+                      .assign(e2u=lambda d: d.d_f1 == Event.e2u)) #Now THIS is the correct layoff, just like in hdata. to be clear, this is forwarded by just 1 quarter. but that's fine, since otherwise the layoff would be for next year alrdy
+        sdata_y_f = sdata_y_f.groupby(['i', 'year','fid']).agg({'w_exp': 'mean', 's': 'min', 's2': 'max', 'e': 'min','es': 'sum', 'e2u': 'max', 'tenure' : 'min', 'h': 'min'}).query('fid>=0') #note that w_exp is averaged, not summed!!! so that the number of quarters employed wouldnt matter
         #wait... but h is... changing every year, too!!!
         sdata_y_f['w'] = np.log(sdata_y_f['w_exp'])
         sdata_y_f = (sdata_y_f.join(hdata.ypw, on="h")
@@ -1095,7 +1106,8 @@ class Simulator:
         #            .assign(dw=lambda d: d.w - d.w_l1,
         #                  dypw=lambda d: d.ypw - d.ypw_l1))
         #1. Rate of new hires out of all the employed workers
-        moms['pr_new_hire'] = sdata.eval('s==1 & e==1').sum() / sdata.eval('e==1').sum()
+        #moms['pr_new_hire_s'] = sdata.eval('s==0 & e==1').sum() / sdata.eval('e==1').sum()
+        moms['pr_new_hire'] = sdata.eval('tenure==0 & e==1').sum() / sdata.eval('e==1').sum() #this is more precise, no?
         #moms['pr_new_hire_an'] = sdata_y_h.eval('s==1 & e==1').sum() / sdata_y_h.eval('e==1').sum() #Not sure if this works, since we query that the workers are stayers... for the whole year too
         #moms['pr_new_hire_an_alt'] = sdata_y_h.eval('(u2e==1 | j2j ==1) & e==1').sum() / sdata_y_h.eval('e==1').sum() #Here I am directly checking for the event. yep, all 3 are the same...
         #This must be because there're too few unemployed people!!! I don't see no oother reason
@@ -1117,8 +1129,8 @@ class Simulator:
 
         # optional: drop growth if last observation wasn’t the immediately prior period
         #sdata_y.loc[employed['t_prev'] != employed['t'] - 1, 'w_growth_rate'] = np.nan
-        employed = sdata_y.copy().query(' s<= 32') #4 periods per year, 8 years
-        moms['avg_w_growth_7'] = employed.groupby('s')['dw'].mean().sum() #But wait, this is the average for all tenure
+        employed = sdata_y_f.copy().query(' tenure<= 9') #tenure starts at zero, so 10 years!!!
+        moms['avg_w_growth_10'] = employed.groupby('tenure')['dw'].mean().sum()
         #3. Productivity moments
         #a) s.d. of firm productivity growth (take sd of dypw?) yep, this is exactly what we do in the data
         moms['sd_dypw'] = hdata_sep['dlypw'].std()
@@ -1126,6 +1138,9 @@ class Simulator:
         #moms['autocov_dypw'] = hdata.pipe(create_year_lag, ['ypw'], 1).pipe(create_year_lag, ['ypw'], 2)[['ypw', 'ypw_l1', 'ypw_l2']].cov()['ypw']['ypw_l1'] #This is kinda weird? This was suggested code, but I don't get it. How does it work? Detailed answer: it takes the lagged ypw, and then computes the covariance between the current and lagged ypw. So it is like a persistence measure, but not really an autocorrelation, because it is not normalized by variance
         #hdata['ypw_l1'] = hdata.groupby('f')['ypw'].shift(1)
         moms['autocov_ypw'] = hdata.pipe(create_lag, 'h',['ypw'], 4).cov()['ypw']['ypw_l4']
+        #Alternatively, regress ypw on ypw_l4?
+        hdata['ypw_l4'] = hdata.pipe(create_lag, 'h',['ypw'], 4)['ypw_l4']
+        moms['autocov_ypw_alt'] = feols('ypw ~ ypw_l4', data=hdata).coef()['ypw_l4']
         #hdata_sep.cov()['ypw']['ypw_l4']
         #Step 4: HMQ moments
         #d) Fabrice suggestion: distribution of layoffs across firm productivity. What would the firm productivity be? I guess the firm output per worker, so ypw?
@@ -1143,7 +1158,7 @@ class Simulator:
         hdata['ypw_tercile'] = tercile_labels(hdata['ypw'])
 
         # share of layoffs per tercile → expand into scalars
-        hdata['layoff_rate'] = hdata['c_e2u_year'] / hdata['c_year']
+        hdata['layoff_rate'] = hdata['c_e2u_year'] / (hdata['c_year'] / 4)
         layoffs_by_tercile = hdata.groupby('ypw_tercile', observed=True)['layoff_rate'].mean()
 
         # ensure keys 0,1,2 exist even if a tercile is empty (rare but possible)
@@ -1153,7 +1168,7 @@ class Simulator:
         del wid_2spells 
         #del sdata_y 
         self.sdata_y = sdata_y_f #Note that this is the h one!!!
-
+        #self.hdata = hdata
         self.moments = moms
         return self
 
@@ -1164,6 +1179,7 @@ class Simulator:
         :return:
         """
         sdata_y = self.sdata_y
+        #hdata = self.hdata
         moms_untarg = {}
 
         #Now I want to run my regressions. First, let's run basic wages and layoffs across worker tenure in first-differences.
@@ -1175,7 +1191,7 @@ class Simulator:
         # Regress log wage growth on the interaction between tenure and firm productivity shock 
         #We get hdata['id_shock_sum'] as the cumulative log shock over the 3 years
         #employed['tenure'] = employed['s']
-        model_wage_ten = feols('dw ~ i(tenure, dypw)', data=sdata_y)
+        model_wage_ten = feols('dw ~ dypw+i(tenure, dypw)+C(tenure)', data=sdata_y)
         moms_untarg['wage_pass_ten'] = model_wage_ten.coef() #This is HUGE so far. more than 1 for S==2!!!  Even bigger if I use id_shock_diff??? Surprising ngl
         model_wage_ten = feols('dw ~ dypw + tenure * dypw', data=sdata_y) #the dypw coefficient is negative????
         moms_untarg['wage_pass_ten_simple'] = model_wage_ten.coef()  
@@ -1193,6 +1209,9 @@ class Simulator:
         moms_untarg['sep_pass_ten'] = model_e2u_pass_ten.coef()        
         model_e2u_pass_ten = feols('e2u ~ dypw + tenure * dypw', data=sdata_y)
         moms_untarg['sep_pass_ten_simple'] = model_e2u_pass_ten.coef()  #exactly as we would expect! Negative id_shock_sum coef (-0.08), negative basic tenure coef (very small though? -0.002), POSITIVE interaction term, meaning that layoffs of seniors respond less to shock     
+
+        
+        
         self.moments_untargeted = moms_untarg
         return self
 
@@ -1232,8 +1251,11 @@ class Simulator:
 
         return dd 
 
-    def get_moments(self):
-        return self.moments, self.moments_untargeted
+    def get_moments(self,eval=True):
+        if eval:
+            return self.moments, self.moments_untargeted
+        else:
+            return self.moments
 
     def simulate_moments_rep(self, nrep):
         """
@@ -1247,7 +1269,7 @@ class Simulator:
         self.log.info("Simulating {} reps".format(nrep))
         for i in range(nrep):
             self.log.debug("Simulating rep {}/{}".format(i+1, nrep))
-            mom, mom_unt = self.simulate_val().computeMoments().model_evaluation().get_moments()
+            mom, mom_unt = self.simulate().computeMoments().model_evaluation().get_moments()
             moms = pd.concat([ moms, pd.DataFrame({ k:[v] for k,v in mom.items() })] , axis=0)
             #moms_unt = pd.concat([ moms_unt, pd.DataFrame({ k:[v] for k,v in mom_unt.items() })] , axis=0)
             # untargeted regression outputs (dict of Series) → flatten to a single row
@@ -1264,12 +1286,33 @@ class Simulator:
 
         return(moms_mean, moms_var, moms_unt_mean, moms_unt_var)
 
+    def simulate_moments_rep_noeval(self, nrep):
+        """
+        simulates moments from the model, running it multiple times
+        :param nrep: number of replications
+        :return:
+        """
+
+        moms = pd.DataFrame()
+        self.log.info("Simulating {} reps".format(nrep))
+        for i in range(nrep):
+            self.log.debug("Simulating rep {}/{}".format(i+1, nrep))
+            mom = self.simulate_val().computeMoments().get_moments(eval=False)
+            moms = pd.concat([ moms, pd.DataFrame({ k:[v] for k,v in mom.items() })] , axis=0)
+
+            self.clean()
+        self.log.info("done simulating")
+        moms_mean = moms.mean().rename('value_model')
+        moms_var = moms.var().rename('value_model_var')
+
+        return(moms_mean, moms_var)
+
 #Okay, gotta debug
 def debug(load):
     def get_results_for_p(p,all_results):
         # Create the key as a tuple
         #key = (p.num_z,p.num_v,p.num_n,p.n_bar,p.num_q,p.q_0,p.prod_q,p.hire_c,p.k_entry,p.k_f,p.prod_alpha,p.dt)
-        key = (p.num_z,p.num_v,p.z_corr,p.prod_var_z,p.num_q,p.q_0,p.prod_q,p.s_job,p.kappa,p.dt,p.u_bf_m,p.min_wage)
+        key = (p.num_z,p.num_v,p.z_corr,p.prod_var_z,p.num_q,p.q_0,p.prod_q,p.s_job,p.alpha,p.kappa,p.dt,p.u_bf_m,p.min_wage)
         #    # Check if the key exists in the saved results
         if key in all_results:
             print(key)
@@ -1295,7 +1338,7 @@ def debug(load):
             all_results = pickle.load(file)
             model = get_results_for_p(p,all_results)
     else:
-        from Multiworker_Contract_GE_JITted import MultiworkerContract
+        from VFI.CRS.CRS_HMQ_full import MultiworkerContract
         mwc_J=MultiworkerContract(p)
         model=mwc_J.J_sep(update_eq=0,s=40)
 

@@ -397,9 +397,9 @@ def solve_policies(ite_num, rho_star, sep_star, foc_sep, sep_grid,
         for iv in prange(num_v):
             for iq in prange(num_q):
                         #if cond_rho:
-                        #rho_star[iz, iv, iq] = interp(0,
-                        #                                            foc[iz, :, iv, iq],
-                        #                                            rho_grid)
+                        rho_star[iz, iv, iq] = interp(0,
+                                                                    foc[iz, iv, :, iq],
+                                                                    rho_grid)
                         if ite_ge_20:
                             sep_star[iz, iv, iq] = interp(0,
                                                                     foc_sep[iz, iv, iq, :],
@@ -430,7 +430,14 @@ def Values_int(ERho_star,EW_star,ERho,EW,rho_grid,Q_grid,points,num_z):
         flat_result = multilinear_interp(points[iz], (( rho_grid, Q_grid)), EW[iz, ...])
         EW_star[iz,...] =  flat_result.reshape(shape)        
     return ERho_star,EW_star
-
+@nb.njit(cache=True)
+def get_EJpi(EJpi,q_star2,Q_grid,EJ,num_z,num_v,num_q):
+            for iz in prange(num_z):
+                for iv_current in prange(num_v):
+                    for iq in prange(num_q):
+                        for iv_future in prange(num_v):
+                            EJpi[iz,iv_current,iv_future,iq] = interp(q_star2[iz,iv_current,iq],Q_grid, EJ[iz,iv_future,:])
+            return EJpi
 class MultiworkerContract:
     """
         This solves a contract model with DRS production, hirings, and heterogeneous match quality.
@@ -509,9 +516,7 @@ class MultiworkerContract:
         #self.J_grid1 = np.zeros_like(self.J_grid)
         #self.J_grid = self.J_grid+np.divide(self.fun_prod*self.prod-self.p.k_f-self.p.beta*self.w_grid[ax,ax,ax,:,ax]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #The guess above is problematic because it overvalues rho for junior workers. Here, even when there's way more juniors than seniors, rho matters a lot.
-        #self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
-        self.J_grid = self.J_grid+np.divide(self.fun_prod * self.qual_prod-self.w_grid[ax,:,ax],1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
-        #Alternatively, here rho is undervalued, as juniors will essentially be forever juniors, being paid nothing
+        #self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)        #Alternatively, here rho is undervalued, as juniors will essentially be forever juniors, being paid nothing
     
         #print("J_grid_diff:", np.max(abs(self.J_grid-self.J_grid1)))
         #The two methods are eqUvalent!! grid[1] really does capture the right value!!!
@@ -582,7 +587,8 @@ class MultiworkerContract:
         sep_star1 = np.zeros_like(J) #probably better to just make it multidimensional
         n1_star = np.zeros_like(J)   
         q_star  = self.q  
-        EJpi = np.zeros_like(J)
+        #EJpi = np.zeros_like(J)
+        EJpi = np.zeros((self.p.num_z, self.p.num_v, self.p.num_v, self.p.num_q))
 
         #Separations related variables
         sep_grid = np.linspace(0,0.5,20)
@@ -607,25 +613,25 @@ class MultiworkerContract:
         #self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, :, 0].max(),self.p.num_v)
         critU = 1
 
-        if update_eq:
-         while critU > 1e-3:
-            U2 = U
+        #if update_eq:
+        # while critU > 1e-3:
+        #    U2 = U
             #P_xv = self.matching_function(J[self.p.z_0-1, :, 0])
             #self.js.update(self.v_grid,P_xv)
             #relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
             #error_js = self.js.update(W[self.p.z_0-1, :, 0], P_xv, type=1, relax=relax)
-            _, ru, _ = self.getWorkerDecisions(U, employed=False)
-            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
-            U = 0.2 * U + 0.8 * U2
-            critU = np.abs(U-U2)
-        else: 
-         self.js.update(self.v_grid,self.prob_find_vx)
-         while critU > 1e-5:
-            U2 = U
-            _, ru, _ = self.getWorkerDecisions(U, employed=False)
-            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
-            U = 0.2 * U + 0.8 * U2
-            critU = np.abs(U-U2)
+        #    _, ru, _ = self.getWorkerDecisions(U, employed=False)
+        #    U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
+        #    U = 0.2 * U + 0.8 * U2
+        #    critU = np.abs(U-U2)
+        #else: 
+        # self.js.update(self.v_grid,self.prob_find_vx)
+        # while critU > 1e-1:
+        #    U2 = U
+        #    _, ru, _ = self.getWorkerDecisions(U, employed=False)
+        #    U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
+        #    U = 0.2 * U + 0.8 * U2
+        #    critU = np.abs(U-U2)
 
         for ite_num in range(self.p.max_iter):
             J2 = J
@@ -670,19 +676,20 @@ class MultiworkerContract:
             #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
             #Because of this, the values are modified with size according to the following formula:
             #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
-
+            EJpi = get_EJpi(EJpi,q_star2,Q_grid,EJ,self.p.num_z,self.p.num_v,self.p.num_q)
+            foc = rho_grid[ax, ax, :, ax] - rho_grid[ax, :, ax, ax] - EJpi * log_diff[:,ax,...] / self.deriv_eps
             #FOC for future Rho
             #for iz in range(self.p.num_z):
             #    for iv in range(self.p.num_v):
             #        EJpi[iz,iv,:] = np.interp(q_star[iz,iv,:],self.Q_grid,EJ[iz,iv,:])
-            EJpi = EJ
-            foc = rho_grid[ax, :, ax] - EJpi * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
-            for iz in range(self.p.num_z):
-                for iq in range(self.p.num_q):
-                    rho_star[iz, :, iq] = np.interp(rho_grid,
-                                                              impose_increasing(foc[iz, :, iq]),
-                                                              rho_grid)
-            rho_star = impose_increasing_policy(rho_star)
+            #EJpi = EJ
+            #foc = rho_grid[ax, :, ax] - EJpi * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
+            #for iz in range(self.p.num_z):
+            #    for iq in range(self.p.num_q):
+            #        rho_star[iz, :, iq] = np.interp(rho_grid,
+            #                                                  impose_increasing(foc[iz, :, iq]),
+            #                                                  rho_grid)
+            #rho_star = impose_increasing_policy(rho_star)
             #FOC for Separations
             if ite_num>=layoff_iter:
                 #WHAT IF. We just do a direct derivative wrt s??? Like, we know what q_s and n1_s are. Inteprolate directly onto them, which will already give us the total derivative of J wrt s, no?
@@ -1034,9 +1041,12 @@ class MultiworkerContract:
         
         
          
-#from primitives import Parameters
-#p = Parameters()
+def debug():     
+    from primitives import Parameters
+    p = Parameters()
 
 
-#mwc_GE=MultiworkerContract(p)
-#model=mwc_GE.J_sep(update_eq=0,s=20.0)
+    mwc_GE=MultiworkerContract(p)
+    model=mwc_GE.J_sep(update_eq=1,s=10.0)
+
+debug()
