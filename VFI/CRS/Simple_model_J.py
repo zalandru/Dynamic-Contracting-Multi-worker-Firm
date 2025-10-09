@@ -106,7 +106,7 @@ def impose_decreasing_policy(A0):
 def impose_increasing_W(A0):
     A = np.copy(A0)
     for v in range(1,A.shape[1]):
-        A[...,v,:] = np.maximum(A[...,v,:],A[...,v-1,:]+1e-8)
+        A[...,v,:] = np.maximum(A[...,v,:],A[...,v-1,:]+1e-12*np.maximum(1.0, np.abs(A[..., v-1, :])))
     return A
 
 def array_exp_dist(A,B,h):
@@ -385,10 +385,10 @@ def tuple_into_2darray(query_points):
     #flat_result = multilinear_interp(pts, grid, values)
     #return flat_result.reshape(shape)
 @nb.njit(cache=True, parallel=False)
-def solve_policies(ite_num, rho_star, sep_star, foc_sep, sep_grid,
-                   rho_grid, foc, num_z, num_v, num_q):
+def solve_policies(ite_num, layoff_iter, sep_star, foc_sep, mask, sep_grid,
+                    num_z, num_v, num_q):
     # Precompute constants that do not change within the loops
-    ite_ge_20 = (ite_num >= 20)
+    ite_ge_20 = (ite_num >= layoff_iter)
     #ite_ge_10 = (ite_num >= 10)
     #tenure_nonzero = (tenure != 0)
 
@@ -396,14 +396,11 @@ def solve_policies(ite_num, rho_star, sep_star, foc_sep, sep_grid,
     for iz in prange(num_z):
         for iv in prange(num_v):
             for iq in prange(num_q):
-                        rho_star[iz, iv, iq] = interp(0,
-                                                                    foc[iz, iv, :, iq],
-                                                                    rho_grid)
                         if ite_ge_20:
                             sep_star[iz, iv, iq] = interp(0,
                                                                     foc_sep[iz, iv, iq, :],
                                                                     sep_grid)
-    return rho_star, sep_star
+    return sep_star
 
 @nb.njit(cache=True,parallel=False)
 def Rhod0_int(Rhod0,ERho,N_grid1,rho_grid,Q_grid,points,num_z,num_n):
@@ -437,9 +434,9 @@ def get_EJpi(EJpi,q_star2,Q_grid,EJ,num_z,num_v,num_q):
                         for iv_future in prange(num_v):
                             EJpi[iz,iv_current,iv_future,iq] = interp(q_star2[iz,iv_current,iq],Q_grid, EJ[iz,iv_future,:])
             return EJpi
-class MultiworkerContract:
+class SimpleModel:
     """
-        This solves a contract model with DRS production, hirings, and heterogeneous match quality.
+        This solves a contract model with CRS production, heterogeneous match quality, and constant wages (no OJS!)
     """
     def __init__(self, input_param=None, js=None):
         """
@@ -479,12 +476,11 @@ class MultiworkerContract:
         # Production Function in the Model
         self.fun_prod_onedim = self.p.prod_a * np.power(self.Z_grid, self.p.prod_rho)
         self.fun_prod = self.fun_prod_onedim.reshape((self.p.num_z,) + (1,) * (self.J_grid.ndim - 1))
-        self.qual_prod_onedim =  1 * self.Q_grid  + self.p.prod_q * (1 - self.Q_grid)
         self.qual_prod = 1 * self.Q_grid[ax,ax,:]  + self.p.prod_q * (1 - self.Q_grid[ax,ax,:]) #Quality adjustment for the productivity
-        self.unemp_bf = self.p.u_bf_m 
+        self.unemp_bf = self.p.u_bf_m #Half of the lowest productivity. Kinda similar to Shimer-like estimates who had 0.4 of the average
 
         # Wage and Shadow Cost Grids
-        self.w_grid = np.linspace(self.p.min_wage, self.fun_prod.max(), self.p.num_v ) #Note that this is not the true range of possible wages as this excludes the size part of the story
+        self.w_grid = np.linspace(self.unemp_bf, self.fun_prod.max(), self.p.num_v ) #Note that this is not the true range of possible wages as this excludes the size part of the story
         self.rho_grid=1/self.pref.utility_1d(self.w_grid)
 
 
@@ -493,36 +489,21 @@ class MultiworkerContract:
 
 
         #Job value and GE first
-        self.v_grid = np.linspace(np.divide(self.pref.utility(self.p.min_wage),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod_onedim.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
+        self.v_grid = np.linspace(np.divide(self.pref.utility(self.unemp_bf),1-self.p.beta), np.divide(self.pref.utility(self.fun_prod_onedim.max()),1-self.p.beta), self.p.num_v ) #grid of submarkets the worker could theoretically search in. only used here for simplicity!!!
         #Value promised to the worker at the bottom step
         
-        self.simple_J=np.divide(self.fun_prod_onedim[:,ax,ax] * self.qual_prod - self.w_grid[ax,:,ax],1-self.p.beta)
+        self.simple_J=np.divide(self.fun_prod_onedim[:,ax,ax]*self.qual_prod - self.w_grid[ax,:,ax],1-self.p.beta)
         #Apply the matching function: take the simple function and consider its different values across v.
         #This is eqUvalent to marginal value of a firm of size 1 at the lowest step
-        self.prob_find_vx = self.p.alpha * np.power(1 - np.power(
-            np.divide(self.p.kappa, np.maximum(self.simple_J[self.p.z_0-1, :,0], 1.0)), self.p.sigma), 1/self.p.sigma)
+
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
         
 
-        if js is None:
-            self.js = JobSearchArray() #Andrei: note that for us this array will have only one element
-            self.js.update(self.v_grid[:], self.prob_find_vx) #Andrei: two inputs: worker's value at the match quality of entrance (z_0-1), and the job-finding probability for the whole market
-        else:
-            self.js = js       
 
 
-        #Create a guess for the MWF value function
-        #self.J_grid1 = self.J_grid1+np.divide(self.fun_prod*production(self.sum_size)-self.w_grid[0]*self.N_grid[ax,:,ax,ax]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
-        #self.J_grid1 = np.zeros_like(self.J_grid)
-        #self.J_grid = self.J_grid+np.divide(self.fun_prod*self.prod-self.p.k_f-self.p.beta*self.w_grid[ax,ax,ax,:,ax]*self.N_grid[self.grid[1]]-self.sum_wage,1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
-        #The guess above is problematic because it overvalues rho for junior workers. Here, even when there's way more juniors than seniors, rho matters a lot.
-        #self.simple_J=np.divide(self.fun_prod[:,ax] -self.pref.inv_utility(self.v_grid[ax,:]*(1-self.p.beta)),1-self.p.beta)
         self.J_grid = self.J_grid+np.divide(self.fun_prod * self.qual_prod-self.w_grid[ax,:,ax],1-self.p.beta) #Andrei: this is the guess for the value function, which is the production function times the square root of the sum of the sizes of the markets the worker could search in
         #Alternatively, here rho is undervalued, as juniors will essentially be forever juniors, being paid nothing
     
-        #print("J_grid_diff:", np.max(abs(self.J_grid-self.J_grid1)))
-        #The two methods are eqUvalent!! grid[1] really does capture the right value!!!
-
 
         #Guess for the Worker value function
         self.W = np.zeros_like(self.J_grid)
@@ -535,7 +516,7 @@ class MultiworkerContract:
 
         self.q = np.zeros_like(self.J_grid) + self.Q_grid[ax,ax,:]
 
-    def J_sep(self,Jg=None,Wg=None,Ug=None,Rhog=None,P=None,kappa=None,n0_g = None, sep_g = None,update_eq=1,s=1.0):    
+    def J_sep(self,Jg=None,Wg=None,Ug=None,Rhog=None,P=None,kappa=None,n0_g = None, sep_g = None,update_eq=1,s=1.0,layoff_iter=1):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -543,8 +524,6 @@ class MultiworkerContract:
         rho_grid = self.rho_grid
         Q_grid = self.Q_grid
         q = self.q
-        indices_no_v = self.indices_no_v
-        indices = self.indices
 
         if Jg is None:
             J = np.copy(self.J_grid)
@@ -558,402 +537,154 @@ class MultiworkerContract:
             U = self.pref.utility(self.unemp_bf) / (1 - self.p.beta)
         else:
             U = np.copy(Ug)
-        if Rhog is None:
-            Rho = J + rho_grid[ax,:,ax]*W  
-        else:
-            Rho = np.copy(Rhog) 
-        if n0_g is None:
-            n0_star = np.zeros_like(J)   
-        else:
-            n0_star = n0_g
         if sep_g is None:
             sep_star = np.zeros_like(J)
         else:
             sep_star = sep_g
         # create representation for J1p
-        Jp = np.zeros_like(J)
-        Wp = np.zeros_like(J)
-        Rhop = np.zeros_like(J)
-        # Updating J1 representation
-        for iz, iq in indices_no_v:
-            W_inc = W[iz,:,iq]
-            Jp[iz,:,iq] = splev(W_inc, splrep(W[iz,:,iq],J[iz,:,iq],s=s))
-            Wp[iz,:,iq] = splev(rho_grid, splrep(rho_grid,W[iz,:,iq],s=s))
-            Rhop[iz,:,iq] = splev(rho_grid, splrep(rho_grid,Rho[iz,:,iq],s=s))
-       
-        Jp = Rhop - rho_grid[ax,:,ax] * Wp
-
-        print("J shape", J.shape)
-        print("W shape", W.shape)        
+        Rho = J + rho_grid[ax,:,ax] * W    
 
 
 
         EW_star = np.copy(J)
-        #EJ_star = np.copy(J)
+        EJ_star = np.copy(J)
         ERho_star = np.copy(J)
-        rho_star = np.zeros_like(J)
-        sep_star1 = np.zeros_like(J) #probably better to just make it multidimensional
-        n1_star = np.zeros_like(J)   
-        q_star  = np.zeros_like(J)   
-        EJpi = np.zeros((self.p.num_z, self.p.num_v, self.p.num_v, self.p.num_q))
+
+        q_star  = self.q  
+        #EJpi = np.zeros_like(J)
 
         #Separations related variables
-        sep_grid = np.linspace(0,0.95,19)
+        sep_grid = np.linspace(0,0.5,20)
         n1_s = np.zeros((self.p.num_z, self.p.num_v, self.p.num_q, sep_grid.shape[0]))
         q_s = np.zeros_like(n1_s)
         foc_sep = np.zeros_like(n1_s)
         J_s = np.zeros_like(n1_s)
         J_s_deriv = np.zeros_like(J_s)
         sep_reshaped = np.zeros_like(J_s) + sep_grid[ax,ax,ax,:]
-        sep_grid_exp = sep_grid[ax,ax,ax,:]
 
         # prepare expectation call
         Ez = oe.contract_expression('avq,az->zvq', J.shape, self.Z_trans_mat.shape)
         #Ex = oe.contract_expression('b,bx->x', U.shape, self.X_trans_mat.shape)
-        log_diff = np.zeros_like(EW_star)
 
-        ite_num = 0
-        error_js = 1
-        
-        # General equilibrium first time
-        self.v_0 = U
-        self.v_grid = np.linspace(U.min(),W[self.p.z_0-1, :, 0].max(),self.p.num_v)
-        critU = 1
-
-        #if update_eq:
-        # while critU > 1e-1:
-        #    U2 = U
-            #P_xv = self.matching_function(J[self.p.z_0-1, :, 0])
-            #self.js.update(self.v_grid,P_xv)
-            #relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-            #error_js = self.js.update(W[self.p.z_0-1, :, 0], P_xv, type=1, relax=relax)
-        #    _, ru, _ = self.getWorkerDecisions(U, employed=False)
-        #    U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
-        #    U = 0.2 * U + 0.8 * U2
-        #    critU = np.abs(U-U2)
-        #else: 
-        # self.js.update(self.v_grid,self.prob_find_vx)
-        # while critU > 1e-1:
-        #    U2 = U
-        #    _, ru, _ = self.getWorkerDecisions(U, employed=False)
-        #    U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + U)
-        #    U = 0.2 * U + 0.8 * U2
-        #    critU = np.abs(U-U2)
+        ite_num = 0        
 
         for ite_num in range(self.p.max_iter):
             J2 = J
             W2 = np.copy(W)
             U2 = U
-            Rho2 = np.copy(Rho)
-            rho_star2 = np.copy(rho_star)
-            q_star2 =   np.copy(q_star)                       
+            Rho2 = Rho
             # we compute the expected value next period by applying the transition rules
-            EW = Ez(Wp, self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
+            EW = Ez(W, self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
             #Will also have to keep in mind that workers go up the steps! Guess it would just take place in the expectation???
-            EJ = Ez(Jp, self.Z_trans_mat)
-            ERho = Ez(Rhop, self.Z_trans_mat)
+            EJ = Ez(J, self.Z_trans_mat)
+            ERho = Ez(Rho, self.Z_trans_mat)
             EU = U
 
-            # get worker decisions
-            _, re, pc = self.getWorkerDecisions(EW)
-            # get worker decisions at EW + epsilon
-            _, _, pc_d = self.getWorkerDecisions(EW + self.deriv_eps) 
-        
-            # compute derivative where continuation probability is >0
-            #Andrei: continuation probability is pc, that the worker isn't fired and doesn't leave
-            log_diff = np.zeros_like(pc)
-            log_diff[:] = np.nan
-            log_diff[pc > 0] = np.log(pc_d[pc > 0]) - np.log(pc[pc > 0]) #This is log derivative of pc wrt the promised value
-
-            
-        
-            #The foc is supa basic:
-            #rho_prime - rho = eta * EJ'(v',q') #For q, I can use q_star. Actually though, if I remember it correctly, this is slightly painful, can start with the basic version first ig?
-            
-            #Soo the foc would be with double iv, current (2nd dim) and future (last dim)
-            #EJpi woould depend on both iv's. In a loop way, this would go like
-            #for iz in range(self.p.num_z):
-            #    for iv_current in range(self.p.num_v):
-            #        for iq in range(self.p.num_q):
-            #            for iv_future in range(self.p.num_v):
-            #                EJpi[iz,iv_current,iq,iv_future] = np.interp(q_star2[iz,iv_current,iq],Q_grid, EJ[iz,iv_future,:])
-            EJpi = get_EJpi(EJpi,q_star2,Q_grid,EJ,self.p.num_z,self.p.num_v,self.p.num_q)
-            foc = rho_grid[ax, ax, :, ax] - rho_grid[ax, :, ax, ax] -EJpi * log_diff[:,ax,...] / self.deriv_eps #keep in mind that log_diff here is NOT accounting for future quality
-            # But I guess log_diff would have to be similar as well ah... what a pain man. W/e, let's do that later if we want
-            
-
-            #Andrei: this is a special foc for the 1st step only! As both the 0th and the 1st steps are affected
-            #Because of this, the values are modified with size according to the following formula:
-            #(n_0+n_1)*rho'_1-EJderiv*eta*(n_0+n_1)-n_0*rho_0-n_1*rho_1
-
-            #FOC for future Rho
-            #EJpi = EJ
-            #foc = rho_grid[ax, :, ax] - EJpi * log_diff / self.deriv_eps #So the FOC wrt promised value is: pay shadow cost lambda today (rho_grid), but more likely that the worker stays tomorrow
-            #for iz in range(self.p.num_z):
-            #    for iq in range(self.p.num_q):
-            #        rho_star[iz, :, iq] = np.interp(rho_grid,
-            #                                                  impose_increasing(foc[iz, :, iq]),
-            #                                                  rho_grid)
 
             #FOC for Separations
-            if ite_num>=20:
+            if ite_num>=layoff_iter:
                 #WHAT IF. We just do a direct derivative wrt s??? Like, we know what q_s and n1_s are. Inteprolate directly onto them, which will already give us the total derivative of J wrt s, no?
-                #q_s = np.fmin(q[...,ax] / (1-sep_grid_exp),1)
-                q_s = np.fmin(self.Q_grid[:,ax] / (1-sep_grid[ax,:]),1)               
-                sep_star0 = np.copy(sep_star)
+                q_s = np.fmin( self.Q_grid[:,ax] / (1-sep_grid[ax,:]),1)               
+                #sep_star0 = np.copy(sep_star)
                 sep_star[...] = 0
-                  
-                ERho_s = ERho - rho_grid[ax,:,ax] * EW
-                #points = []
-                #rho_sz = np.repeat(rho_star2[...,ax], sep_grid.shape[0], axis=-1)
-                #for iz in range(self.p.num_z):
-                #    points.append( tuple_into_2darray((rho_sz[iz, ...], q_s[iz,...])))
-                #J_s = Js_int(J_s,ERho_s,rho_grid,Q_grid,points,self.p.num_z)
-                #Alternatively, I can double interpolate this?
-                J_s_f = np.zeros_like(J)
-                for iz in range(self.p.num_z):
-                    for iq in range(self.p.num_q):
-                        J_s_f[iz,:,iq] = np.interp(rho_star[iz,:,iq],self.rho_grid,ERho_s[iz,:,iq]) #First, we interpolate the v component, always the same
-                J_s = np.zeros_like(J_s_deriv) + J_s_f[...,ax]
+                
+                #ERho_s = ERho
+                W_s = np.zeros_like(J_s_deriv)
+                Rho_s = np.zeros_like(J_s_deriv)
                 for iz in range(self.p.num_z):
                  for iv in range(self.p.num_v):
                     for iq in range(self.p.num_q):                
-                        J_s[iz,iv,iq,:] = np.interp(q_s[iq,:],self.Q_grid,J_s_f[iz,iv,:])# Next, interpolate the future quality component. So we get EJ'(rho*,q'(q,sep))
+                        W_s[iz,iv,iq,:] = np.interp(q_s[iq,:],self.Q_grid,EW[iz,iv,:])
+                        Rho_s[iz,iv,iq,:] = np.interp(q_s[iq,:],self.Q_grid,ERho[iz,iv,:])
 
-                J_s_deriv[...,0] = ((1-sep_grid[1]) * J_s[...,1] - (1-sep_grid[0]) * J_s[...,0]) / (sep_grid[1] - sep_grid[0])
-                J_s_deriv[...,-1] = ((1-sep_grid[-1]) * J_s[...,-1] - (1-sep_grid[-2]) * J_s[...,-2]) / (sep_grid[-1] - sep_grid[-2]) 
-                J_s_deriv[..., 1:-1]    = ((1-sep_reshaped[...,2:]) * J_s[...,2:] - (1-sep_reshaped[...,:-2]) * J_s[...,:-2]) / (sep_reshaped[...,2:] - sep_reshaped[...,:-2]) 
+                J_s_deriv[...,0] = (Rho_s[...,1] - Rho_s[...,0]) / (sep_grid[1] - sep_grid[0])
+                J_s_deriv[...,-1] = (Rho_s[...,-1] - Rho_s[...,-2]) / (sep_grid[-1] - sep_grid[-2]) 
+                J_s_deriv[..., 1:-1]    = (Rho_s[...,2:] - Rho_s[...,:-2]) / (sep_reshaped[...,2:] - sep_reshaped[...,:-2]) 
 
-                foc_sep = J_s_deriv * pc_star[...,ax] - (re_star[...,ax]+EW_star[...,ax] - EU) * rho_grid[ax,:,ax,ax]
+                #foc_sep = J_s_deriv - (EW_star[...,ax] - EU) * rho_grid[ax,:,ax,ax] #Basically, here I take the derivative of (1-sep) * pc_star * EJ wrt sep. Since pc_star is a "coonstant" here, I look at how (1-sep) * EJ changes
+                foc_sep = J_s_deriv * (1-sep_reshaped) - (Rho_s - rho_grid[ax,:,ax,ax] * W_s) - (W_s - EU) * rho_grid[ax,:,ax,ax] #Basically, here I take the derivative of (1-sep) * pc_star * EJ wrt sep. Since pc_star is a "coonstant" here, I look at how (1-sep) * EJ changes
+                
+                mask = np.where(foc_sep[...,0] < 0) #within the mask layoffs must be zero
+                
                 foc_sep = impose_increasing_fsep(-foc_sep)
+            #how does prod-ty develop with layoffs right now (1-sep) * y * ( prod_q + q/(1-sep)*(1- prod_q) ) =  y * (prod_q * (1-sep) + q * (1-prod_q)) #so yep, layoffs just shed bad matches, and those are more productive in high periods. so you want to fire less!
 
-
-            rho_star,sep = solve_policies(ite_num,rho_star,sep_star,foc_sep,sep_grid, rho_grid, foc, self.p.num_z, self.p.num_v, self.p.num_q)
-            rho_star = impose_increasing_policy(rho_star)
-            if ite_num >= 20:
-                sep_star = 0.4 * (- impose_increasing_policy(-sep)) + 0.6 * sep_star0
-
+                sep = solve_policies(ite_num,layoff_iter, sep_star,foc_sep, mask, sep_grid, self.p.num_z, self.p.num_v, self.p.num_q)
+                assert np.all(sep[mask] <= 1e-8)
+                #sep_star[mask] = 0 #this shouldn't be necessary, good check though!
+                sep_star = - impose_increasing_policy(-sep)
+                assert np.all(sep_star[mask] <= 1e-8)
  
 
 
             #Getting n1_star and q_star        
             q_star = np.fmin(q/(1-sep_star),1)
 
-
             #Future optimal expectations
             #ERho_star = interp_multidim(n0_star,N_grid,np.moveaxis(Rhod0,-1,0))
-            points = []
+            #EJ_star = interp_multidim(q_star,self.Q_grid,np.moveaxis(J_s,-1,0))
             for iz in range(self.p.num_z):
-                points.append( tuple_into_2darray((rho_star[iz, ...], q_star[iz, ...])))
-            #ERho_star = Js_int(ERho_star,ERho,N_grid,N_grid1,rho_grid,Q_grid,points,self.p.num_z) #Do it like this so as to use all the new policies
-            #EW_star = Js_int(EW_star,EW,N_grid,N_grid1,rho_grid,Q_grid,points,self.p.num_z)
-            ERho_star, EW_star =  Values_int(ERho_star,EW_star,ERho,EW,rho_grid,Q_grid,points,self.p.num_z)
+                for iv in range(self.p.num_v):
+                    ERho_star[iz,iv,:] = np.interp(q_star[iz,iv,:],self.Q_grid,ERho[iz,iv,:])
+                    EW_star[iz,iv,:] = np.interp(q_star[iz,iv,:],self.Q_grid,EW[iz,iv,:])
 
-
-
-            _, ru, _ = self.getWorkerDecisions(EU, employed=False)
-            U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
-            U = 0.2 * U + 0.8 * U2
-
-            _, re_star, pc_star = self.getWorkerDecisions(EW_star)
-            # Update firm value function 
-            J= self.fun_prod * self.qual_prod - self.w_grid[ax,:,ax] + self.p.beta * pc_star * (1-sep_star) *  (ERho_star - rho_star*EW_star) #Note it's not EJ_star here anymore. To make the function faster
-            #J = impose_decreasing(J)
-            assert np.isnan(J).sum() == 0, "J has NaN values"
-
-            Rho = self.fun_prod * self.qual_prod - self.w_grid[ax,:,ax] + self.p.beta * pc_star * (1-sep_star) * (ERho_star - rho_star*EW_star) + \
-                rho_grid[ax,:,ax]*W
-            #Rho_alt = J + size[...,1]*rho_grid[ax,ax,ax,:,ax]*W[...,1]                    
-            assert np.isnan(Rho).sum() == 0, "Rho has NaN values"  
             # Update worker value function
             W = self.pref.utility(self.w_matrix) + \
-                self.p.beta * (sep_star * EU + (1 - sep_star) * (EW_star + re_star)) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
+                self.p.beta * (sep_star * EU + (1 - sep_star) * EW_star ) 
             W = impose_increasing_W(W)
             assert np.isnan(W).sum() == 0, "W has NaN values"
 
-            #W[...,1] = W[...,1] * (J > 0) + U * (J <= 0)
-            #Rho= Rho * (J > 0) + 0 * (J <= 0)
-            #J[J <= 0] = 0
-            #comparison_range = (size[...,0]+size[...,1] <= self.p.n_bar) & (size[...,0]+size[...,1] >= N_grid[1])
-            #print("Diff Rho:", np.mean(np.abs((Rho_alt[comparison_range]-Rho[comparison_range])/Rho[comparison_range])))
+            # Update firm value function 
+            Rho = self.fun_prod * self.qual_prod - self.w_grid[ax,:,ax] + rho_grid[ax,:,ax] * W + self.p.beta * (1-sep_star) * (ERho_star - rho_grid[ax,:,ax] * EW_star)
+            J = Rho - rho_grid[ax,:,ax] * W
+            #J= self.fun_prod * self.qual_prod - self.w_grid[ax,:,ax] + self.p.beta * (1-sep_star) * EJ_star
+            #J = impose_decreasing(J)
+            assert np.isnan(J).sum() == 0, "J has NaN values"
+
+            # Apply the matching function
+            ite_prob_vx = self.p.alpha * np.power(1 - np.power(
+                np.divide(self.p.kappa, np.maximum(J[self.p.z_0 - 1, :, 0], 1.0)), self.p.sigma), 1/self.p.sigma)
             
-            Rho = .2 * Rho + .8 * Rho2
-            J= .2 * J + .8 * J2
-            W = .2 * W + .8 * W2 #we're completely ignoring the 0th step
-
-            # Updating J1 representation
-            st= time()
-            for iz, iq in indices_no_v:
-                Wp[iz,:,iq] = splev(rho_grid, splrep(rho_grid,W[iz,:,iq],s=s))
-                Rhop[iz,:,iq] = splev(rho_grid, splrep(rho_grid,Rho[iz,:,iq],s=s)) #Should I go back to the BL-style smoothing? This would have value at least due to fitting the same kind of polynomial every time
-            end=time()
-            #if (ite_num % 100 == 0):
-            #    print("Time to fit the spline", end - st)
-            
-            #TRYING AGAIN WITH THE BASIC RHO
-            Jp = Rhop - rho_grid[ax,:,ax]*Wp      
-
-            # Compute convergence criteria
-            error_j1i = array_exp_dist(Rho,Rho2,100) #np.power(J - J2, 2).mean() / np.power(J2, 2).mean()  
-            error_w1 = array_dist(W, W2)
-
-            # update worker search decisions
-            if (((ite_num % 10) == 0)):
-                if update_eq:
-                    # -----  check for termination ------
-
-                    #error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W[...,1]), 100)
-                    print("Errors:",  error_j1i, error_w1, error_js)
-                    print("q_star", q_star[self.p.z_0-2,50, :])
-                    print("sep", sep_star.min(),sep_star.max())                   
-                    if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model and error_js < self.p.tol_search
-                            and ite_num > 1000):
-                        break
-                    # ------ or update search fsunction parameter using relaxation ------
-                    else:
-                            P_xv = self.matching_function(J[self.p.z_0-1, :, 0])
-                            relax = 1 - np.power(1/(1+np.maximum(0,ite_num-self.p.eq_relax_margin)), self.p.eq_relax_power)
-                            #error_js = self.js.update(self.v_grid, P, type=1, relax=relax)
-                            error_js = self.js.update(W[self.p.z_0-1, :, 0], P_xv, type=1, relax=relax)
-                            #error_js = self.js.update(self.v_grid, P)
-                            #self.js.update(self.v_grid,P)
-                            #Update U multiple times
-                            #critU= 1
-                            #while critU > 1e-1:
-                            #    U2 = U
-                            #    EU = U
-                            #    _, ru, _ = self.getWorkerDecisions(EU, employed=False)
-                            #    U = self.pref.utility_gross(self.unemp_bf) + self.p.beta * (ru + EU)
-                            #    U = 0.2 * U + 0.8 * U2
-                            #    critU = np.abs(U-U2)/U2                            
-
-                else:
-                    # -----  check for termination ------
-                    # Updating J1 representation
-                    #error_j1p_chg, rsq_j1p = J1p.update_cst_ls(W[...,1], Ji)
-                    #error_j1g = array_exp_dist(Jpi,J1p.eval_at_W1(W[...,1]), 100)
-                    print("Errors:",  error_j1i,  error_w1, error_js)
-                    print("q_star", q_star[self.p.z_0-2,50, :])
-                    print("sep", sep_star.min(),sep_star.max())    
-                    if (np.array([error_w1, error_j1i]).max() < self.p.tol_full_model
-                            and ite_num > 50):
-                        break
-
-            if (((ite_num % 1000)  == 0) & (ite_num>10)):
-                   
-                plt.plot(W[self.p.z_0-2, :, 0], J [self.p.z_0-2, :, 0], label='1 senior value function')
-                plt.plot(W[self.p.z_0-2, :, 0], Jp[self.p.z_0-2, :, 0], label='1 senior value function') 
-                #plt.show() # this will load image to console before executing next line of code
-                #plt.plot(W[self.p.z_0-1, 0, 1, :, 0, 1], 1-pc_star[self.p.z_0-1, 0, 1, :, 0], label='Probability of the worker leaving across submarkets')      
-                plt.show()
+            # Update the guess for U given p
+            U = np.max( self.pref.utility(self.unemp_bf) + self.p.beta * ite_prob_vx *
+                               (W[self.p.z_0 - 1, :, 0] - EU) + self.p.beta * EU, axis=0)            
 
 
+            # Compute the norm-inf between the two iterations of U(x)
+            error_u  = np.max(abs(U - U2))
+            error_j  = np.max(abs(Rho - Rho2))
+            error_w1 = np.max(abs(W - W2))
+
+            if np.array([error_u, error_w1, error_j]).max() < self.p.tol_simple_model and ite_num>10:
+                break
+            #else:
+                #print(np.array([error_u, error_w1, error_j]))
+                #J = 0.2 * J + 0.8 * J2
+                #W = 0.2 * W + 0.8 * W2
+                #U = 0.2 * U + 0.8 * U2
+                #Rho = 0.2 * Rho + 0.8 * Rho2
+                #Rho = J + rho_grid[ax,:,ax] * W
         # --------- wrapping up the model ---------
 
-        # find rho_j2j
-        rho_j2j = np.zeros((self.p.num_z, self.p.num_v, self.p.num_q))
-        ve_star = np.zeros((self.p.num_z, self.p.num_v, self.p.num_q))
-        #for ix in range(self.p.num_x):
-        for iz,  iq in indices_no_v:
-        #for iz in range(self.p.num_z):
-            ve_star[iz,  :, iq] = self.js.ve( EW_star[iz,  :, iq])
-            rho_j2j[iz,  :, iq] = np.interp(ve_star[iz,  :, iq], W[iz,  :, iq], rho_grid)
+        # extract U2E probability
+        usearch = np.argmax( self.pref.utility(self.unemp_bf) + self.p.beta * ite_prob_vx *
+                     (W[self.p.z_0 - 1, :, 0] - EU) + self.p.beta * EU, axis=0)
+        Pr_u2e = ite_prob_vx[usearch]
+    
+        self.Vf_J    = J
+        self.Vf_W   = W
+        self.Vf_Rho  = Rho
+        self.sep_star  = sep_star
+        self.Fl_wage = self.w_grid
+        self.Vf_U    = U
+        self.Pr_u2e  = Pr_u2e
+        self.prob_find_vx = ite_prob_vx
+        
 
-        # find rho_u2e
-        self.ve = self.js.ve(EU)
-        Pr_u2e = self.js.pe(EU) # this does not include the inefficiency of search for employed
-        self.rho_u2e = np.interp(self.ve, W[self.p.z_0-1,  :, 0], rho_grid)
-        # value functions
-        self.Vf_J = J
-        self.Vf_W = W
-        self.Vf_U = U
-        self.Jp = Jp
-        self.EW_star  = EW_star
-
-        # policies
-        self.rho_j2j = rho_j2j
-        #self.rho_u2e = rho_u2e
-        self.rho_star = rho_star
-        self.sep_star = sep_star
-        self.sep_star1 = sep_star1
-        self.n0_star = n0_star
-        self.n1_star = n1_star
-        self.q_star = q_star
-        self.pe_star = 1-pc_star
-        self.ve_star = ve_star
-        self.Pr_u2e = Pr_u2e
-
-        self.error_w1 = error_w1
-        self.error_j = error_j1i
-        #self.error_j1p = error_j1g
-        self.error_js = error_js
-        self.niter = ite_num
-
-        #GE values
-        self.P = P
-        self.kappa = kappa
-
-        self.append_results_to_pickle(J, W, U, Rho, P, kappa, EW_star, sep_star)
-
-        #Saving the entire model
-        self.save("model_GE.pkl")
         return self
 
 
 
-    def save(self,filename):
-        # Load the existing data from the pickle file
-        try:
-            with open(filename, "rb") as file:
-                all_results = pickle.load(file)
-        except FileNotFoundError:
-            all_results = {}
-            print("No existing file found. Creating a new one.")
-        # Use a tuple as the key
-        key = (self.p.num_z,self.p.num_v,self.p.z_corr,self.p.prod_var_z,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.s_job,self.p.kappa,self.p.dt,self.p.u_bf_m,self.p.min_wage)
-        
-        all_results[key] = self
-        #Save the updated dictionary back to the pickle file        
-        with open(filename, "wb") as output_file:
-            pickle.dump(all_results, output_file)
-        print(f"Results for p = {key} have been appended to {filename}.")
-
-    def append_results_to_pickle(self, J, W, U, Rho, P, kappa, EW_star, sep_star, pickle_file="results_GE.pkl"):
-        # Step 1: Load the existing data from the pickle file
-        try:
-            with open(pickle_file, "rb") as file:
-                all_results = pickle.load(file)
-        except FileNotFoundError:
-            all_results = {}
-            print("No existing file found. Creating a new one.")
-
-        # Step 2: Create results for the multi-dimensional p
-        new_results = self.save_results_for_p(J, W, U, Rho, P, kappa, EW_star, sep_star)
-
-        # Step 3: Use a tuple (p.num_z, p.num_v, p.num_n) as the key
-        key = (self.p.num_z,self.p.num_v,self.p.z_corr,self.p.prod_var_z,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.s_job,self.p.kappa,self.p.dt,self.p.u_bf_m,self.p.min_wage)
-        # Step 4: Add the new results to the dictionary
-        all_results[key] = new_results
-
-        # Step 5: Save the updated dictionary back to the pickle file
-        with open(pickle_file, "wb") as file:
-            pickle.dump(all_results, file)
-
-        print(f"Results for p = {key} have been appended to {pickle_file}.")
-    def save_results_for_p(self, J, W, U, Rho, P, kappa, EW_star, sep_star):
-        current_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return {
-        'date': current_date,
-        'J': J,
-        'W': W,
-        'U': U,
-        'Rho': Rho,
-        'P': P,
-        'kappa': kappa,
-        'EW_star': EW_star,
-        'sep_star': sep_star,
-        'p_value': (self.p.num_z,self.p.num_v,self.p.z_corr,self.p.prod_var_z,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.s_job,self.p.kappa,self.p.dt,self.p.u_bf_m,self.p.min_wage)
-    }    
     def construct_z_grid(self):
         """
             Construct a grid for match productivity heterogeneity.
@@ -989,13 +720,13 @@ class MultiworkerContract:
                                 1 / self.p.sigma) #Andrei: the formula of their matching function, applied to each particula job value J1       
         
         
-
+         
 def debug():     
     from primitives import Parameters
     p = Parameters()
 
 
-    mwc_GE=MultiworkerContract(p)
-    model=mwc_GE.J_sep(update_eq=1,s=20.0)
+    mwc_GE=SimpleModel(p)
+    simple_model=mwc_GE.J_sep(update_eq=1,s=10.0)
 
 #debug()

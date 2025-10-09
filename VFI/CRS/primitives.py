@@ -23,10 +23,8 @@ class Parameters:
         # Points in the Model
         self.num_l  = 101     # Number of points of evaluation
         self.num_v  = 200     # Number of points in the grid for V
-        self.num_x  = 15      # Number of points of support for worker productivity
         self.num_x  = 1      # Number of points of support for worker productivity #Andrei: removed worker heterogeneity, require both num_x and num_np to be 1
-        self.num_np = 5       # Number of non-permanent levels
-        self.num_z  = 5      # Number of points for match productivity
+        self.num_z  = 7      # Number of points for match productivity
         self.num_s  = 50      # Number of points of support for piece rate contract
         self.num_n  = 6     # Number of points of support for the number of workers
         self.n_bar = 5       # Number of workers in the firm        
@@ -38,31 +36,30 @@ class Parameters:
 
 
         #HMQ
-        self.q_0 = 0.80 #Starting match q
-        self.prod_q = 0.4 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
+        self.q_0 = 0.70 #Starting match q
+        self.prod_q = 0.3 #Relative prodctitivity of a low q match. So, total productivity is sum (prod_q+q_grid*(1-prod_q))*N_grid #Under no HMQ firm doesnt fire
 
         # Unemployment Parameters
-        self.u_bf_m = 1.0        #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
+        self.u_bf_m = 2.0        #1.0 * self.dt  #0.05?? sooo low # Intercept of benefit function for unemployed(x)
         #Min wage
         self.min_wage = 1.0 * self.u_bf_m
-
+        #Variable set
+        # 2 HMQ
+        # unemp value b
+        # 2 search: s_job and alpha (or kappa)
+        # 2 productivity: variance and corr
 
 
 
         #Utility shifter
         self.util_shift = 1.0
 
-        # Utility Function Parameters
-        #self.u_rho = 1.5      # Risk aversion coefficient, was 1.5
-        #self.u_a   = 1.0
-        #self.u_b   = 1.0
-
         # Search Environment
         self.z_0      = int(self.num_z/2+0.5)         # Slice of value function of firms (index starts at 1)
-        self.s_job    = 1.0        # Relative Efficiency of Search on the Job #0.53 in BL, but this is a bit of a pain at lower values since worker value is then below then unemp
-        self.alpha    = 1.0        # Parameter for probability of finding a job #If I'm playing with kappa, I can fix this too 1
+        self.s_job    = 0.30        # Relative Efficiency of Search on the Job #0.53 in BL, but this is a bit of a pain at lower values since worker value is then below then unemp
+        self.alpha    = 0.40        # Parameter for probability of finding a job #If I'm playing with kappa, I can fix this too 1
         self.sigma    = 0.8         # Parameter for probability of finding a job #PRESET, DON'T RE-ESTIMATE
-        self.kappa    = 0.8         # Vacancy cost parameter
+        self.kappa    = 1.0         # Vacancy cost parameter
 
 
         # effort function that control separation
@@ -76,13 +73,13 @@ class Parameters:
         # Productivity Function Parameters
         self.prod_var_x  = 1.0           # Variance of X (permanent)
         self.prod_var_x2 = 1.0           # Variance of X (non-permanent)
-        self.prod_var_z  = 0.14          # Variance of Z # was 0.49 in BL, I'm toning this fucker way down
+        self.prod_var_z  = 0.49          # Variance of Z # was 0.49 in BL, I'm toning this fucker way down
         #self.prod_z      = 0.5           # Production function parameter #Andrei: where does this come in???
         self.prod_rho    = 1.0           # Production function parameter #This is like the curvature of fun_prod wrt z... do I need this? Seems to play the same purpose as var_z
         #self.prod_mu     = 0.2           # Worker contribution
         #self.prod_px     = 1.0           # Worker power (non linear in type)
         #self.prod_py     = 1.0           # Firm power (nonlinear in type)
-        self.prod_a      = 16 * self.dt  # Factor for output function #Questioon is whether i want to noormalize the prooductivity or the wage to 1
+        self.prod_a      = 4 * self.dt  # Factor for output function #Questioon is whether i want to noormalize the prooductivity or the wage to 1
         self.prod_err_w  = 0.0           # Measurement error on wages
         self.prod_err_y  = 0.0           # Measurement error on wages
 
@@ -103,8 +100,8 @@ class Parameters:
         self.max_iter_fb      = 5000
         self.verbose          = 5
         self.iter_display     = 25
-        self.tol_simple_model = 1e-8
-        self.tol_full_model   = 9e-6
+        self.tol_simple_model = 1e-6
+        self.tol_full_model   = 1e-6
         self.tol_search       = 1e-2
         self.eq_relax_power   = 0.4       #  we relax the equilibrium constrain using an update rule based
         self.eq_relax_margin  = 500       #  on mumber of iterations
