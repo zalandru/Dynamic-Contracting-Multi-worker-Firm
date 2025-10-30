@@ -10,7 +10,7 @@ import pickle
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 # ---- Your model imports (as you already use) ----
-from CRS_HMQ_full import MultiworkerContract
+from CRS_HMQ_all import MultiworkerContract
 from simulate import Simulator
 
 # ---- Parameter names we will vary (in a fixed order) ----

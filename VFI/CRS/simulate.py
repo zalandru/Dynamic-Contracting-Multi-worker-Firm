@@ -298,8 +298,8 @@ class Simulator:
         # prepare the ignore shocks
         INCLUDE_E2U = not ('e2u' in ignore)
         INCLUDE_J2J = not ('j2j' in ignore)
-        INCLUDE_XCHG = not ('xshock' in ignore)
         INCLUDE_ZCHG = not ('zshock' in ignore)
+        #INCLUDE_ZCHG = False
         INCLUDE_WERR = not ('werr' in ignore)
 
         #Initialize interpolators
@@ -309,6 +309,7 @@ class Simulator:
         q_interpolator = np.empty_like(rho_interpolator)
         ve_interpolator = np.empty_like(rho_interpolator)
         vf_interpolator = np.empty_like(rho_interpolator)
+        vf_W_interpolator = np.empty_like(rho_interpolator)
         rhoj2j_interpolator = np.empty_like(rho_interpolator)
         for iz in range(p.num_z):     
                     rho_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_star[iz, ...]) 
@@ -317,6 +318,7 @@ class Simulator:
                     q_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.q_star[iz, ...]) 
                     ve_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.ve_star[iz, ...])
                     vf_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_J[iz, ...])
+                    vf_W_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.Vf_W[iz, ...])
                     rhoj2j_interpolator[iz] = RegularGridInterpolator((model.rho_grid, model.Q_grid), model.rho_j2j[iz, ...])
 
         # we store the current state into an array
@@ -331,7 +333,8 @@ class Simulator:
         P  = np.zeros(ni)            # firm profit
         S  = np.zeros(ni,dtype=int)  # number of periods in current spell
         pr = np.zeros(ni)            # probability, either u2e or e2u
-        N  = np.zeros(ni)            # number of workers in an onservation
+        Sev = np.zeros(ni)           # severance pay
+        V  = np.zeros(ni)            # worker value
 
         # we create a long sequence of firm innovation shocks where we store
         # a sequence of realized Z, we store realized Z_t+1 | Z_t for each
@@ -356,22 +359,23 @@ class Simulator:
             # save the state when starting the period
             E0 = np.copy(E)
             Z0 = np.copy(Z)
-
+            S0 = np.copy(S)
             # first we look at the unemployed of a given type X
             for ix in range(p.num_x): 
-                Ix = (E0==0) & (X==ix)
+                Ix = (E0==0)
 
                 if Ix.sum() == 0: continue
 
                 # get whether match a firm
-                meet_u2e = np.random.binomial(1, model.Pr_u2e, Ix.sum())==1
-                pr[Ix] = model.Pr_u2e
+                Pr_u2e = np.interp(Sev[Ix],model.sev_grid,model.Pr_u2e)
+                meet_u2e = np.random.binomial(1, Pr_u2e, Ix.sum())==1
+                pr[Ix] = Pr_u2e
 
                 # workers finding a job
                 Ix_u2e     = bool_index_combine(Ix,meet_u2e)
                 H[Ix_u2e]  = np.random.choice(nl, Ix_u2e.sum()) # draw a random location in the shock history
                 E[Ix_u2e]  = 1                                  # make the worker employed
-                R[Ix_u2e]  = model.rho_u2e                      # find the firm and the initial rho
+                R[Ix_u2e]  = np.interp(Sev[Ix_u2e],model.sev_grid,model.rho_u2e)                      # find the firm and the initial rho
                 Z[Ix_u2e]  = p.z_0-1                            # starting z_0 for new matches
                 Q[Ix_u2e]  = p.q_0                              # startomg q_0 for new matches
                 D[Ix_u2e]  = Event.u2e
@@ -380,7 +384,8 @@ class Simulator:
                 P[Ix_u2e]  = vf_interpolator[p.z_0-1] (coords)
                 #np.interp(R[Ix_u2e], model.rho_grid, model.Vf_J[p.z_0-1,:,0])  # interpolate wage
                 S[Ix_u2e]  = 1
-                N[Ix_u2e]  = 1
+                Sev[Ix_u2e] = 0 #again, their severance is zero
+                V[Ix_u2e] = np.interp(R[Ix_u2e],model.rho_grid, model.Vf_W[p.z_0-1,:,0])
 
                 # workers not finding a job
                 Ix_u2u     = bool_index_combine(Ix,~meet_u2e)
@@ -390,11 +395,11 @@ class Simulator:
                 H[Ix_u2u]  = -1
                 S[Ix_u2u]  = S[Ix_u2u] + 1 # increase spell of unemployment
                 R[Ix_u2u]  = 0
-                S[Ix_u2u]  = 0
+                V[Ix_u2u] = np.interp(Sev[Ix_u2u],model.sev_grid,model.Vf_U)
 
             # next we look at employed workers of quality q,prod Z
             for iz in range(p.num_z):
-                    Ixz = (E0 == 1) & (X == ix) & (Z0 == iz)
+                    Ixz = (E0 == 1) & (Z0 == iz)
 
                     if Ixz.sum() == 0: continue
 
@@ -405,14 +410,17 @@ class Simulator:
                     sep     = INCLUDE_E2U * np.random.binomial(1, pr_sep, Ixz.sum() )==1
                     pr[Ixz] = pr_sep
 
-                    # workers who quit
+                    # workers who are fired
                     Ix_e2u      = bool_index_combine(Ixz,sep)
                     E[Ix_e2u]   = 0
                     D[Ix_e2u]   = Event.e2u
                     W[Ix_e2u]   = 0  # no wage
                     H[Ix_e2u]   = -1
                     S[Ix_e2u]   = 1
+                    Sev[Ix_e2u] = np.interp(R[Ix_e2u],model.rho_grid,model.sev_star) #we get the actual severance pay that the firm woul've promised
                     R[Ix_e2u]   = 0
+                    V[Ix_e2u] = np.interp(Sev[Ix_e2u],model.sev_grid,model.Vf_U)
+
 
                     # search decision for non-quiters
                     Ixz     = bool_index_combine(Ixz,~sep)
@@ -432,12 +440,13 @@ class Simulator:
                     else:
                         Z[Ixz_j2j]   = np.random.choice(range(p.num_z),Ixz_j2j.sum()) # this is for counterfactual simulations
                     D[Ixz_j2j]   = Event.j2j
-                    W[Ixz_j2j]   = np.log(R[Ixz_j2j])
+                    W[Ixz_j2j]   = np.interp(R[Ixz_j2j], model.rho_grid, np.log(model.w_grid))
                     #np.interp(R[Ixz_j2j], model.rho_grid, np.log(model.w_grid)) # interpolate wage
                     P[Ixz_j2j]   = vf_interpolator[iz] (coords)
                     #np.interp(R[Ixz_j2j], model.rho_grid, model.Vf_J[iz, :, iq])  # interpolate wage
                     S[Ixz_j2j]   = 1
                     Q[Ixz_j2j]   = p.q_0
+                    V[Ixz_j2j] = np.interp(R[Ixz_j2j],model.rho_grid, model.Vf_W[p.z_0-1,:,0])
 
                     # workers with ee
                     Ixz_ee      = bool_index_combine(Ixz,~meet)
@@ -448,22 +457,26 @@ class Simulator:
                         Z[Ixz_ee]   = Zhist[ (Z[Ixz_ee] , H[Ixz_ee]) ] # extract the next Z from the pre-computed histories
                     H[Ixz_ee]   = (H[Ixz_ee] + 1) % nl             # increment the history by 1
                     D[Ixz_ee]   = Event.ee
-                    W[Ixz_ee]   = np.log(R[Ixz_ee])
+                    W[Ixz_ee]   = np.interp(R[Ixz_ee], model.rho_grid, np.log(model.w_grid))
                     #np.interp(R[Ixz_ee], model.rho_grid, np.log(model.w_grid))  # interpolate wage
                     P[Ixz_ee]   = vf_interpolator[iz] (coords)
                     #np.interp(R[Ixz_ee], model.rho_grid, model.Vf_J[iz, :, iq])  # interpolate firm Expected profit @fixme this done at past X not new X
                     S[Ixz_ee]   = S[Ixz_ee] + 1
                     Q[Ixz_ee]   = q_interpolator[iz] (coords)
+                    V[Ixz_ee]   = vf_W_interpolator[iz] (coords)
 
-            # we shock the type of the worker
-            #for ix in range(p.num_x):
-            #    Ix    = (X==ix)
-            #    if INCLUDE_XCHG:
-            #        X[Ix] = np.random.choice(p.num_x, Ix.sum(), p=model.X_trans_mat[:,ix])
+            was_emp = (E0 == 1)
+            now_eu  = (D == Event.e2u)
+            now_jj  = (D == Event.j2j)
+            now_ee  = (D == Event.ee)
+            assert ((now_eu | now_jj | now_ee)[was_emp]).all()
+            stayers = was_emp & now_ee
+            assert np.all(S[stayers] == S0[stayers] + 1)
+
 
             # append to data
             if (t>burn):
-                df     = pd.DataFrame({ 'i':range(ni),'t':np.ones(ni) * t, 'e':E, 's':S, 'h':H, 'x':X , 'z':Z, 'r':R, 'd':D, 'w':W , 'q':Q ,'Pi':P, 'pr':pr} )
+                df     = pd.DataFrame({ 'i':range(ni),'t':np.ones(ni) * t, 'e':E, 's':S, 'h':H, 'x':X , 'z':Z, 'r':R, 'd':D, 'w':W , 'q':Q ,'Pi':P, 'pr':pr, 'sev':Sev, 'v':V} )
                 df_all = pd.concat([df_all, df], axis =0)
 
         # append match output
@@ -494,13 +507,13 @@ class Simulator:
             (df_all['h'] - (df_all['s'] - 1)) % nl,  # nl
             -1
             ).astype(int)
-
+        #Assert that severance makes sense
+        assert np.all( df_all.query('h>0')['sev'] == 0)
         # sort the data
         df_all = df_all.sort_values(['i', 't'])
 
         self.sdata = df_all
         return(self)
-
 
     def simulate_firm(self,z,n0,n1,rho,q,nt, allow_hiring=True,allow_fire=True,allow_leave=True,update_z=False, z_dir=None,seed=False,disable_fire=False):
         """
@@ -655,7 +668,6 @@ class Simulator:
         all_df.loc[all_df.f==0,['z','n0','n1', 'y', 'w', 'Pi', 'S', 'pr_e2u', 'pr_j2j', 'W1', 'vs']] = 0
         all_df['n'] = all_df['n0'].values + all_df['n1'].values              
         return all_df
-
 
     def simulate_firm_sep(self,z,n0,n1,rho,q,nt, force_sep=True,allow_hiring=True,allow_fire=True,allow_leave=True,update_z=False, z_dir=None,seed=False):
         """
@@ -970,18 +982,14 @@ class Simulator:
  
         # extract total output
         moms['total_output'] = sdata.query('h>0')['f'].sum()/len(sdata)
-        moms['total_wage_gross'] = np.exp(sdata.query('h>0')['w_gross']).sum()/len(sdata)
-        moms['total_wage_net'] = np.exp(sdata.query('h>0')['w_net']).sum()/len(sdata)
+        #moms['total_wage_gross'] = np.exp(sdata.query('h>0')['w_gross']).sum()/len(sdata) #ayo how is the wage higher than the output? bcs that's what I'm getting
+        moms['total_wage'] = np.exp(sdata.query('h>0')['w_net']).sum()/len(sdata)
         moms['total_uben'] = self.p.u_bf_m * sdata.eval('h==0').sum()/len(sdata)
-
+        moms['mean_wage'] = np.exp(sdata.query('h>0')['w_gross']).sum()/len(sdata.query('h>0'))
+        moms['min_mean_ratio'] = self.p.min_wage /moms['mean_wage']
         # ------  transition rates   -------
         # compute unconditional transition probabilities
-        #moms['pr_u2e'] = sdata.eval('d==@Event.u2e').sum() / sdata.eval('d==@Event.u2e | d==@Event.uu').sum()
-        #moms['pr_j2j'] = sdata.eval('d==@Event.j2j').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
-        #moms['pr_e2u'] = sdata.eval('d==@Event.e2u').sum() / sdata.eval('d==@Event.j2j | d==@Event.ee | d==@Event.e2u').sum()
-
         d = sdata['d']
-
         moms['pr_u2e'] = (d.eq(Event.u2e)).sum() / (d.isin([Event.u2e, Event.uu])).sum()
         moms['pr_j2j'] = (d.eq(Event.j2j)).sum() / (d.isin([Event.j2j, Event.ee, Event.e2u])).sum()
         moms['pr_j2j_an'] = 1 - ( 1 - moms['pr_j2j']) ** 4 
@@ -1047,7 +1055,7 @@ class Simulator:
                        dten=lambda d: d.tenure - d.tenure_l1)
                 .query('dten >= 0')) #because I do this create_year_lag_by, the wage and prod differences are already only within the same firm, unless it just happens to be reused
         #however, dten is negative sometimes... what gives?
-        sdata_y = sdata.groupby(['i', 'year']).agg({'w_exp': 'sum', 'h': 'min', 's': 'min', 's2': 'max', 'e': 'min', 'es': 'sum'}) #wait, do I want the sum of the wages here? I guess if the workers are here the whole time, it's no biggie?
+        sdata_y = sdata.groupby(['i', 'year']).agg({'w_exp': 'sum', 'h': 'min', 's': 'min', 's2': 'max', 'e': 'min', 'tenure':'min', 'es': 'sum'}) #wait, do I want the sum of the wages here? I guess if the workers are here the whole time, it's no biggie?
         sdata_y = sdata_y.pipe(create_year_lag, ['e', 's'], -1).pipe(create_year_lag, ['e', 'es'], 1)
         # make sure we stay in the same spell, and make sure it is employment
         sdata_y = sdata_y.query('h>=0').query('s+3==s2')
@@ -1096,41 +1104,14 @@ class Simulator:
                                     .assign(diff=lambda d: d.w - d.w_l2)['diff'].mean())
 
         #Andrei: extra moments of my own
-        #I think I need my own dataset, just like the french one, where oone observation is worker*firm*year
-        #sdata_y_h = sdata.groupby(['i', 'year','h']).agg({'w_exp': 'sum', 's': 'min', 's2': 'max', 'e': 'min','es': 'sum', 'e2u': 'max', 'u2e': 'max','j2j': 'max'}) #here e=0 will only exist if H=-1
-        #sdata_y_h = sdata_y_h.pipe(create_year_lag, ['e', 's','e2u'], -1).pipe(create_year_lag, ['e', 'es'], 1) #wait, should'nt the e2u lag be forward rather than behind? because, if it's behind, this guy has alrdy been fired and now found a new job
-        #sdata_y_h = sdata_y_h.query('h>=0') #only employed.
-        #sdata_y_h['w'] = np.log(sdata_y_h['w_exp'])        
-        #sdata_y_h = (sdata_y_h.join(hdata.ypw, on="h")
-        #            .pipe(create_year_lag, ['ypw', 'w', 's'], 1)
-        #            .assign(dw=lambda d: d.w - d.w_l1,
-        #                  dypw=lambda d: d.ypw - d.ypw_l1))
-        #1. Rate of new hires out of all the employed workers
-        #moms['pr_new_hire_s'] = sdata.eval('s==0 & e==1').sum() / sdata.eval('e==1').sum()
-        moms['pr_new_hire'] = sdata.eval('tenure==0 & e==1').sum() / sdata.eval('e==1').sum() #this is more precise, no?
-        #moms['pr_new_hire_an'] = sdata_y_h.eval('s==1 & e==1').sum() / sdata_y_h.eval('e==1').sum() #Not sure if this works, since we query that the workers are stayers... for the whole year too
-        #moms['pr_new_hire_an_alt'] = sdata_y_h.eval('(u2e==1 | j2j ==1) & e==1').sum() / sdata_y_h.eval('e==1').sum() #Here I am directly checking for the event. yep, all 3 are the same...
-        #This must be because there're too few unemployed people!!! I don't see no oother reason
-        #2. Tenure profile of wages at 7.5 years (how did Souchier do that?)
-        # Step 1: Keep only employed individuals
-        #employed = sdata_y.sort_values(['i', 'year']).copy()
-        #employed['e2u_emp'] = (employed.groupby('i')['d'].shift(1) == Event.e2u)
-        #employed = employed.query('e == 1')
-        # Step 2: Sort by individual and time
-        #employed = employed.sort_values(['i', 't'])
-        #employed = employed.sort_values(['i', 'f', 't']).copy()
-        #employed['lw'] = np.log(employed['w'])
-
-        # previous time within (i,f)
-        #employed['t_prev'] = employed.groupby(['i','f'])['t'].shift(1)
-
-        # Step 3: Compute log wage growth (log difference):
-        #sdata_y['w_growth_rate'] = sd.groupby(['i','f'])['lw'].diff()
-
-        # optional: drop growth if last observation wasn’t the immediately prior period
-        #sdata_y.loc[employed['t_prev'] != employed['t'] - 1, 'w_growth_rate'] = np.nan
+        moms['pr_new_hire'] = sdata_y_f.eval('s<=1 & e==1').sum() / sdata_y_f.eval('e==1').sum() #this is more precise, no?
+        moms['pr_new_hire_y'] = sdata_y.eval('s<=1 & e==1').sum() / sdata_y.eval('e==1').sum() #this is more precise, no?
+        moms['pr_new_hire_sdata_ten'] = sdata.eval('tenure==0 & e==1').sum() / sdata.eval('e==1').sum() #this is more precise, no?
+        moms['pr_new_hire_old'] = sdata.eval('s<=1 & e==1').sum() / sdata.eval('e==1').sum()        
         employed = sdata_y_f.copy().query(' tenure<= 9') #tenure starts at zero, so 10 years!!!
         moms['avg_w_growth_10'] = employed.groupby('tenure')['dw'].mean().sum()
+        employed = sdata_y.copy().query(' tenure<= 9') #tenure starts at zero, so 10 years!!!
+        moms['avg_w_growth_10_y'] = employed.groupby('tenure')['dw'].mean().sum()  #Recheck for the case of sdata_y 
         #3. Productivity moments
         #a) s.d. of firm productivity growth (take sd of dypw?) yep, this is exactly what we do in the data
         moms['sd_dypw'] = hdata_sep['dlypw'].std()
@@ -1167,7 +1148,8 @@ class Simulator:
         
         del wid_2spells 
         #del sdata_y 
-        self.sdata_y = sdata_y_f #Note that this is the h one!!!
+        self.sdata_y_f = sdata_y_f #Note that this is the h one!!!
+        self.sdata_y   = sdata_y
         #self.hdata = hdata
         self.moments = moms
         return self
@@ -1178,7 +1160,9 @@ class Simulator:
         I might also want to produce the plots here, if I intend to replicate any
         :return:
         """
-        sdata_y = self.sdata_y
+        sdata_y_f = self.sdata_y_f.query('tenure<=9')
+        #OR TRY WITH SDATA_Y??? I dunno why I'd need to somehow it's not working sooooo
+        sdata_y = self.sdata_y.query('tenure<=9')
         #hdata = self.hdata
         moms_untarg = {}
 
@@ -1192,7 +1176,10 @@ class Simulator:
         #We get hdata['id_shock_sum'] as the cumulative log shock over the 3 years
         #employed['tenure'] = employed['s']
         model_wage_ten = feols('dw ~ dypw+i(tenure, dypw)+C(tenure)', data=sdata_y)
-        moms_untarg['wage_pass_ten'] = model_wage_ten.coef() #This is HUGE so far. more than 1 for S==2!!!  Even bigger if I use id_shock_diff??? Surprising ngl
+        moms_untarg['wage_pass_ten_y'] = model_wage_ten.coef() #This is HUGE so far. more than 1 for S==2!!!  Even bigger if I use id_shock_diff??? Surprising ngl
+        model_wage_ten = feols('dw ~ dypw+i(tenure, dypw)+C(tenure)', data=sdata_y_f)
+        moms_untarg['wage_pass_ten_yf'] = model_wage_ten.coef() #This is HUGE so far. more than 1 for S==2!!!  Even bigger if I use id_shock_diff??? Surprising ngl
+        
         model_wage_ten = feols('dw ~ dypw + tenure * dypw', data=sdata_y) #the dypw coefficient is negative????
         moms_untarg['wage_pass_ten_simple'] = model_wage_ten.coef()  
         #It's also very weird after the first 2 tenures for some reason
@@ -1203,11 +1190,11 @@ class Simulator:
         # And then you don't wanna raise wages much in anticipation of future seniors? That kinda sucks ngl. 
         # Is there any way to deal with this outside of more steps? Maybe I don't let firms internalize the combination???
         # But then the value function is quite literally incorrect! Okay gotta focus some more on Neural Nets ig
-        model_e2u_ten = feols('e2u ~ C(tenure)', data=sdata_y)
+        model_e2u_ten = feols('e2u ~ C(tenure)', data=sdata_y_f)
         moms_untarg['sep_ten'] = model_e2u_ten.coef() #So far it's only juniors getting fired. Surprisingly, their firing rates are not very high, only 8%      
-        model_e2u_pass_ten = feols('e2u ~ i(tenure, dypw)', data=sdata_y)
+        model_e2u_pass_ten = feols('e2u ~ i(tenure, dypw)', data=sdata_y_f)
         moms_untarg['sep_pass_ten'] = model_e2u_pass_ten.coef()        
-        model_e2u_pass_ten = feols('e2u ~ dypw + tenure * dypw', data=sdata_y)
+        model_e2u_pass_ten = feols('e2u ~ dypw + tenure * dypw', data=sdata_y_f)
         moms_untarg['sep_pass_ten_simple'] = model_e2u_pass_ten.coef()  #exactly as we would expect! Negative id_shock_sum coef (-0.08), negative basic tenure coef (very small though? -0.002), POSITIVE interaction term, meaning that layoffs of seniors respond less to shock     
 
         
@@ -1257,6 +1244,293 @@ class Simulator:
         else:
             return self.moments
 
+    def _tenure_stats_from_sdata(self, sdata: pd.DataFrame, use_promised: bool = True):
+        """
+        Single-rep computation.
+        Returns (w_mean_by_tenure, v_mean_by_tenure, sev_mean_by_tenure), each a pd.Series indexed by tenure.
+        """
+        # promised severance at current rho (projected severance if a layoff hit now)
+        if use_promised:
+            sev_series = np.interp(sdata['r'].to_numpy(),
+                               self.model.rho_grid,
+                               self.model.sev_star)
+        else:
+            # realized severance payments (mostly zero except on e2u)
+            sev_series = sdata['sev'].to_numpy() if 'sev' in sdata.columns else np.zeros(len(sdata))
+
+        # employed-only observations (your own code uses h>=0 as the employed filter)
+        emp = sdata.loc[sdata['h'] >= 0].copy()
+        emp['sev_use'] = sev_series[sdata['h'] >= 0]
+        #Now we extend the severance series...?
+        emp['w_exp'] = np.exp(emp['w'])
+        g = (emp
+         .groupby('tenure')
+         .agg(w=('w_exp', 'mean'),
+              v=('v', 'mean'),
+              sev=('sev_use', 'mean')))
+        #Lastly, want to account for the fact that the severance pay is QUARTERLY, while the mandatory one is LUMP-SUM
+        g['sev'] = g['sev'] / (1 - (1 - np.interp(g['sev'].to_numpy(),self.model.sev_grid,self.model.Pr_u2e))) #no beta discounting necessary here
+        #Alternatively, I could consider doing this empirically: just track the actual realized severances payments across tenure.
+        # ensure a simple Series return per target
+        return g['w'], g['v'], g['sev']
+
+    def _tenure_regs_from_sdata(self, sdata: pd.DataFrame) -> pd.Series:
+        """
+        Single-rep regressions.
+        Returns a flat pd.Series with names like:
+          w_on_tenure:(Intercept), w_on_tenure:tenure, v_on_tenure:(Intercept), v_on_tenure:tenure
+        """
+        sdata_r = sdata.query('h>=0').copy()
+        sdata_r['w_act'] = np.exp(sdata_r['w'])
+        # You can keep the full sample unless you prefer employed-only
+        w_fit = feols('w_act ~ tenure', data=sdata_r).coef()
+        v_fit = feols('v     ~ tenure', data=sdata_r).coef()
+
+        # Flatten into a single Series with clear keys
+        out = {}
+        for k, val in w_fit.items():
+            out[f"w_on_tenure:{k}"] = val
+        for k, val in v_fit.items():
+            out[f"v_on_tenure:{k}"] = val
+        return pd.Series(out, dtype=float)
+
+    def _ensure_tenure_means(self, nrep: int):
+        """
+        Make sure mean_*_by_tenure are available. If not, simulate once to populate them.
+        """
+        need = not (
+            hasattr(self, "mean_w_by_tenure") and hasattr(self, "mean_v_by_tenure") and hasattr(self, "mean_sev_by_tenure")
+            and isinstance(self.mean_w_by_tenure, pd.Series) and len(self.mean_w_by_tenure) > 0
+        )
+        if need:
+            # This will, per our earlier wiring, compute and set mean_*_by_tenure + tenure_reg_* on self
+            self.simulate_moments_rep(nrep)
+
+    def plot(self, moms_mean, nrep: int = 50, figsize=(12, 4), save_prefix: str | None = None):
+        """
+        Produces two figures:
+          (A) Side-by-side panels: mean wage vs mean value across tenure
+          (B) Promised severance (model) vs government-mandated severance across tenure
+
+        If mean_*_by_tenure are not present, runs simulate_moments_rep(nrep) once to populate them.
+        Optional bootstrap bands:
+          If self._boot_tenure_draws = {'w': [Series...], 'v': [...], 'sev': [...]} exists,
+          95% percentile bands are drawn automatically.
+        """
+        import numpy as np
+        import matplotlib.pyplot as plt
+
+        # 1) Ensure the per-tenure means are available
+        self._ensure_tenure_means(nrep)
+
+        # Pull series
+        w = self.mean_w_by_tenure
+        v = self.mean_v_by_tenure
+        sev = self.mean_sev_by_tenure
+
+        # Common tenure index (align just in case)
+        tenure_idx = w.index.union(v.index).union(sev.index)
+        w = w.reindex(tenure_idx)
+        v = v.reindex(tenure_idx)
+        sev = sev.reindex(tenure_idx)
+
+        # Helper for optional percentile bands from stored bootstrap draws
+        def _maybe_ci(draws_key: str, x_index: pd.Index):
+            draws = getattr(self, "_boot_tenure_draws", {}).get(draws_key, None) if hasattr(self, "_boot_tenure_draws") else None
+            if not draws:
+                return None, None
+            # Align each draw to the same index
+            M = np.column_stack([d.reindex(x_index).to_numpy() for d in draws])
+            lo = np.nanpercentile(M, 2.5, axis=1)
+            hi = np.nanpercentile(M, 97.5, axis=1)
+            return lo, hi
+
+        # =========================
+        # Figure A: wage & value
+        # =========================
+        figA, axes = plt.subplots(1, 2, figsize=figsize, sharex=True)
+        ax_w, ax_v = axes
+
+        ax_w.plot(tenure_idx, w, label="Mean wage")
+        lo, hi = _maybe_ci('w', tenure_idx)
+        if lo is not None:
+            ax_w.fill_between(tenure_idx, lo, hi, alpha=0.2, linewidth=0, label="95% CI")
+        ax_w.set_title("Wage by tenure")
+        ax_w.set_xlabel("Tenure")
+        ax_w.set_ylabel("Wage (mean)")
+        ax_w.grid(True, alpha=0.3)
+        ax_w.legend()
+
+        ax_v.plot(tenure_idx, v, label="Mean value $v$")
+        lo, hi = _maybe_ci('v', tenure_idx)
+        if lo is not None:
+            ax_v.fill_between(tenure_idx, lo, hi, alpha=0.2, linewidth=0, label="95% CI")
+        ax_v.set_title("Value $v$ by tenure")
+        ax_v.set_xlabel("Tenure")
+        ax_v.set_ylabel("Value $v$ (mean)")
+        ax_v.grid(True, alpha=0.3)
+        ax_v.legend()
+
+        figA.tight_layout()
+        if save_prefix:
+            figA.savefig(f"{save_prefix}_w_v_by_tenure.png", dpi=200, bbox_inches="tight")
+
+        # ==========================================
+        # Figure B: severance (promised vs mandated)
+        # ==========================================
+        # Government-mandated curve (customize hook if needed)
+        sev_gov = self._mandated_severance_curve(tenure_idx, moms_mean)
+
+        figB, ax = plt.subplots(1, 1, figsize=(6.5, 4))
+        ax.plot(tenure_idx, sev, label="Promised severance (model)")
+        lo, hi = _maybe_ci('sev', tenure_idx)
+        if lo is not None:
+            ax.fill_between(tenure_idx, lo, hi, alpha=0.2, linewidth=0)
+
+        ax.plot(tenure_idx, sev_gov, linestyle="--", label="Govt-mandated severance")
+        ax.set_title("Severance by tenure")
+        ax.set_xlabel("Tenure")
+        ax.set_ylabel("Severance")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+
+        figB.tight_layout()
+        if save_prefix:
+            figB.savefig(f"{save_prefix}_sev_by_tenure.png", dpi=200, bbox_inches="tight")
+
+        return self
+
+    def plot_w_v_twin(self,
+                      nrep: int = 50,
+                      figsize=(7.0, 4.0),
+                      save_path: str | None = None,
+                      same_axis_normalized: bool = False,
+                      norm: str = "index"):
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
+
+        self._ensure_tenure_means(nrep)
+
+        # force classic pyplot colors
+        c_w = 'tab:blue'    # Wage
+        c_v = 'tab:orange'  # Value v
+
+        # pull + align
+        w = self.mean_w_by_tenure
+        v = self.mean_v_by_tenure
+        tenure_idx = w.index.union(v.index)
+        w = w.reindex(tenure_idx)
+        v = v.reindex(tenure_idx)
+
+        def _maybe_ci(key, x_index):
+            if not hasattr(self, "_boot_tenure_draws"):
+                return None, None
+            draws = self._boot_tenure_draws.get(key)
+            if not draws:
+                return None, None
+            M = np.column_stack([d.reindex(x_index).to_numpy() for d in draws])
+            return np.nanpercentile(M, 2.5, axis=1), np.nanpercentile(M, 97.5, axis=1)
+
+        # ---- normalized single-axis (optional) ----
+        if same_axis_normalized:
+            def _normalize(s: pd.Series, how: str) -> pd.Series:
+                s = s.astype(float)
+                if how == "index":
+                    base = s.dropna().iloc[0] if s.dropna().size else np.nan
+                    return (s / base) * 100.0
+                if how == "mean":
+                    return (s / s.mean()) * 100.0
+                if how == "zscore":
+                    std = s.std(ddof=0) or 1.0
+                    return (s - s.mean()) / std
+                if how == "minmax":
+                    mn, mx = s.min(), s.max()
+                    rng = (mx - mn) or 1.0
+                    return (s - mn) / rng
+                return s
+
+            wN = _normalize(w, norm)
+            vN = _normalize(v, norm)
+
+            fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+            lw, = ax.plot(tenure_idx, wN, label="Wage (normalized)", color=c_w)
+            lo, hi = _maybe_ci('w', tenure_idx)
+            if lo is not None and norm in ("index", "mean"):
+                base = (w.dropna().iloc[0] if norm == "index" else w.mean())
+                ax.fill_between(tenure_idx, (lo/base)*100.0, (hi/base)*100.0,
+                                alpha=0.18, linewidth=0, facecolor=c_w)
+
+            lv, = ax.plot(tenure_idx, vN, linestyle="--", label="Value $v$ (normalized)", color=c_v)
+            lo, hi = _maybe_ci('v', tenure_idx)
+            if lo is not None and norm in ("index", "mean"):
+                base = (v.dropna().iloc[0] if norm == "index" else v.mean())
+                ax.fill_between(tenure_idx, (lo/base)*100.0, (hi/base)*100.0,
+                                alpha=0.18, linewidth=0, facecolor=c_v)
+
+            ax.set_xlabel("Tenure")
+            ax.set_ylabel("Normalized units")
+            ax.grid(True, alpha=0.3)
+            ax.legend()
+            fig.tight_layout()
+            if save_path:
+                fig.savefig(save_path, dpi=200, bbox_inches="tight")
+            return self
+
+        # ---- default twin-axis variant with distinct colors ----
+        fig, ax_w = plt.subplots(1, 1, figsize=figsize)
+        ax_v = ax_w.twinx()
+
+        lw, = ax_w.plot(tenure_idx, w, label="Wage", color=c_w)
+        lo, hi = _maybe_ci('w', tenure_idx)
+        if lo is not None:
+            ax_w.fill_between(tenure_idx, lo, hi, alpha=0.18, linewidth=0, facecolor=c_w)
+
+        lv, = ax_v.plot(tenure_idx, v, linestyle="--", label="Value $v$", color=c_v)
+        lo, hi = _maybe_ci('v', tenure_idx)
+        if lo is not None:
+            ax_v.fill_between(tenure_idx, lo, hi, alpha=0.18, linewidth=0, facecolor=c_v)
+
+        # match axis cosmetics to their series colors
+        ax_w.set_xlabel("Tenure")
+        ax_w.set_ylabel("Wage", color=c_w)
+        ax_w.tick_params(axis='y', colors=c_w)
+        ax_w.spines['left'].set_color(c_w)
+
+        ax_v.set_ylabel("Value $v$", color=c_v)
+        ax_v.tick_params(axis='y', colors=c_v)
+        ax_v.spines['right'].set_color(c_v)
+
+        ax_w.grid(True, alpha=0.3)
+
+        # combined legend
+        lines = [lw, lv]
+        labels = [l.get_label() for l in lines]
+        ax_w.legend(lines, labels, loc="best")
+
+        ax_w.set_title("Wage (left) and Value $v$ (right) across tenure")
+        fig.tight_layout()
+        if save_path:
+            fig.savefig(save_path, dpi=200, bbox_inches="tight")
+        return self
+
+    def _mandated_severance_curve(self, tenure_index, moms_mean):
+        """
+        Government-mandated severance curve across tenure.
+        :return:
+        """  
+        #import matplotlib.pyplot as plt
+        #mean_w,mean_v,mean_sev =  self.get_w_v_sev_tenure(nrep)#simulate to get the value
+
+        #Severance threshold per tenure
+        #Uses moms['mean_wage'], which is the average QUARTERLY wage. while severance pay is tenure * weekly pay. weekly pay is 1/12 of the quarterly pay
+        #sev_gov = (moms_mean['mean_wage'] / 12 )* tenure
+        avg_w = moms_mean['mean_wage']
+        tenure_vals = pd.Index(tenure_index, dtype=float)
+        mandated = (1/12) * avg_w * tenure_vals #NOTE!!!! THIS IS TOTAL SEVERANCE PAY, WHILE MY VALUE IS PER QUARTER!!!! So I should account for it in my actual value
+        return pd.Series(mandated, index=tenure_index)
+
     def simulate_moments_rep(self, nrep):
         """
         simulates moments from the model, running it multiple times
@@ -1266,16 +1540,29 @@ class Simulator:
 
         moms = pd.DataFrame()
         moms_unt = pd.DataFrame()
+        # NEW: collectors for our per-rep tenure series & regressions
+        W_list, V_list, SEV_list = [], [], []
+        reg_rows = []
         self.log.info("Simulating {} reps".format(nrep))
+
         for i in range(nrep):
             self.log.debug("Simulating rep {}/{}".format(i+1, nrep))
             mom, mom_unt = self.simulate().computeMoments().model_evaluation().get_moments()
             moms = pd.concat([ moms, pd.DataFrame({ k:[v] for k,v in mom.items() })] , axis=0)
-            #moms_unt = pd.concat([ moms_unt, pd.DataFrame({ k:[v] for k,v in mom_unt.items() })] , axis=0)
-            # untargeted regression outputs (dict of Series) → flatten to a single row
-            # mom_unt like: {'wage_pass_ten': Series(...), 'wage_pass_ten_simple': Series(...), ...}
             flat = pd.concat(mom_unt, names=['regression', 'coef'])  # MultiIndex Series
             moms_unt = pd.concat([moms_unt, flat.to_frame().T], axis=0)
+            #Now add the w,v,severance results
+            # Use the SAME sdata from this replication (no second simulation!)
+            sdata = self.sdata
+
+            # (1) Tenure averages this rep
+            w_s, v_s, sev_s = self._tenure_stats_from_sdata(sdata, use_promised=True)
+            W_list.append(w_s)
+            V_list.append(v_s)
+            SEV_list.append(sev_s)
+
+            # (2) Regressions this rep
+            reg_rows.append(self._tenure_regs_from_sdata(sdata))
 
             self.clean()
         self.log.info("done simulating")
@@ -1284,28 +1571,32 @@ class Simulator:
         moms_unt_mean = moms_unt.mean().rename('regressions_mean')
         moms_unt_var  = moms_unt.var().rename('regressions_var')
 
+        # Aggregate across reps: align by a common tenure index and average
+        if W_list:
+            max_ten = int(max(s.index.max() for s in W_list if len(s) > 0))
+            tenure_idx = pd.RangeIndex(0, max_ten + 1)
+            def _mean_series(series_list):
+                df = pd.concat([s.reindex(tenure_idx) for s in series_list], axis=1)
+                return df.mean(axis=1)
+
+            self.mean_w_by_tenure   = _mean_series(W_list)
+            self.mean_v_by_tenure   = _mean_series(V_list)
+            self.mean_sev_by_tenure = _mean_series(SEV_list)
+        else:
+            self.mean_w_by_tenure   = pd.Series(dtype=float)
+            self.mean_v_by_tenure   = pd.Series(dtype=float)
+            self.mean_sev_by_tenure = pd.Series(dtype=float)
+
+        # Aggregate regressions across reps
+        if reg_rows:
+            reg_df = pd.DataFrame(reg_rows)
+            self.tenure_reg_mean = reg_df.mean(numeric_only=True)
+            self.tenure_reg_var  = reg_df.var(numeric_only=True)
+        else:
+            self.tenure_reg_mean = pd.Series(dtype=float)
+            self.tenure_reg_var  = pd.Series(dtype=float)
+
         return(moms_mean, moms_var, moms_unt_mean, moms_unt_var)
-
-    def simulate_moments_rep_noeval(self, nrep):
-        """
-        simulates moments from the model, running it multiple times
-        :param nrep: number of replications
-        :return:
-        """
-
-        moms = pd.DataFrame()
-        self.log.info("Simulating {} reps".format(nrep))
-        for i in range(nrep):
-            self.log.debug("Simulating rep {}/{}".format(i+1, nrep))
-            mom = self.simulate_val().computeMoments().get_moments(eval=False)
-            moms = pd.concat([ moms, pd.DataFrame({ k:[v] for k,v in mom.items() })] , axis=0)
-
-            self.clean()
-        self.log.info("done simulating")
-        moms_mean = moms.mean().rename('value_model')
-        moms_var = moms.var().rename('value_model_var')
-
-        return(moms_mean, moms_var)
 
 #Okay, gotta debug
 def debug(load):
@@ -1321,7 +1612,6 @@ def debug(load):
             print(f"No results found for p = {key}")
             return None
     from primitives import Parameters
-    p = Parameters()
     import pickle
     import matplotlib.pyplot as plt
     import numpy as np
@@ -1329,20 +1619,26 @@ def debug(load):
     import cProfile
     import pstats
     import os
+    new_baseline = {
+   'q_0': 0.56602, 'prod_q':	0.50425,'u_bf_m':	2.34264/4,'s_job':	0.779616,'alpha':	0.72,'z_corr':	0.946006,'prod_var_z':	0.646317, 'min_wage': 2.34264/4,
+    }
+    p = Parameters(overwrite=new_baseline)
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(script_dir, "model_GE.pkl")
+    model_path = os.path.join(script_dir, "model_GE_sev.pkl")
     if load:
         print("Loading model from:", model_path)
         with open(model_path, "rb") as file:
             all_results = pickle.load(file)
             model = get_results_for_p(p,all_results)
     else:
-        from VFI.CRS.CRS_HMQ_full import MultiworkerContract
+        from CRS_HMQ_severance import MultiworkerContract
         mwc_J=MultiworkerContract(p)
-        model=mwc_J.J_sep(update_eq=0,s=40)
+        model=mwc_J.J_sep(update_eq=0,s=0)
 
     sim = Simulator(model,p)
-    sim.simulate_val().computeMoments().model_evaluation()
+    moms_mean, moms_var, moms_unt_mean, moms_unt_var = sim.simulate_moments_rep(5)
+    sim.plot(moms_mean,save_prefix = True)
 
-#debug(load=True)
+
+#debug(load=True) 

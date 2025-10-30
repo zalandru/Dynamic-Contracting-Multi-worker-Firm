@@ -480,8 +480,10 @@ class SimpleModel:
         self.unemp_bf = self.p.u_bf_m #Half of the lowest productivity. Kinda similar to Shimer-like estimates who had 0.4 of the average
 
         # Wage and Shadow Cost Grids
-        self.w_grid = np.linspace(self.unemp_bf, self.fun_prod.max(), self.p.num_v ) #Note that this is not the true range of possible wages as this excludes the size part of the story
-        self.rho_grid=1/self.pref.utility_1d(self.w_grid)
+        self.w_grid = np.linspace(self.unemp_bf/2, self.fun_prod.max(), self.p.num_v ) 
+        self.rho_grid=1/self.pref.utility_1d(self.w_grid) #Note that today's rho is a STATE. So it's okay to keep its grid as-is
+        #Now adapt w_grid for the min wage
+        self.w_grid[self.w_grid < self.p.min_wage] = self.p.min_wage
 
 
         #Total firm size for each possible state
@@ -516,7 +518,7 @@ class SimpleModel:
 
         self.q = np.zeros_like(self.J_grid) + self.Q_grid[ax,ax,:]
 
-    def J_sep(self,Jg=None,Wg=None,Ug=None,Rhog=None,P=None,kappa=None,n0_g = None, sep_g = None,update_eq=1,s=1.0,layoff_iter=1):    
+    def J_sep(self,Jg=None,Wg=None,Ug=None,Rhog=None,P=None,kappa=None,n0_g = None, sep_g = None,update_eq=1,s=1.0,layoff_iter=1,print_choice=False):    
         """
         Computes the value of a job for each promised value v
         :return: value of the job
@@ -654,7 +656,8 @@ class SimpleModel:
             error_u  = np.max(abs(U - U2))
             error_j  = np.max(abs(Rho - Rho2))
             error_w1 = np.max(abs(W - W2))
-
+            if print_choice:
+                print(error_j,error_w1,error_u)
             if np.array([error_u, error_w1, error_j]).max() < self.p.tol_simple_model and ite_num>10:
                 break
             #else:

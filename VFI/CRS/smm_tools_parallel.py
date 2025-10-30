@@ -10,10 +10,10 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Dict, List, Iterable, Tuple
 import pickle
-from CRS_HMQ_full import MultiworkerContract
-from simulate import Simulator
+from CRS_HMQ_all_savings import MultiworkerContract
+from simulate_saving import Simulator
 
-PARAM_NAMES = ['q_0','prod_q','u_bf_m','s_job','alpha','z_corr','prod_var_z']
+PARAM_NAMES = ['q_0','prod_q','u_bf_m','s_job','alpha','z_corr','prod_var_z','min_wage']
 
 
 
@@ -487,24 +487,26 @@ def run():
     # bounds for your 7 parameters (edit as needed)
     bounds = {
     'q_0':        (0.50, 0.85),
-    'prod_q':     (0.20, 0.60),
+    'prod_q':     (0.20, 0.95),
     'u_bf_m':     (0.20, 0.95),
-    's_job':      (0.20, 0.80),
+    's_job':      (0.10, 0.90),
     'alpha':      (0.10, 1.00),   # if really a share/prob in (0,1)
     'z_corr':     (0.80, 0.99),   # AR(1) corr
-    'prod_var_z': (0.10, 0.70),
+    'prod_var_z': (0.10, 0.80),
+    'min_wage'  : (0.20, 0.95)
     }
 
     # your target data moments (names must match your simulator's moment names)
     moms_data = {
     'pr_j2j_an': 0.063,                       # for s_job. but wait: this is YEARLY, not QUARTERLY
-    'pr_new_hire': 0.128,                  # for alpha
+    'pr_new_hire_sdata_ten': 0.128,                  # for alpha
     'layoffs_share_tercile_0': 0.039,      # for q_0/prod_q #what about this one? in the data it's yearly layoff rate of firms
     # 'layoffs_share_tercile_1': ...
     'layoffs_share_tercile_2': 0.030,      # for q_0/prod_q
-    'avg_w_growth_10': 0.33,                # for b
+    'avg_w_growth_10_y': 0.33,               # for b
     'sd_dypw': 0.39,                       # for sigma_y
     'autocov_ypw_alt': 0.79,               # for lambda_y
+    'min_mean_ratio': 0.45                 # for min wage
     }
 
 
@@ -514,7 +516,7 @@ def run():
 
     # --- quick coarse config ---
     cfg = SMMPercentConfig(n_rep=3, average=False)
-    quick_overrides = {'tol_simple_model': 1e-4, 'tol_full_model': 1e-4, 'sim_ni': 3000, 'sim_nrep': 3}
+    quick_overrides = {'tol_simple_model': 1e-5, 'tol_full_model': 1e-6, 'sim_ni': 5000, 'sim_nrep': 3, 'sim_nt': 44, 'sim_nt_burn': 50, 'sim_nh': 100}
 
     res = fit_smm_global_percent(
     p_template=None,
@@ -525,9 +527,9 @@ def run():
     target_keys=list(moms_data.keys()),
     cfg=cfg,
     seed=123,
-    maxiter=35,
+    maxiter=50,
     popsize=6,
-    n_jobs=24,  #for 12 cores
+    n_jobs=40,  #for 12 cores
     log_db_path=log_db,     # <-- enable per-evaluation logging
     polish=True,
     )

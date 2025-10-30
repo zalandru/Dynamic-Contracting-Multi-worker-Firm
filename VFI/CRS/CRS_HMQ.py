@@ -441,7 +441,7 @@ class MultiworkerContract:
     """
         This solves a contract model with DRS production, hirings, and heterogeneous match quality.
     """
-    def __init__(self, input_param=None, js=None):
+    def __init__(self, input_param=None, js=None, log=True,print_choice_simple=False):
         """
             Initialize with a parameter object.
             :param input_param: Input parameter object, can be None
@@ -458,7 +458,7 @@ class MultiworkerContract:
 
         self.deriv_eps = 1e-4 # step size for derivative
         # Model preferences initialized by the same parameter object.
-        self.pref = Preferences(input_param=self.p)
+        self.pref = Preferences(input_param=self.p,log=log)
 
         # Worker and Match Productivity Heterogeneity in the Model
         self.Z_grid = self.construct_z_grid()   # Create match productivity grid
@@ -502,7 +502,7 @@ class MultiworkerContract:
         #Now get workers' probability to find a job while at some current value, as well as their return probabilities.
         #print("Training simple model")
         mod_s = SimpleModel(self.p)
-        self.simple_model = mod_s.J_sep()
+        self.simple_model = mod_s.J_sep(print_choice=print_choice_simple)
         #print("Simple training done")
 
         if js is None:
