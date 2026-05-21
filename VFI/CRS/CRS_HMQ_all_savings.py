@@ -723,12 +723,12 @@ class MultiworkerContract:
                                 EW = Ez(W, self.Z_trans_mat) #Later on this should be a loop over all the k steps besides the bottom one.
                                 ERho = Ez(Rho, self.Z_trans_mat)
                                 ERho_star, EW_star =  Values_int(ERho_star,EW_star,ERho,EW,rho_grid,Q_grid,points,self.p.num_z)
-                                J = profit + self.p.beta * pc_star * (1-sep_star) * (ERho_star - rho_star*EW_star) - \
-                                     self.p.beta * sep_star * sev_star[ax,:,ax]
+                                J = profit + self.p.beta * pc_star * (1-sep_star-self.p.delta) * (ERho_star - rho_star*EW_star) - \
+                                     self.p.beta * (sep_star+self.p.delta) * sev_star[ax,:,ax]
 
                                 # Update worker value function
                                 W = self.pref.utility(self.w_matrix) + \
-                                    self.p.beta * (sep_star * EU_star[ax,:,ax] + (1 - sep_star) * (EW_star + re_star)) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
+                                    self.p.beta * ((sep_star+self.p.delta) * EU_star[ax,:,ax] + (1 - sep_star-self.p.delta) * (EW_star + re_star)) #For more steps the ax at the end won't be needed as EW_star itself will have multiple steps
     
                                 J = .2 * J + .8 * J2
                                 W = .2 * W + .8 * W2 #we're completely ignoring the 0th step
@@ -818,7 +818,7 @@ class MultiworkerContract:
         self.sev_star = sev_star
         self.a_star   = a_star
         self.rho_star = rho_star
-        self.sep_star = sep_star
+        self.sep_star = sep_star+self.p.delta #The layoffs are full here. But this accounted anywhere! Also why is sep_star so damn low then??
         self.re_star = re_star
         self.q_star = q_star
         self.pe_star = 1-pc_star
@@ -849,7 +849,7 @@ class MultiworkerContract:
             all_results = {}
             print("No existing file found. Creating a new one.")
         # Use a tuple as the key
-        key = (self.p.num_z,self.p.num_v,self.p.z_corr,self.p.prod_var_z,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.s_job,self.p.alpha,self.p.kappa,self.p.dt,self.p.u_bf_m,self.p.min_wage)
+        key = (self.p.num_z,self.p.num_v,self.p.z_corr,self.p.prod_var_z,self.p.num_q,self.p.q_0,self.p.prod_q,self.p.s_job,self.p.alpha,self.p.kappa,self.p.dt,self.p.u_bf_m,self.p.min_wage,self.p.delta)
         
         all_results[key] = self
         #Save the updated dictionary back to the pickle file        

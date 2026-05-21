@@ -131,6 +131,7 @@ def solve_and_simulate(p, n_rep=5):
     #if model is None:
     mwc_J = MultiworkerContract(p)
     model = mwc_J.J_sep(update_eq=1, s=0)
+    np.random.seed(42)
     sim = Simulator(model, p)
     moms_mean, _, moms_unt_mean, _ = sim.simulate_moments_rep(n_rep)
     return moms_mean, moms_unt_mean
@@ -499,12 +500,13 @@ def run():
     # your target data moments (names must match your simulator's moment names)
     moms_data = {
     'pr_j2j_an': 0.063,                       # for s_job. but wait: this is YEARLY, not QUARTERLY
-    'pr_new_hire_sdata_ten': 0.128,                  # for alpha
+    'pr_u2e' : 0.21739130434782605,            #that's the pru2e that gives 13.8 average duration non-employed (in months)
+    #'pr_new_hire_sdata_ten': 0.128,                  # for alpha
     'layoffs_share_tercile_0': 0.039,      # for q_0/prod_q #what about this one? in the data it's yearly layoff rate of firms
     # 'layoffs_share_tercile_1': ...
     'layoffs_share_tercile_2': 0.030,      # for q_0/prod_q
-    'avg_w_growth_10_y': 0.33,               # for b
-    'sd_dypw': 0.39,                       # for sigma_y
+    'avg_ten_prof_10': 0.084,               # for b <- note this is the wage change after 10 years, NOT the cumulated average wage growth. also its currently a made-up number
+    'sd_dypw': 0.30,                       # for sigma_y, note that I lowered this one as well
     'autocov_ypw_alt': 0.79,               # for lambda_y
     'min_mean_ratio': 0.45                 # for min wage
     }
@@ -516,7 +518,7 @@ def run():
 
     # --- quick coarse config ---
     cfg = SMMPercentConfig(n_rep=3, average=False)
-    quick_overrides = {'tol_simple_model': 1e-5, 'tol_full_model': 1e-6, 'sim_ni': 5000, 'sim_nrep': 3, 'sim_nt': 44, 'sim_nt_burn': 50, 'sim_nh': 100}
+    quick_overrides = {'tol_simple_model': 1e-5, 'tol_full_model': 1e-6, 'sim_ni': 5000, 'sim_nrep': 3, 'sim_nt': 44, 'sim_nt_burn': 50, 'sim_nh': 100, 'delta': 0.005}
 
     res = fit_smm_global_percent(
     p_template=None,
@@ -527,7 +529,7 @@ def run():
     target_keys=list(moms_data.keys()),
     cfg=cfg,
     seed=123,
-    maxiter=50,
+    maxiter=100,
     popsize=6,
     n_jobs=40,  #for 12 cores
     log_db_path=log_db,     # <-- enable per-evaluation logging

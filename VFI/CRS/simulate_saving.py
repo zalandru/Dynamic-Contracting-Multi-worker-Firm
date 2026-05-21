@@ -985,6 +985,8 @@ class Simulator:
         moms['total_wage'] = np.exp(sdata.query('h>0')['w_net']).sum()/len(sdata)
         moms['total_uben'] = self.p.u_bf_m * sdata.eval('h==0').sum()/len(sdata)
         moms['mean_wage'] = np.exp(sdata.query('h>0')['w_gross']).sum()/len(sdata.query('h>0'))
+        #Unemployment rate
+        moms['u_rate'] = 1 - len(sdata.query('h>0'))/len(sdata)
         #Min wage moments
         moms['min_mean_ratio'] = self.p.min_wage /moms['mean_wage']
         #Proportion of employd workers on minimum wage
@@ -1182,9 +1184,9 @@ class Simulator:
         #We get hdata['id_shock_sum'] as the cumulative log shock over the 3 years
         #employed['tenure'] = employed['s']
         model_wage_ten = feols('dw ~ dypw+i(tenure, dypw)+C(tenure)', data=sdata_y)
-        moms_untarg['wage_pass_ten_y'] = model_wage_ten.coef() #This is HUGE so far. more than 1 for S==2!!!  Even bigger if I use id_shock_diff??? Surprising ngl
+        moms_untarg['wage_pass_ten_y'] = model_wage_ten.coef() 
         model_wage_ten = feols('dw ~ dypw+i(tenure, dypw)+C(tenure)', data=sdata_y_f)
-        moms_untarg['wage_pass_ten_yf'] = model_wage_ten.coef() #This is HUGE so far. more than 1 for S==2!!!  Even bigger if I use id_shock_diff??? Surprising ngl
+        moms_untarg['wage_pass_ten_yf'] = model_wage_ten.coef() 
         
         model_wage_ten = feols('dw ~ dypw + tenure * dypw', data=sdata_y) #the dypw coefficient is negative????
         moms_untarg['wage_pass_ten_simple'] = model_wage_ten.coef()  

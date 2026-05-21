@@ -45,7 +45,8 @@ class Parameters:
         # unemp value b
         # 2 search: s_job and alpha (or kappa)
         # 2 productivity: variance and corr
-
+        # 1 exog layoffs:
+        self.delta = 0.0
 
 
         #Utility shifter
@@ -78,7 +79,7 @@ class Parameters:
         #self.prod_py     = 1.0           # Firm power (nonlinear in type)
         self.prod_a      = 4 * self.dt  # Factor for output function #Questioon is whether i want to noormalize the prooductivity or the wage to 1
         #Also setting prod_a to 1 doesn't actually normalize productivity to 1, only upon improvements. So let's raise this boy a bit
-        self.prod_a     = 1.3
+        self.prod_a     = 1.0
         self.prod_err_w  = 0.0           # Measurement error on wages
         self.prod_err_y  = 0.0           # Measurement error on wages
 

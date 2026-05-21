@@ -425,7 +425,8 @@ class SimpleModel:
 
             # Update firm value function 
             #Rho = self.fun_prod * self.qual_prod - self.w_grid[ax,:,ax] + rho_grid[ax,:,ax] * W - self.p.beta * sep_star * sev_star[ax,:,ax] + self.p.beta * (1-sep_star) * (ERho_star - rho_grid[ax,:,ax] * EW_star)
-            J = self.fun_prod * self.qual_prod - self.w_grid[ax,:,ax] - self.p.beta * sep_star * sev_star[ax,:,ax] + self.p.beta * (1-sep_star) * (ERho_star - rho_grid[ax,:,ax] * EW_star)
+            J = self.fun_prod * self.qual_prod - self.w_grid[ax,:,ax] - self.p.beta * (sep_star+self.p.delta) * sev_star[ax,:,ax] +\
+                self.p.beta * (1-sep_star-self.p.delta) * (ERho_star - rho_grid[ax,:,ax] * EW_star)
 
             #J = Rho - rho_grid[ax,:,ax] * W
             #J= self.fun_prod * self.qual_prod - self.w_grid[ax,:,ax] + self.p.beta * (1-sep_star) * EJ_star
@@ -434,7 +435,7 @@ class SimpleModel:
 
             # Update worker value function
             W = self.pref.utility(self.w_matrix) + \
-                self.p.beta * (sep_star * EU_star[ax,:,ax] + (1 - sep_star) * EW_star ) 
+                self.p.beta * ((sep_star+self.p.delta) * EU_star[ax,:,ax] + (1 - sep_star - self.p.delta) * EW_star ) 
             W = impose_increasing_W(W)
             assert np.isnan(W).sum() == 0, "W has NaN values"
 
