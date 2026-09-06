@@ -1,28 +1,57 @@
-\section{Motivating evidence}\label{sec:empirics}
-I begin by documenting the relationship between layoffs and wage cuts using French matched employer–employee data. I examine how layoff rates and the wage pass-through of firm-level productivity shocks vary across firms and across worker tenure, and find substantial heterogeneity along both dimensions, irreconcilable with theories of exogenous wage rigidity. I use these facts as testable implications of my model.
+\section{Empirical evidence}\label{sec:empirics}
+
+I document the relationship between layoffs and wage cuts using French matched employer–employee data. I examine how layoff rates and the wage pass-through of firm-level productivity shocks vary across firms and across worker tenure, and find substantial heterogeneity along both dimensions. I also find that workers' wages rise in response to layoffs of other workers' in their cohort, and that the cross-tenure wage gap shrinks in response to layoffs. These facts validate the qualitative predictions of my model.
+
+\subsection{Institutional Context of the French Labor Market}
+\label{subsec:institutions-fr}
+
+Relative to other advanced economies, France’s labor market combines high coverage of collective agreements with low union density, a national minimum wage indexed to inflation, and moderate-to-strong employment protection in international comparison \parencite{oecd_ictwss_france_2025,oecd_epl_db}. Compared with the United States, France features substantially less decentralized wage setting and stronger wage floors; compared with Denmark, where the survey by \textcite{bertheau2025} was conducted, France relies more on sectoral wage grids and statutory floors, with lower job-to-job mobility and stricter dismissal rules on average \parencite{oecd_eo_2025}. 
+
+I focus on three French institutions that directly shape firms’ trade-off between wage adjustments and layoffs: the high national minimum wage, sectoral bargaining and the extension of wage floors, and legal versus de-facto severance pay.
+
+\paragraph{National minimum wage.}
+France minimum wage is indexed to consumer prices (and, under conditions, to average hourly wages), revalued by government decree.\footnote{Legal basis and indexation details in \textcite{eurofound_smic}.} In comparative terms, the minimum wage sits high relative to the wage distribution and, during the 2021–2024 inflation episode, often \emph{caught up} with negotiated or slightly-above-floor wages, expanding the share of workers affected \parencite{oecd_lowwage_fr_2025,fr_strategie_smic_2024}. This makes the minimum wage a binding constraint primarily at the bottom of the distribution.
+
+\emph{Implications for empirics.} To avoid mechanical truncation of wage changes, I exclude observations less than 5\% above the concurrent minimum wage in my specification. In Appendix~\ref{robust:min_wage} I consider alternative minimum wage cutoffs. and find little difference in my results.
+
+\paragraph{Sectoral bargaining and extended wage floors.}
+Collective bargaining in France is organized mainly at the branche (sector) level. The Ministry of Labour frequently extends sectoral agreements to non-signatory firms, which keeps bargaining coverage very high despite low union density \parencite{oecd_ictwss_france_2025}. Sectoral agreements typically specify wage grids by occupation/qualification. Empirically, the lower rungs of many grids are anchored by the national minimum wage: when the minimum wage is revalued, the lowest steps can be temporarily overtaken and must be renegotiated to restore compliance \parencite{fr_strategie_smic_2024,dares_branch_smic_2018}. Recent monitoring also noted numerous branches with minima below the updated minimum wage pending revision, underscoring that sectoral floors rarely remain much above the statutory floor for long.\footnote{See, e.g., union monitoring note \parencite{fo_minima_2025}.}
+
+\emph{Implications for empirics.} Removing observations near minimum wage also attenuates the binding force of sectoral floors in my analytical window. In interpreting wage pass-through, I thus treat sectoral bargaining as setting reference wage structures whose binding power is strongest at the bottom, rather than pervasive hard constraints in the middle of the distribution.
+
+\paragraph{Separation rules and severance pay.}
+Statutory severance for layoffs on open-ended contracts (CDI) follows a tenure-based formula (at least $\tfrac{1}{4}$ month per year up to 10 years, then $\tfrac{1}{3}$ per year thereafter), with possible top-ups from collective or firm agreements \parencite{service_public_severance}. In practice, \emph{de-facto} payouts are often higher than the legal minimum due to negotiated arrangements:
+(i) \emph{Rupture conventionnelle} (mutual termination) has been widely used since its introduction, with median indemnities exceeding the legal minimum and substantial dispersion across tenure and occupational groups \parencite{dares_rc_2021};
+(ii) \emph{transactional} settlements attached to dismissals (used to reduce litigation risk) further raise realized payouts within tax/social thresholds.\footnote{Administrative and legal syntheses referenced in \parencite{dares_rc_2021}.}
+
+\emph{Implications for empirics and mechanism.} I interpret this setting as indicative of high endogenous severance pay, initiated by firms. With this in mind, I do not take into account the legal severance pay costs in my empirical setting and instead ask whether the model endogenously delivers sufficiently large severance payments as part of the optimal contract.
+
+%\paragraph{Takeaways for identification and interpretation.}
+%First, the combination of a high SMIC and extended sectoral grids creates strong protection \emph{mainly at the bottom}; above that range, firms retain scope to adjust wages, so the layoff–wage patterns we study are unlikely to be artifacts of binding regulatory floors. Second, because negotiated severance raises effective separation costs and provides insurance, layoffs are a viable adjustment tool that can limit across-the-board wage cuts—especially when firms reshape junior cohorts. These institutional features align with our core prediction: where firms lay off more (particularly among juniors), \emph{survivors’ wages fall less}.
 
 \subsection{Data}
-I use administrative data from France between 2009 and 2019. The four key variables for the analysis—wages, layoffs, productivity, and tenure—are either directly available or can be constructed given the richness of the data. I combine a worker panel from social-security records covering one-twelfth of the French labor force (providing wages, layoffs, and tenure) with annual firm balance-sheet data (providing productivity). For the sample, I focus on prime-age workers (25–55) in private-sector jobs with wages at least $5\%$ above the national minimum wage at the time. Appendix~\ref{sample} provides further details on sample selection. The remaining sample contains 265{,}000 unique firms and 880{,}000 unique workers per year. I next describe how I construct the four key variables.
+I use administrative data from France between 2009 and 2019. The four key variables for the analysis—wages, layoffs, productivity, and tenure—are either directly available or can be constructed given the richness of the data. I combine a worker panel from social-security records covering one-twelfth of the French labor force (providing wages, layoffs, and tenure) with annual firm balance-sheet data (providing productivity). For the sample, I focus on prime-age workers (25–55) in private-sector jobs with wages at least $5\%$ above the national minimum wage at the time. The remaining sample contains 265{,}000 unique firms and 880{,}000 unique workers per year. I next describe how I construct the four key variables.
 
 I measure labor productivity using value added per worker, as reported in the balance-sheet data. I model labor productivity $y_{fst}$ at firm $f$ in sector $s$ at time $t$ as
 \[
-\log y_{fst} = \log a_t + \log b_{st} + \log x_{fst},
+\log y_{fst} = \log a_t + \log b_{st} + \log x_{ft},
 \]
-where $a_t$ is the aggregate component, $b_{st}$ is a sectoral component, and $x_{fst}$ is a firm-level component. I residualize $\log y_{fst}$ on time dummies to extract the common time component, measure the sectoral component $\log b_{st}$ as the average productivity within a sector, and compute the firm component $\log x_{fst}$ as the residual. In what follows, I focus on firms’ responses to the firm-specific component $x_{fst}$ to abstract from broader general-equilibrium effects.
+where $a_t$ is the aggregate component, $b_{st}$ is a sectoral component, and $x_{ft}$ is a firm-level component. I residualize $\log y_{fst}$ on time dummies to extract the common time component, measure the sectoral component $\log b_{st}$ as the average productivity within a sector, and compute the firm component $\log x_{ft}$ as the residual. In what follows, I focus on firms’ responses to the firm-specific component $x_{fst}$ to abstract from broader general-equilibrium effects.
 
 I measure wages as annual, CPI-adjusted labor earnings divided by days worked. Labor earnings are net of payroll taxes but pre–income tax, and include all forms of compensation (including bonuses and payments in kind) but exclude stock options. I residualize log wages on occupation, firm, and region dummies, as well as a quadratic in worker experience. I focus on job-stayer wage growth $\Delta \log w_{ift}$ for workers continuously employed at firm $f$ in years $t-1$ and $t$. After computing growth rates for both productivity and wages, I trim the bottom and top $5\%$ of each year’s distributions.
 
-I measure layoffs as breaks in employment spells of at least four weeks. The idea is that job-to-job transitions rarely entail long breaks, and given the low job-finding rate in France, recently laid-off workers are unlikely to find employment within a month. There remains a risk of both false positives and false negatives, as well as the risk of misclassifying voluntary transitions into medium-term nonemployment as layoffs. In Appendix~\ref{LFS} I use the French Labor Force Survey to measure layoffs as quarterly movements from employment into unemployment, as self-reported by workers.
+I measure layoffs as breaks in employment spells of at least four weeks. The idea is that job-to-job transitions rarely entail long breaks, and given the low job-finding rate in France, recently laid-off workers are unlikely to find employment within a month. This is a standard approach in empirical work using matched employer-employee data, used to identify both layoffs and job-to-job transitions. Examples include \textcite{haltiwanger2018,souchier2022,bertheau_veljin_2025}.
+%There remains a risk of both false positives and false negatives, as well as the risk of misclassifying voluntary transitions into medium-term nonemployment as layoffs, %In Appendix~\ref{LFS} I use the French Labor Force Survey to measure layoffs as quarterly movements from employment into unemployment, as self-reported by workers.
 
-Lastly, workers’ tenure at the firm is directly observed in the data. I focus on the first five years of tenure; beyond that, differences across cohorts are small.
+Lastly, workers’ tenure at the firm is directly observed in the data. For the cross-tenure regressions, I focus on the first ten years of tenure; beyond that, differences across cohorts are small.
 
 \subsection{Wages and layoffs across firms}
-I begin by confirming the existing finding that firms exhibiting the most rigid wages lay off the most workers (see \textcite{enrlich2024}). To facilitate comparison, I group firms into terciles $d \in D$ based on their average layoff rates. For each group, I estimate the response of wage growth to firm productivity shocks. Define the growth rate of residualized wages for worker $i$ in firm $f$ between years $t$ and $t-1$ as $\Delta \log w_{ift}$ and the growth rate of firm productivity as $\Delta \log(x_{ft})$. I estimate:
+I begin by confirming the existing finding that firms exhibiting the most rigid wages lay off the most workers (see \textcite{enrlich2024}). To facilitate comparison, I group firms into terciles $d \in D$ based on their average layoff rates. For each group, I estimate the response of wage growth to firm productivity shocks. Define the growth rate of residualized wages for worker $i$ in firm $f$ between years $t-1$ and $t$ as $\Delta \log w_{ift}$ and the growth rate of firm productivity as $\Delta \log(x_{ft})$. I estimate:
 \[
 \Delta \log w_{ift} = \sum_{d \in D} \mathbf{1}\{f \in d\}\bigl(\alpha^{d} + \beta^{d}\,\Delta \log(x_{ft})\bigr) + \epsilon_{ift}.
 \]
 
-Average layoff rates and estimated wage pass-throughs across firms are reported in Table~\ref{tab:acrossfirms}. Firms in the low-layoff tercile raise wages by $1.7\%$ in response to a $100\%$ productivity shock. Firms in the middle tercile, with an average layoff rate of $1.5\%$, raise wages by $1.2\%$. Lastly, high-layoff firms, averaging $9.7\%$ layoffs, reduce wages by $0.2\%$ in response to a positive shock.
+Average layoff rates and estimated wage pass-throughs across firms are reported in Table~\ref{tab:acrossfirms}. Firms in the low-layoff tercile raise wages by $1.7\%$ in response to a $100\%$ productivity shock. Firms in the middle tercile, with an average layoff rate of $1.5\%$, raise wages by $1.2\%$. Lastly, high-layoff firms, averaging $9.7\%$ layoffs, reduce wages by $0.2\%$ in response to a positive shock. For robustness, I consider additional controls: experience, firm, occupation, and region fixed effects -- in Appendix~\ref{robust:controls}.
 
 These results show that firms laying off the largest share of workers also exhibit the least responsive—and even negatively responsive—wages. This pattern is consistent with both the classical account (firms resort to layoffs when they cannot cut wages) and the mechanism developed here.
 
@@ -44,8 +73,8 @@ These results show that firms laying off the largest share of workers also exhib
   \label{tab:acrossfirms}
 \end{table}
 
-\subsection*{Wages and layoffs across tenure}
-Beyond cross-firm heterogeneity, the connection between rigid wages and layoffs also appears within firms, across worker tenure. Prior work has documented heterogeneity in layoff rates (e.g., \textcite{buhai2014}). Here I also document heterogeneity in wage pass-through.
+\subsection{Wages and layoffs across tenure}
+Beyond cross-firm heterogeneity, the connection between rigid wages and layoffs also appears within firms, across worker tenure. Prior work has documented heterogeneity in layoff rates (e.g., \textcite{buhai2014}). This paper is the first to document heterogeneity in wage pass-through.
 
 Let workers’ tenure be $ten \in T$, observed directly in the employer–employee data. Unlike the firm-level analysis, I consider each worker cohort up to five years of tenure. I run two regressions. First, analogous to the across-firm case, I estimate the response of wages to firm-level shocks across tenure:
 \begin{equation}\label{reg:wage_tenure}
@@ -60,54 +89,86 @@ I also examine asymmetry in pass-through. Negative productivity shocks are when 
 \Delta \log w_{ift} = \sum_{ten \in T} \mathbf{1}\{ift \in ten\}\Bigl(\alpha^{ten} + \beta^{ten}\,\Delta + \tilde{\beta}^{ten}\,\mathbf{1}\{\Delta < 0\}\,\Delta\Bigr) + \epsilon_{ift}.
 \]
 
-Table~\ref{tab:tenure} reports the results. Junior workers exhibit the smallest average pass-through. At the same time, senior workers face layoff rates up to 5.5 times lower than juniors. Regarding downward rigidity, juniors benefit most: their response to positive shocks is largest, whereas their response to negative shocks is near zero. Later cohorts display much less asymmetry in pass-through and are therefore more exposed to pay cuts than juniors.
+Figure~\ref{fig:tenure} reports the results. Junior workers exhibit the smallest average pass-through. They also exhibit the most downwardly rigid wages. In fact, after a negative productivity shock, the wages of juniors \emph{rise} by about $1\%$ the size of the shock. At the same time, senior workers face layoff rates up to 5.5 times lower than juniors, suggesting that their income risk primarily comes from layoffs rather than wage cuts. Same as for the results across firms, I consider additional explanatory variables in Appendix~\ref{robust:controls}.
 
-I interpret these findings as evidence of a cohort-level trade-off between wage cuts and layoffs: whenever and wherever firms lay off workers, they cut survivors’ wages less. The heterogeneous treatment of cohorts cannot be explained by standard stories of wage rigidity (minimum wages, sectoral bargaining, morale costs) without additional assumptions. Likewise, severance payments in France rise only slightly with tenure (an extra payment worth $\approx$ 20 hours of pay per year of seniority).
+I interpret these findings as evidence of a cohort-level trade-off between wage cuts and layoffs: whenever and wherever firms lay off workers, they cut survivors’ wages less. The heterogeneous treatment of cohorts cannot be explained by standard stories of wage rigidity (minimum wages, sectoral bargaining, morale costs) without additional assumptions. Likewise, as discussed above, statutory severance payments in France rise only slightly with tenure.
 
-\begin{table}
+ \begin{figure}[t]
   \centering
-  \begin{tabular}{lcccc}
-    \hline
-    & \multicolumn{1}{c}{Layoff rate} & \multicolumn{1}{c}{Avg. wage pass-through} & \multicolumn{1}{c}{Response to pos. shock} & \multicolumn{1}{c}{Response to neg. shock} \\
-    \hline
-    $<\!1$ year      &  $11\%^{***}$  &  $0.000$     &  $0.022^{***}$ &  $0.002^{***}$ \\
-                     &  $(0.0002)$    &  $(0.004)$   &  $(0.004)$     &  $(0.003)$     \\
-    1–2 years        &  $5\%^{***}$   &  $0.004$     &  $0.014^{***}$ &  $0.020^{***}$ \\
-                     &  $(0.0002)$    &  $(0.004)$   &  $(0.004)$     &  $(0.003)$     \\
-    2–3 years        &  $3\%^{***}$   &  $0.008^{**}$ & $0.013^{**}$  &  $0.020^{***}$ \\
-                     &  $(0.0002)$    &  $(0.002)$   &  $(0.002)$     &  $(0.003)$     \\
-    3–4 years        &  $2\%^{***}$   &  $0.008^{*}$ &  $0.012^{*}$   &  $0.015^{***}$ \\
-                     &  $(0.0002)$    &  $(0.003)$   &  $(0.003)$     &  $(0.004)$     \\
-    4–5 years        &  $2\%^{***}$   &  $0.017^{***}$ & $0.010^{***}$ &  $0.024^{***}$ \\
-                     &  $(0.0002)$    &  $(0.004)$   &  $(0.004)$     &  $(0.004)$     \\
-    \hline
-  \end{tabular}
-  \caption{Layoffs and wage pass-through across tenure. Columns 3 and 4 report asymmetric pass-through to positive and negative shocks. Data: DADS Panel + FARE, 2009–2019.}
-  \label{tab:tenure}
-\end{table}
+  \begin{subfigure}[t]{0.49\linewidth}
+    \vspace{0pt} % align tops
+    \centering
+    \includegraphics[width=\linewidth]{emp_wage_tenure_data_asym.jpg}
+    \caption{Wage pass-through across worker tenure. }
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.49\linewidth}
+    \vspace{0pt} % align tops
+    \centering
+    \includegraphics[width=\linewidth]{emp_layoff_tenure_data.jpg}
+    \caption{Annual layoff rate across worker tenure. }
+  \end{subfigure}
+  \caption{Wage pass-through and layoff rate across worker tenure. Points indicate estimates and the bars indicate 95\% confidence intervals. For wage pass-through, red line indicates average response, blue line indicates response to negative productivity shocks.}
+    \label{fig:tenure}
 
-\subsection{Senior/junior wage gap response to layoffs}
-I shift the angle of analysis and examine how the wage gap between senior and junior workers responds to layoffs. Unlike earlier analyses, I neither study the overall cross-section nor condition on productivity shocks. The goal is to examine how layoffs—typically concentrated among juniors—affect within-firm wage inequality.
+  \end{figure}
 
-For each firm–year, I compute the median tenure and take the ratio of wages for workers above and below the median, $\bar{w}_{sen,f,t}/\bar{w}_{jun,f,t}$. I then compute the log change in this ratio over time and regress it on layoffs:
+\subsection{Wage response to layoffs}
+I shift the angle of analysis and examine how wages respond to layoffs. I test two implications of my theory: that wages of survivors positively respond to layoffs ( conditional on the productivity shock) and that wage gap between senior and junior workers shrinks after layoffs.
+
+%I shift the angle of analysis and examine how the wage gap between senior and junior workers responds to layoffs. Unlike earlier analyses, I neither study the overall cross-section nor condition on productivity shocks. The goal is to examine how layoffs—typically concentrated among juniors—affect within-firm wage inequality.
+
+For each firm-year, I compute the average layoff rate $EU_{ft}$ as well as the tenure-specific rate $EU_{ten,ft}$. I look at how individual wages change in response to these layoffs:
+\[
+\Delta \log w_{ift} = EU_{ft}+EU_{ten,ft}+\epsilon_{ift}
+\]
+Estimates appear in Table~\ref{tab:layoff_response_wage}. First column shows that, on average, workers' wages rise in response to layoffs.  This is consistent with the workforce adjustment channel proposed in the model: layoffs improve average match quality, incentivizing the firm to offer higher wages to the survivors. Furthermore, the second column shows that this positive impact primarily comes through layoffs in own cohort: workers' wages rise in response to layoffs in own cohort but fall in response to layoffs elsewhere in the firm. This is consistent with wage pooling occurring at the cohort, rather than more aggregate, level, as is the case in the model.
+
+Next, I consider how wage gap between junior and senior workers changes in response to layoffs. For each firm–year, I compute the median tenure and take the ratio of wages for workers above and below the median, $\bar{w}_{sen,f,t}/\bar{w}_{jun,f,t}$. I then compute the log change in this ratio over time and regress it on layoffs:
 \[
 \Delta \log \bigl(\bar{w}_{sen,f,t}/\bar{w}_{jun,f,t}\bigr) = EU_{ft} + \epsilon_{ft}.
 \]
 
-Estimates appear in Table~\ref{tab:layoff_response}. On average, the wage ratio rises over time (likely reflecting new hires), but it falls when layoffs occur, suggesting that surviving juniors experience faster wage growth than surviving seniors. These results are consistent with the interpretation that firms lay off junior workers and then cut the wages of surviving juniors by less than those of surviving seniors.
+Table~\ref{tab:layoff_response_gap} reports the findings. On average, the wage ratio falls over time, signifying juniors catching up with seniors. The gap shrinks further when layoffs occur, suggesting that surviving juniors experience faster wage growth than surviving seniors. These results are consistent with the interpretation that firms lay off junior workers and then cut the wages of surviving juniors by less than those of surviving seniors.
 
-\begin{table}
+\begin{figure}[t]
+  \centering
+
+  %--- Left: the graphic -------------------------------------------------------
+  \begin{subtable}[t]{0.45\linewidth}
+    \vspace{0pt}
+    \centering
+    \begin{tabular}{lcc}
+      \toprule
+      & \multicolumn{2}{c}{Wage Change}\\
+      \midrule
+        $EU_{ft}$    & $0.049^{***}$     &  $-0.019^{***}$  \\
+                   & $(0.000)$     &  $(0.000)$      \\
+        $EU_{ten,ft}$&  x    &  $0.071^{***}$  \\
+                   &  x    &  $(0.000)$      \\
+      \bottomrule
+    \end{tabular}
+    \caption{Wage change in response to tenure-specific and firm-wide layoffs.}
+  \label{tab:layoff_response_wage}
+  \end{subtable}
+  \hfill
+  %--- Right: the table --------------------------------------------------------
+  \begin{subtable}[t]{0.45\linewidth}
+    \vspace{0pt}
   \centering
   \begin{tabular}{lc}
-    \hline
-    & \multicolumn{1}{c}{Layoff} \\
-    \hline
-    Intercept  &  $0.0031^{***}$ \\
-               &  $(0.0001)$     \\
-    EU         &  $-0.0036^{***}$ \\
-               &  $(0.0006)$     \\
-    \hline
+      \toprule
+      & \multicolumn{1}{c}{Wage gap change}\\
+      \midrule
+    Intercept  &  $-0.027^{***}$ \\
+               &  $(0.003)$     \\
+    $EU_{ift}$         &  $-0.079^{***}$ \\
+               &  $(0.015)$     \\
+      \bottomrule
   \end{tabular}
-  \caption{Senior–junior wage log change in response to layoffs. Data: DADS Panel + FARE, 2009–2019.}
-  \label{tab:layoff_response}
-\end{table}
+  \caption{Senior–junior wage log change in response to layoffs.}
+  \label{tab:layoff_response_gap}
+  \end{subtable}
+\end{figure}
+
+

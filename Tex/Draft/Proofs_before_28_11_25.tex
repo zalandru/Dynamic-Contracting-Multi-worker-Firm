@@ -1,0 +1,305 @@
+\section{Model Appendix} 
+\subsection{Proofs}
+\subsubsection*{Proof of Proposition \ref{prop:wagegrowth}} \label{proof:wagegrowth}
+The proposition is derived from the first-order conditions of the firm's problem.
+\begin{proof}
+    Consider the problem from Lemma \ref{firmproblem}.
+    The FOC for $v'_{k_1}$ yields (denote $\rho_k$ the shadow cost of $PK_k$ and $\omega_k$ the shadow cost of the expectation condition):
+    \[\rho_k\beta(1-s_k)(1-p(v'_{k+1}))-\omega_k+\beta n_k(1-s_k)\frac{\partial (1-v(v'_{k+1}))}{\partial v'_{k+1}}E_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial n'_{k+1}}=0\]
+    To develop this further, I use the FOC for $w_k$:
+    \[-n_k + \rho_k u'(w_k)=0 \iff \rho_k=\frac{n_k}{u'(w_k)}\]
+    One can similarly develop $\omega_k$ by applying the FOC for $v'_{y',k+1}$:
+    \[ \beta Pr_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial v'_{y',k+1}}+ Pr_{y'|y} \omega_k=0 \iff \omega_k = - \beta \frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial v'_{y',k+1}} \forall y'\]
+    Applying the envelope theorem one can then note that 
+    \[- \frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial v'_{y',k+1}} =  \frac{n'_{k+1}}{u'(w'_{k+1})}\]
+    Putting all this together, we get
+    \[\frac{n_k}{u'(w_k)}\beta(1-s_k)(1-p(v'_{k+1}))-\beta \frac{n'_{k+1}}{u'(w'_{k+1})}+\beta n_k(1-s_k)\frac{\partial (1-v(v'_{k+1}))}{\partial v'_{k+1}}E_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial n'_{k+1}}=0\]
+    All that is left is to note that $n'_{k+1}=n_k(1-s_k)(1-p(v'_{k+1}))$, divide by the common terms ($\beta n'_{k+1}$) and rearrange.
+    \[ \frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} = \eta(v'_{k+1}) E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k}\})}{\partial n'_{k+1}} \]
+\end{proof}
+\subsubsection*{Proof of Corollary~\ref{cor:envelope}} \label{proof:envelope}
+The corollary is an immediate outcome of applying envelope theorem.
+\begin{proof}
+    Consider a firm state $(y,\{n_k,v_k,z_k)$ and some cohort $k<K$. Taking derivative of the value function with respect to the size state $n'_{k+1}$ yields the following:
+\[\frac{\partial J(y,\{n_k,v_k,z_k)}{\partial n_k} = y \frac{\partial F(n,z)}{\partial n_k} - w_k + \beta E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k)}{\partial n'_{k+1}}\]
+Decomposing the impact of $n_k$ on $F(n,z)$ yields
+\[ \frac{\partial F(n,z)}{\partial n_k} = \frac{\partial F(n,z)}{\partial n} + \frac{\partial F(n,z)}{\partial z}\frac{\partial z}{\partial n_k}= F'_n + F'_z \frac{\partial z}{\partial n_k}\]
+Lastly, consider a state $(y,\{n_k,v_k,z_k)= (y',\{n'_k,v'_{y',k},z'_k)$ and take the expectation $E_{y'|y}$ to arrive at the result.
+\end{proof}
+
+\subsubsection*{Proof of Proposition \ref{prop:targetwage}} \label{proof:targetwage}
+\begin{proof}
+Fix $\Omega=(y,\{n_j,v_j,z_j\}_j)$ and cohort $k$. Holding $\Omega_{-k}$ fixed, vary only the cohort-$k$ promised value $v_k$ and
+define $\Omega(v_k)\equiv (\Omega_{-k},v_k)$. Let
+\begin{equation}\label{eq:Phi_def_C}
+\Phi_k(v_k)\;\equiv\;M_k(\Omega(v_k))
+=
+\mathbb E_{y'|y}\left[\frac{\partial J(\Omega'(v_k))}{\partial n'_{k+1}}\right],
+\end{equation}
+where $\Omega'(v_k)$ is the optimal next-period state implied by Lemma~\ref{firmproblem} starting from $\Omega(v_k)$.
+
+\medskip\noindent
+\paragraph{Existence and uniqueness}
+By the continuity of the optimized value and envelope objects in the recursive firm problem (Lemma~\ref{firmproblem}),
+$\Phi_k(\cdot)$ is continuous. For sufficiently low $v_k$, promise-keeping implies low compensation for cohort $k$ and retaining an
+additional worker is weakly profitable, so $\Phi_k(v_k)\ge 0$. For sufficiently high $v_k$, retaining an extra worker becomes costly,
+so $\Phi_k(v_k)\le 0$. By the intermediate value theorem there exists $v_k^*$ such that $\Phi_k(v_k^*)=0$.
+
+Moreover, the optimized marginal value $\Phi_k(v_k)$ is strictly decreasing in $v_k$:
+a higher promise tightens the promise-keeping constraint for cohort $k$ and raises the shadow cost of retaining that cohort,
+which strictly lowers the marginal value of a retained worker. Hence the root $v_k^*$ is unique.
+Let $w_k^*$ denote the wage associated with $v_k^*$, as in Definition~\ref{def:targetwage}.
+This establishes existence and uniqueness of the target wage.
+
+\medskip\noindent
+\paragraph{Wages move toward the target wages}
+Define $g(w)\equiv 1/u'(w)$. Since $u$ is strictly concave, $g$ is strictly increasing.
+Using the Euler equation \eqref{eq:euler_prop},
+\[
+g(w'_{k+1})-g(w_k)=\eta(v'_{k+1})\,\Phi_k(v_k),
+\qquad \eta(\cdot)>0.
+\]
+Hence $\mathrm{sign}\big(w'_{k+1}-w_k\big)=\mathrm{sign}\big(\Phi_k(v_k)\big)$.
+
+By Step 1, $\Phi_k(v_k)>0$ iff $v_k<v_k^*$ (equivalently $w_k<w_k^*$), and $\Phi_k(v_k)<0$ iff $w_k>w_k^*$.
+Therefore, if $w_k<w_k^*$ then $w'_{k+1}>w_k$, and if $w_k>w_k^*$ then $w'_{k+1}<w_k$.
+
+To rule out overshooting, suppose $w_k<w_k^*$ but $w'_{k+1}>w_k^*$.
+Since $v\mapsto w$ is strictly increasing under promise-keeping, this implies the implied continuation promise exceeds target,
+so the marginal value becomes negative, $\Phi_k(\cdot)<0$, which would force
+$g(w'_{k+1})-g(w_k)<0$ by \eqref{eq:euler_prop}, contradicting $w'_{k+1}>w_k$.
+Thus $w'_{k+1}\le w_k^*$ when $w_k\le w_k^*$.
+The case $w_k\ge w_k^*$ is symmetric. This proves Part 1.
+
+\medskip\noindent
+\paragraph{Farther from target implies faster adjustment.}
+By definition of the target, $\Phi_k(v_k^*)=0$, and $\Phi_k(\cdot)$ is strictly decreasing.
+Hence $|\Phi_k(v_k)|$ is strictly increasing in the distance to the root $v_k^*$:
+\begin{equation}\label{eq:absPhi_order_C}
+|v_k-v_k^*|\ge |v_{k'}-v_{k'}^*|
+\quad\Rightarrow\quad
+|\Phi_k(v_k)|\ge |\Phi_{k'}(v_{k'})|.
+\end{equation}
+Since promise-keeping implies the mapping $v_k\mapsto w_k$ is strictly increasing, the premise
+$|w_k-w_k^*|\ge |w_{k'}-w_{k'}^*|$ implies $|v_k-v_k^*|\ge |v_{k'}-v_{k'}^*|$.
+Combining with \eqref{eq:absPhi_order_C} yields
+\begin{equation}\label{eq:M_order_C}
+|w_k-w_k^*|\ge |w_{k'}-w_{k'}^*|
+\quad\Rightarrow\quad
+|M_k(\Omega)|=|\Phi_k(v_k)|\ge |\Phi_{k'}(v_{k'})|=|M_{k'}(\Omega)|.
+\end{equation}
+
+Finally, from the Euler equation  and $\eta(\cdot)>0$,
+\[
+\frac{\Delta_k(\Omega)}{\eta(v'_{k+1})}
+=
+\frac{\big|g(w'_{k+1})-g(w_k)\big|}{\eta(v'_{k+1})}
+=
+|M_k(\Omega)|.
+\]
+Hence \eqref{eq:M_order_C} immediately implies
+\[
+|w_k-w_k^*|\ge |w_{k'}-w_{k'}^*|
+\quad\Rightarrow\quad
+\frac{\Delta_k(\Omega)}{\eta(v'_{k+1})}\ge \frac{\Delta_{k'}(\Omega)}{\eta(v'_{k'+1})},
+\]
+which is Part 2.
+\end{proof}
+
+
+%  \begin{proof}
+%Part 1 is an immediate implication of Proposition~\ref{prop:wagegrowth} and applying the definition of the target wage. 
+
+%Essentially, target wage $w^*_k$ is such that 
+%I make strong use of Proposition~\ref{prop:wagegrowth}. \\
+  %First note that wages are constant workers for promised $v^*$: $\frac{1}{u'(w'_{v^*})} - \frac{1}{u'(w_{v^*})} = 0$, meaning that $w'_{v^*}=w_{v^*}\equiv w^*_{v^*}$.
+  %Furthermore, as the marginal value $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v)}$ is decreasing in $v$, one can deduce that $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} >0\: \forall \: k:v_k < v^*$ and, similarly, $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} < 0 \: \forall\: k:v_k > v^*$. This yields us the first result: wage change is non-zero everywhere besides $v^*$ and is thus larger in the absolute sense. 
+
+  %For the second result, it is suffice to note that the marginal value $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v)}$ is decreasing in $v$ \textcolor{red}{also need that $\eta(v'_{k+1})$ is descreasing, but that is a quantitative result, not theoretical...}. Then $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} > \frac{1}{u'(w'_{\bar{k}+1})} - \frac{1}{u'(w_{\bar{k}})}$. Rearranging gives the result.
+%  \end{proof}
+
+\subsubsection*{Proof of Proposition~\ref{prop:targetwage_change}} \label{proof:targetwage_change}
+\begin{proof}
+Fix a state $\Omega\equiv (y,\{n_j,v_j,z_j\}_j)$ and a cohort $k$.
+Let $v_k^*(\Omega_{-k})$ be the unique target promised value from Definition~\ref{def:targetwage}, i.e.
+\[
+\Phi_k(v_k;\Omega_{-k}) \;\equiv\; M_k(\Omega)=
+\mathbb E_{y'|y}\Big[\frac{\partial J(\Omega')}{\partial n'_{k+1}}\Big]=0
+\quad\text{at}\quad v_k=v_k^*(\Omega_{-k}),
+\]
+where $\Omega'$ is the next-period state induced by the firm's \emph{optimal} policy from Lemma~\ref{firmproblem}.
+Throughout, policy responses to state changes are fully accounted for because $J(\cdot)$ is the \emph{maximized} value
+and $\Omega'$ is generated by the \emph{re-optimized} policy at the perturbed state.
+
+\medskip
+\noindent\textbf{Step 1 (Implicit-function step: reduce to the sign of $\partial_\theta M_k$).}
+Let $\theta$ denote one scalar state component, either $\theta=n_{k'}$ or $\theta=z_{k'}$.
+Under the maintained single-crossing condition from Proposition~\ref{prop:targetwage}
+(the target is unique and $\partial \Phi_k/\partial v_k<0$ at the solution), the implicit function theorem yields
+\begin{equation}\label{eq:IFT_change}
+\frac{\partial v_k^*}{\partial \theta}
+=
+-\frac{\partial_\theta M_k(\Omega)}{\partial_{v_k} M_k(\Omega)}\bigg|_{v_k=v_k^*}.
+\end{equation}
+Because $\partial_{v_k}M_k(\Omega)<0$ at $v_k=v_k^*$ and the promise-keeping mapping $v_k\mapsto w_k$ is strictly increasing,
+\[
+\mathrm{sign}\!\left(\frac{\partial w_k^*}{\partial \theta}\right)
+=
+\mathrm{sign}\!\left(\frac{\partial v_k^*}{\partial \theta}\right)
+=
+\mathrm{sign}\!\left(\partial_\theta M_k(\Omega)\right).
+\]
+Thus we only need to sign $\partial_\theta M_k(\Omega)$, the effect of $\theta$ on the (optimized) expected marginal value of retention.
+
+\medskip
+\noindent\textbf{Step 2 (Key observation: policy responses enter only through the induced next state).}
+By definition,
+\[
+M_k(\Omega)=\mathbb E_{y'|y}\Big[\frac{\partial J(\Omega')}{\partial n'_{k+1}}\Big].
+\]
+When $\theta$ changes, the firm re-optimizes; therefore, both the continuation state $\Omega'$ and the shadow value
+$\partial J(\Omega')/\partial n'_{k+1}$ change. Importantly, we do \emph{not} differentiate policy functions.
+Instead, we track how the re-optimized continuation problem changes the \emph{shadow value} of an extra cohort-$k$ worker.
+
+Corollary~\ref{cor:envelope} provides an envelope decomposition of this shadow value:
+\begin{equation}\label{eq:shadow_decomp}
+\mathbb E_{y'|y}\Big[\frac{\partial J(\Omega')}{\partial n'_{k+1}}\Big]
+=
+\mathbb E_{y'|y}\Big[
+\underbrace{y'\,\text{MRP}_k(\Omega')}_{\text{marginal revenue product}}
+-\underbrace{w'_{k+1}}_{\text{marginal compensation}}
++\underbrace{\beta\,\mathbb E_{y''|y'}\Big[\frac{\partial J(\Omega'')}{\partial n''_{k+2}}\Big]}_{\text{continuation shadow value}}
+\Big],
+\end{equation}
+where $\text{MRP}_k(\Omega')$ is the marginal product term for a cohort-$k$ worker at $\Omega'$ (including the quality channel in the corollary).
+Equation \eqref{eq:shadow_decomp} already holds \emph{at the optimum} at $\Omega'$; hence all \emph{policy responses} at $\Omega'$
+are embedded in $(w'_{k+1},\Omega'')$ and in the continuation shadow value.
+
+The sign results below follow because (i) the production part is concave in effective inputs, and (ii) the continuation shadow value
+inherits the same monotonicity under concavity (extra effective labor lowers the shadow value today and in the future).
+Thus policy responses can affect magnitudes, but under the curvature conditions stated they cannot flip the signs.
+
+\medskip
+\noindent\textbf{Step 3 (Part 1: $\partial w_k^*/\partial n_{k'}<0$).}
+Work with the primitive technology $Y=yF(n_H,n_L)$, with $F$ strictly concave and increasing.
+Let the firm-level effective inputs at $\Omega'$ be
+\[
+n_H'=\sum_j n'_j z'_j,\qquad n_L'=\sum_j n'_j(1-z'_j).
+\]
+A marginal cohort-$k$ worker contributes $(z_k',1-z_k')$ units to $(n_H',n_L')$, so its marginal revenue product is
+\[
+\text{MRP}_k(\Omega') = z_k' F_{n_H}(n_H',n_L')+(1-z_k')F_{n_L}(n_H',n_L').
+\]
+Now increase $n_{k'}$ in the current state. This raises the available mass of workers at the firm and (weakly) raises effective inputs
+along the re-optimized continuation path.\footnote{Formally, $n_{k'}$ enters the continuation problem only as a resource/scale
+state; with concave technology and no negative marginal costs of keeping workers (apart from wages already accounted for),
+the re-optimized continuation allocation cannot make effective inputs fall in response to a larger initial stock without additional
+restrictions (e.g.\ binding floors or nonconvex adjustments). This is the standard ``more resources $\Rightarrow$ weakly more inputs''
+monotonicity in concave programs.}
+Under strict concavity of $F$, both marginal products $F_{n_H}$ and $F_{n_L}$ are strictly decreasing in $(n_H',n_L')$
+(including through $F_{n_H n_L}\le 0$ as a standard sufficient condition).
+Therefore, increasing any $n_{k'}$ lowers $\text{MRP}_k(\Omega')$ at every $y'$.
+
+Because the continuation shadow value term in \eqref{eq:shadow_decomp} is itself the shadow value of labor in future concave problems,
+it also falls when effective inputs rise (diminishing returns propagate forward).
+Hence the entire bracket in \eqref{eq:shadow_decomp} shifts downward when $n_{k'}$ rises, implying
+$\partial_{n_{k'}} M_k(\Omega)<0$. By Step 1,
+$\partial_{n_{k'}} w_k^*<0$.
+
+\medskip
+\noindent\textbf{Step 4 (Part 2: $\partial w_k^*/\partial z_k>0$).}
+Increasing $z_k$ at fixed $n_k$ improves the composition of cohort $k$ (more high matches, fewer low matches).
+In the production function, this shifts effective inputs toward $n_H$ and away from $n_L$.
+Since $F_{n_H}>F_{n_L}$, this raises the marginal product of a cohort-$k$ worker directly.
+Moreover, after re-optimization, the firm can always \emph{replicate} the pre-change policy (same $w,s,sev,v'$),
+so the optimized continuation value cannot respond in a way that overturns the direct marginal-product gain under concavity:
+with a more productive cohort, the shadow value of retaining an additional cohort-$k$ worker is higher.
+
+Formally, in \eqref{eq:shadow_decomp} the $\text{MRP}_k(\Omega')$ term increases with $z_k$ (holding $(n_H',n_L')$ fixed),
+and under concavity the continuation shadow value term also weakly increases because future marginal products are higher when the
+retained cohort is more productive. Thus $\partial_{z_k} M_k(\Omega)>0$, and Step 1 implies
+$\partial_{z_k} w_k^*>0$.
+
+\medskip
+\noindent\textbf{Step 5 (Part 3: $\partial w_k^*/\partial z_{k'}\le 0$ for $k'\neq k$).}
+Now increase $z_{k'}$ for some $k'\neq k$. This improves the productivity of other cohorts, which affects cohort $k$ only through
+the firm's effective inputs $(n_H',n_L')$ and hence through the marginal products $F_{n_H}$ and $F_{n_L}$ that enter
+$\text{MRP}_k(\Omega')$.
+
+A convenient sufficient condition ensuring that improving other cohorts' quality weakly lowers cohort $k$'s marginal product is a
+substitutability/curvature restriction on $F$ (e.g.\ high and low inputs are weak substitutes in the relevant region), such as
+\[
+F_{n_H n_H}\le F_{n_H n_L}\le F_{n_L n_L}<0,
+\]
+which implies that shifting other cohorts from low to high input weakly lowers the weighted marginal product
+$z_k'F_{n_H}+(1-z_k')F_{n_L}$ of a cohort-$k$ worker.\footnote{Intuitively: when other cohorts become more productive, the firm is less
+dependent on retaining an extra worker from cohort $k$; diminishing returns and substitutability then reduce the shadow value of
+cohort-$k$ labor.}
+Under this condition, $\text{MRP}_k(\Omega')$ weakly decreases with $z_{k'}$ for $k'\neq k$. The continuation shadow value term in
+\eqref{eq:shadow_decomp} moves in the same direction under concavity (future shadow values are lower when other inputs become more
+productive substitutes).
+Hence $\partial_{z_{k'}} M_k(\Omega)\le 0$, and Step 1 implies
+$\partial_{z_{k'}} w_k^*\le 0$ for all $k'\neq k$.
+
+\medskip
+This establishes items (1)--(3).
+\end{proof}
+
+\subsubsection*{Proof of Proposition \ref{prop:qualityconv}} \label{proof:qualityconv}
+I start by describing the FOC with respect to layoffs $s_k$:
+\begin{proof}
+    Consider the case where $s_k>0$. Then
+  \[-\beta n_k (1-p(v'_{k+1}))E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}} + \beta E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial z'_{k+1}} \frac{\partial z'_{k+1}}{\partial s_k}- \rho_k \beta (U-R(v'_{k+1}))=0\]  
+  Note that the FOC with respect to $w_k$ yields $\rho_k = \frac{n_k}{u'(w_k)}$ and divide by $\beta n_k$ to get the FOC in the Propositon. \\
+For the further results, I rewrite the firm state $(y,\{n_k,v_k,z_k\})$ into $(y,\{\underline{n}_k,\bar{n}_k,v_k\})$, where $\bar{n}_k = z_k n_k$ and $\underline{n}_k = (1-z_k) n_k$. \\
+I focus on the case where $\underline{n}_k > 0$ and $s_k(\underline{n}_k + \bar{n}_k) \leq \underline{n}_k$, that is, firm has not yet fired all the bad matches with the cohort (in the previous FOC, this is equivalent to $ \frac{\partial z'_{k+1}}{\partial s_k}>0$). The proof extends equivalently to the other case. The marginal value of firing a worker is then
+\[-\frac{R(v'_{k+1})-U}{u'(w_k)} - (1 - p(v'_{k+1}))E_{y'|y}\frac{\partial J(y',\{\underline{n'}_k,\bar{n'}_k,v'_k\})}{\partial \underline{n}'_{k+1}}\]
+To show that cohorts with lower promised values are more subject to layoffs, I take a derivative of this FOC with respect to the promised value $v_k$.%(\textcolor{red}{A bit imprecise! May have a case where a lower value cohort has very few bad matches, so firing them all is still less than firing a couple other bad matches in a higher value cohort. The prop should be something like $s_k(1- z_k) n_k \geq s_{k'}(1-z_{k'})n_{k'}$. That is, a total number of bad fired matches}), 
+The only component in the FOC directly dependent on $v_k$ is $\frac{1}{u'(w_k)}$, where $w_k = u^{-1}(v_k - \beta[s_kU + (1-s_k)R(v'_{k+1})]).$ Due to the $CRRA$ utility function, we find that $\frac{1}{u'(w_k)}$ is increasing in $v_k$, and, therefore, the marginal profit of firing workers is decreasing in $v_k$. \\
+Lastly, I show that layoffs are equally dependent on the quality of any cohort (as long as $z_k<1$). First, I note that quality directly appears only in the marginal value of low quality workers 
+\begin{equation*}
+\begin{split}
+    \frac{\partial J(y',\{\underline{n}'_k,\bar{n}'_k,v'_k\})}{\partial \underline{n}'_{k+1}} = & y'[F'_1(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})-F'_2(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k}) \frac{\sum n'_k}{(\sum n'_k z'_k)^2}-w'_{k+1} \\  
+&    + \beta E_{y''|y'}\frac{\partial J(y'',...)}{\partial \underline{n}''_{k+2}}\frac{\partial \underline{n}''_{k+2}}{\partial \underline{n}'_{k+1}}
+\end{split}
+\end{equation*}
+Next, I note that all the quality states $\{z_k\}$ contribute in the same manner to $\frac{\partial J(y',\{\underline{n}'_k,\bar{n}'_k,v'_k\})}{\partial \underline{n}'_{k+1}}$, no matter the cohort $k$. Therefore, to first-order, the marginal value of firing a worker is equally dependent on all the quality states. \\
+%\textcolor{red}{I don't think I need to assume $s_k(\underline{n}_k + \bar{n}_k) \leq \underline{n}_k$. I can write the proof for both cases, and the results should be there for either one.}
+\end{proof}
+
+%\subsubsection*{Proof of Proposition \ref{prop:wage_cuts}} \label{proof:wage_cuts}
+% Start with the wage growth equation from Proposition \ref{prop:wagegrowth}, extended to the case of heterogeneous matches. 
+%     \[\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} = \eta(v'_{k+1}) E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}}\]
+%     One can now apply the Envelope Theorem to extend the RHS of the equation:
+%     \begin{align*}
+%     E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}}  = & E_{y'|y}\Big[y'\frac{\partial F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k+1}} - w'_{k+1} + \\
+%     & \beta (1-p(v''_{k+2}))(1-s'_{k+1})E_{y''|y'} \frac{\partial J(y'',\{n''_k,v''_{y'',k},z''_k\})}{\partial n''_{k+2}})\Big]      
+%     \end{align*}
+%     One can note that the production derivative $\frac{\partial F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k+1}}$ is increasing in $z'_{k+1}$. And, moreover, that $\frac{\partial^2 F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k+1} \partial z'_{k+1}}> \frac{\partial^2 F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k'} \partial z'_{k+1}}, k'\neq k+1$. This implies that, the workers in steps $k \in K_s$ will experience the largest rise in marginal productivity. \textcolor{red}{This doesn't mean that they are at the highest marginal productivity though! Part of my intuition is predicated on the fact that the other workers, ones not fired, are already quite close to their target wages! Otherwise those guys would still have the best wage growth. Essentially, my intuition is that the fired cohorts receive a spike in marginal productivity, so, if they're on the similar-ish wage path to the other cohorts, they should get the best wage growth. But this needs to be formalized some more.}
+
+
+
+\subsection{Tenure-specific Severance Payments}
+I allow the firm to offer tenure-specific severance payments $sev_k$ to its workers. The severance is constant over time and paid perpetually upon firing and before finding a new job. I show that the severance structure involves higher payments for longer tenured workers (if those workers are on a higher promised value). 
+
+Proof of Proposition~\ref{severanceprop}
+\begin{proof}
+\label{proof:severance}
+I start by describing the unemployment value of a worker with severance payment $sev_k$:
+\[U(sev_k) = u(b+sev_k) + \beta \max_v[(1-p(\theta_v))U(sev_k)+p(\theta_v)v]\]
+Denote the probability of finding a job with severance payment $sev_k$ as $p(\theta_{sev_k})$. The extra value to the unemployed from the severance payment is then given by
+\[\frac{\partial U(sev_k)}{\partial sev_k} = u'(b+sev_k) + \beta (1-p(\theta_{sev_k}))U'(sev_k)=\frac{u'(b+sev_k)}{1-\beta(1-p(\theta_{sev_k}))}\]
+Then the total benefit to the firm from raising the severance payment is the slackening of the promised-keeping constraint thanks to this rise in the unemployment value:
+\[\lambda_k n_k \beta s_k \frac{\partial U(sev_k)}{\partial sev_k} = \frac{n_k}{u'(w_k)}\beta s_k \frac{u'(b+sev_k)}{1-\beta(1-p(\theta_{sev_k}))}\]
+On the cost side, the firm internalizes the net present value of the severance payments when firing $n_ks_k$ workers:
+\[\frac{\partial}{\partial sev_k}\Big[n_k s_k \beta \frac{sev_k}{1-\beta(1-p(\theta_{sev_k}))}\Big]=n_ks_k\beta \frac{[1-\beta(1-p(\theta_{sev_k}))]-\beta sev_k \frac{\partial p(\theta_{sev_k})}{\partial sev_k}}{[1-\beta(1-p(\theta_{sev_k}))]^2}\]
+The optimal severance payment then follows from the first-order condition:
+\[ \frac{n_k}{u'(w_k)}\beta s_k \frac{u'(b+sev_k)}{1-\beta(1-p(\theta_{sev_k}))} = n_ks_k\beta \frac{[1-\beta(1-p(\theta_{sev_k}))]-\beta sev_k \frac{\partial p(\theta_{sev_k})}{\partial sev_k}}{[1-\beta(1-p(\theta_{sev_k}))]^2}\]
+Rearranging gives the result.
+\[\frac{u'(b+sev_k)}{u'(w_k)}=1-\frac{\beta sev_k \frac{\partial p(\theta_{sev_k})}{\partial sev_k}}{1-\beta(1-p(\theta_{sev_k}))}\]
+\end{proof}
+Note that, besides $u'(w_k)$, all the components of the severance payment are independent of both the firm state and the worker tenure. 
+It is immediate to notice then that higher paid workers will have higher severance payments: as $\frac{1}{u'(w_k)}$, the value to the firm of the severance payment goes up, while costs stay the same. Therefore, the firm will optimally choose to offer higher severance payments to higher paid workers. \\
+This equation is also easy to implement numerically: using the formulation in Appendix~\ref{dual}, where $\rho_k\equiv u'(w_k)$ is a state variable, I can immediately compute the payments for all the firm states, before solving the rest of the firm problem.
+
+

@@ -1,0 +1,122 @@
+\begin{table}
+  \centering
+  \begin{tabular}{lcccccc}
+    \toprule
+    & \multicolumn{2}{c}{No min wage} & \multicolumn{2}{c}{Baseline} & \multicolumn{2}{c}{20\% hike}\\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+    & Layoffs & Wages & Layoffs & Wages & Layoffs & Wages \\
+    \midrule
+    \hline
+    $<\!1$ year      &  $5.4\%$  &  $0.012$    &  $5.80\%$  &  $-0.029$   &  $6.00\%$  &  $-0.057$ \\  
+
+    \hline
+    1–2 years        &  $0.6\%$   &  $0.017$    &  $0.70\%$   &  $0.013$   &  $0.73\%$   &  $0.002$     \\  
+
+    \hline
+
+    2–3 years        &  $0.42\%$   &  $0.023$  &  $0.40\%$   &  $0.009$  &  $0.51\%$   &  $0.008$ \\
+
+    \hline
+    
+    3–4 years        &  $0.15\%$   &  $0.025^$&  $0.20\%$   &  $0.019$  &  $0.26\%$   &  $0.011$ \\
+ 
+    \hline    
+    4–5 years        &  $0.06\%$   &  $0.025$ &  $0.10\%$   &  $0.019$ &  $0.12\%$   &  $0.016$ \\
+
+    \hline
+  \end{tabular}
+  \caption{Layoffs and wage pass-through across tenure for different values of minimum wage.}
+  \label{tab:minwage_tenure}
+\end{table}
+
+\subsection{Asymmetric Wage Passthrough} \label{app:asym}
+Table~\ref{tab:tenure} shows asymmetric response of wage to positive vs negative productivity shocks. Junior workers tend to have a much lower response to negative shocks than more senior workers, while still having a comparable response to positive shocks, suggesting that the heterogeneity in the average passthrough is primrily driven by smaller wage cuts to juniors.
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{lcccc}
+    \hline
+    & \multicolumn{1}{c}{Layoff rate} & \multicolumn{1}{c}{Avg. wage pass-through} & \multicolumn{1}{c}{Response to pos. shock} & \multicolumn{1}{c}{Response to neg. shock} \\
+    \hline
+    $<\!1$ year      &  $11\%^{***}$  &  $0.000$     &  $0.022^{***}$ &  $0.002^{***}$ \\
+                     &  $(0.0002)$    &  $(0.004)$   &  $(0.004)$     &  $(0.003)$     \\
+    1–2 years        &  $5\%^{***}$   &  $0.004$     &  $0.014^{***}$ &  $0.020^{***}$ \\
+                     &  $(0.0002)$    &  $(0.004)$   &  $(0.004)$     &  $(0.003)$     \\
+    2–3 years        &  $3\%^{***}$   &  $0.008^{**}$ & $0.013^{**}$  &  $0.020^{***}$ \\
+                     &  $(0.0002)$    &  $(0.002)$   &  $(0.002)$     &  $(0.003)$     \\
+    3–4 years        &  $2\%^{***}$   &  $0.008^{*}$ &  $0.012^{*}$   &  $0.015^{***}$ \\
+                     &  $(0.0002)$    &  $(0.003)$   &  $(0.003)$     &  $(0.004)$     \\
+    4–5 years        &  $2\%^{***}$   &  $0.017^{***}$ & $0.010^{***}$ &  $0.024^{***}$ \\
+                     &  $(0.0002)$    &  $(0.004)$   &  $(0.004)$     &  $(0.004)$     \\
+    \hline
+  \end{tabular}
+  \caption{Layoffs and wage pass-through across tenure. Columns 3 and 4 report asymmetric pass-through to positive and negative shocks. Data: DADS Panel + FARE, 2009–2019.}
+  \label{tab:tenure}
+\end{table}
+%\subsection{Layoffs using Labor Force Survey} \label{LFS}
+
+\subsection{Microfounding the Wage Noncontractability} \label{microfoundation}
+A version of my model where the firm is allowed to choose quality-specific wage is in fact a signalling game: firm's action of choosing the wage signals the workers their quality.
+I cosider a simpler version of the game and show that, under a sufficiently small elasticity of job search probability with respect to promised value $v'$, $\eta(v')\equiv\frac{\partial (1-p(v')) /\partial v'}{(1-p(v'))}$, the pooling Perfect Bayesian Equilibrium exists and survives the Intuitive Criterion (\textcite{Cho1987}). \\
+The game is simplified in three ways.
+
+First, I consider a finite, 2-period version of the game. Second, I change the timing of the game: workers search before the layoffs are realized. This allows me to work with a 2-period game. Otherwise,
+3 periods would bethe minimal amount of time necessary for the signalling to have any impact: a signal in period 1 would convey information about the layoff risk in period 2, which would impact the final consumption amount in period 3. Switching the order of actions helps simplify the problem a little further.
+Third, I consider a constant returns to scale version of the model. This disentangles firm's optimal decision problem between different cohorts, allowing me to focus on how a firm manages a single cohort.
+Lastly, I abstract away from productivity shocks as their presence is not essential to the story of firm revealing the information. 
+
+
+I begin by defining the firm problem of the game.
+\begin{definition}\label{app:signalling}
+    A signalling game of the firm is an extension of the firm problem from Lemma~\ref{firmproblem:orig} where the firm offers individual, rather than contract-specific, wages.
+    
+    The full sequential problem of managing a single cohort is 
+\begin{equation*}
+\begin{split}
+J(n,v,z) = & \max_{\bar{w},\underline{w},\bar{w}',\underline{w}',\bar{s},\underline{s}} 
+nf(z)-n(\bar{w}z+\underline{w}(1-z)) \\
+& +\beta\Big[n'f(z')-n'(\bar{w}'z'+\underline{w}'(1-z'))\Big] \\
+s.t & \: n' = n [z(1-p(\tilde{v}'))(1-\bar{s})+(1-z)(1-p(\vec{v}'))(1-\underline{s})] \\
+& z'=nz(1-p(\tilde{v}'))(1-\bar{s}) / n' \\
+& E_{z_i}\Big[ u(w_{z}) + \beta \max_{\hat{v}}\Big[ p(\hat{v})\hat{v}+(1-p(\hat{v})\tilde{E}_{z_i}[s_{z} u(b) + (1-s_{z})u(w'_z)\Big] = v
+\end{split}
+\end{equation*}
+, where the subjective worker belief about own type $\tilde{E}_{z_i}$ is defined as part of the equilibrium.
+\end{definition}
+The key departure of this problem from the original firm problem is that the firm may depart from the pooling equilibrium and try to signal workers their own quality. However, the nature of a deviation in a dynamic contracting problem is ambiguous, especially given that worker's belief about own quality matters only because it affects firm's future decision to fire that worker.
+
+I define the pooling equilibrium as the set of strategies and worker beliefs that make the optimal firm strategy to involve paying the same wage to all its workers. \\
+\begin{definition}
+    A pooling equilibrium of a signaling game is the firm's strategy $\{w,w', \{\bar{s},\underline{s}\}\}$, workers' beliefs about own type prior to search $\tilde{z}_{i}$ such that
+    \begin{enumerate}
+        \item Firm's strategy solves the signalling problem subject to workers' beliefs
+        \item Workers' on-path beliefs follow the prior: $\tilde{z}_{i}=z$
+        \item Workers' off-path beliefs are such that the firm's optimal strategy is to pay the same wages to all its workers: $\{w_{i},w'_i,\bar{s},\underline{s}\}=\{w,w',\bar{s},\underline{s}\}$
+    \end{enumerate}
+\end{definition}
+Question of existence of this equilibrium relies on how the workers' beliefs are supposed to respond to deviations by the firm. That in turn depends on the nature of the deviations that a firm can credibly make. I assume that a firm can credibly deviate to a different, individual, wage path, but not to a layoff risk. One justification of this assumption is that, while wages are fully verifiable and observable, thus enforceable in court, the notion of layoff risk on an individual level is not. As such, firms may attempt to signal workers their individual match quality and thus their individual layoff risk, via wage discrimination. \footnote{Importantly, this matters only insofar as there is actual layoff risk: if the firm never fires its workers, it is in fact not optimal to pool wages.} I thus focus on proving the existence of a pooling equilibrium by checking against the deviations in individual wage paths.
+%The signalling game differs from the originally described firm problem in several regards. First, the firm now works with individual contracts. This results in all choice variables being individual rather than contract-specific. Second, and as a result of the first, workers' beliefs about being a high productivity match may now be different even for workers on the same contract. This means that the firm needs to track worker's own belief about their type $\tilde{z}_i$ as an additional state variable.%\textcolor{red}{Notation issue of the original problem: if workers of two different cohorts \emph{happen} to end up on exactly the same contracts, their posteriors will still be different!!! So I gotta fix it somehow... Because it does matter to the workers! If the firm promises a 10\% layoff rate to all the workers on the same contract, but one cohort is all good guys and the other is all bad... that shit ain't gonna fly. This ain't the end of the world by the way, the cohort case is fine, but some issues.}
+\begin{proposition}
+    Under a sufficiently inelastic probability of workers finding a job in a different firm, a pooling equilibrium of the signalling game exists and survives the Intuitive Criterion. 
+\end{proposition}
+\begin{proof}
+    I consider non-atomic wage deviations from the pooling equilibrium and show that they are never profitable. I then expand to deviations that include change in the aggregate layoff risk. I consider only wage deviations within a particular worker type but the proof naturally extends to wage deviations for both high-quality and low-quality matches at the same time: if the firm does not want to deviate or a small measure of high quality or low quality matches, it does not want to deviate for the larger measure of either, or for the two types of matches together.
+
+    The key idea is that any deviations not affecting workers' search decision $\hat{v}$ are not profitable for the firm: keeping workers' decisions fixed, the firm wants to smooth wages as much as possible due to risk-aversion.
+
+    I show that, for small enough wage deviations, there are workers' off-path beliefs that keep their decisions unchanged, thus making the deviation unprofitable. Then, for deviations large enough to rule out these off-path beliefs (using Intuitive Criterion), the insurance cost is too high for the firm to deviate.
+
+    I focus on deviations for high quality matches. The proof applies equivalently to the low-quality matches. Consider a deviation $\{w_{i,t}\}_{t\leq 2} > \{w^*_t\}_{t\leq 2}$. Worker's optimal search decision $\hat{v}$ is affected by $w_{i,2}$ directly: no matter what, if the worker does not find a job elsewhere and does not get fired, they will now receive a different wage. This creates a mechanical incentive for the worker to look for more attractive, harder to find jobs:
+    \[ \max_{\hat{v}} [ p(\hat{v})\hat{v}+(1-p(\hat{v})\tilde{E}_{z_i}(s_z U + (1-s_z) w_i)\]
+    Define $\bar{w}_i>w^*_2$ as the wage threshold where, no matter the off-path beliefs $\tilde{E}$, $\tilde{E}_{z_i}(s_z U + (1-s_z) u(w_i)) \geq E^*_{z_i}(s_z U + (1-s_z)u(w^*_2))$. If a firm deviates above this wage, the worker will be less likely to find a job elsewhere no matter their off-path beliefs. On the other hand, for wage deviations below this threshold, there are off-path beliefs that make worker more likely to find other jobs.
+
+    For the latter, the off-path beliefs which keep the probability of finding a job the same help sustain the pooling equilibrium: if a firm cannot impact worker's search decision, the wage deviations are purely wasteful.
+
+    For larger wage deviations $w_i>\bar{w}_i$, these types of off-path beliefs would not survive intuitive criterion: the firm would never gain, compared to the equilibrium path, by retaining low-quality matches. Thus, to consider for the possible deviations, we must restrict attention to off-path beliefs that the worker is indeed high type. Here, firm essentially trades off the additional incentives on worker search with the insurance from pooled wages. The incentive gain from the deviation scales with the elasticity of the probability of job search $\eta(\hat{v})\equiv\frac{\Delta (1-p(\hat{v})) /\Delta \hat{v}}{(1-p(\hat{v}))}$:
+    \[ \frac{\Delta J}{\Delta w_{i,2}} = -\frac{\Delta w_{i,1}}{\Delta w_{i,2}}/(1-p(\hat{v})) + \beta [-\Delta w_{i,2}+\eta(\hat{v}) * (f'(z_i)-w_{i,2})]\]
+    Due to worker's risk-aversion, $-\frac{\Delta w_{i,1}}{\Delta w_{i,2}}/(1-p(\hat{v}))-\beta\Delta w_{i,2}$ is an overall loss for the firm as the workers prefer smoother wages. Moreover, this loss does not scale with the elasticity of on-the-job search. Thus, under sufficiently small $\eta(\hat{v})$ the insurance cost of the deviation overrides the incentive gain.
+
+    The proof extends similarly to the case where the firm also deviates in layoffs. Layoffs are the alternative means to get rid of bad matches. If the on-the-job search probability is inelastic enough, the wage deviation required to actually convince enough workers to leave will end up being too costly in terms of insurance: cutting future wages of bad matches necessitates raising their current wages. 
+    
+    %Let me start by defining the threshold of what constitutes a small deviation. A deviation is small if all firm types could gain from the deviation (compared to the equilibrium payoff) depending on the off-path beliefs. 
+\end{proof}
+

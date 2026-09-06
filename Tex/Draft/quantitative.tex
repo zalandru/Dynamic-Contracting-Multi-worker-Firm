@@ -1,61 +1,350 @@
 \section{Quantitative Analysis}
-I calibrate the model using administrative data from France and assess whether it reproduces the empirical evidence on wage pass-through and layoffs across firms and tenure.
+I calibrate the model using administrative data from France and assess whether it reproduces the empirical evidence on wage pass-through and layoffs across firms and tenure. I introduce several policies prevalent in French labor market and use the model to assess their impact. I find that an exogenous source wage rigidity, minimum wage, has only a muted impact on hiring and layoff rates.
 
 \subsection{Solving the model}
-The tenure-based formulation yields a discrete—though expanding—state space. To make the problem fully tractable, I note that wages in contracts tend to converge, a result that follows from the propositions above. A corollary of Proposition~\ref{prop:targetwage} is that wages for cohorts with the same quality converge because they share the same target wage. I also expect quality across cohorts to converge:
-\begin{itemize}
-    \item Lower-quality cohorts (relative to others) have lower target wages;
-    \item Over time, low-quality cohorts become low-value cohorts;
-    \item By Proposition~\ref{prop:qualityconv}, low-value cohorts are laid off first;
-    \item Hence lower-quality cohorts catch up in quality and, consequently, in wages.
-\end{itemize}
-Given convergence, the practical question is how quickly it occurs—or, equivalently, how many cohorts to track. Empirically (Appendix~\ref{wagegrowthK}), wage growth in France flattens after about ten years of tenure. I therefore restrict attention to a finite and constant $K \le 10$ for all firms in the quantitative analysis. This is an approximation: as $K\to\infty$, the model converges to the problem in Lemma~\ref{firmproblem}.
+The tenure-based formulation yields a discrete—though expanding—state space. To make the problem fully tractable, I note that wages in contracts tend to converge, a result that follows from the propositions above. A corollary of Proposition~\ref{prop:targetwage} is that wages for cohorts with the same quality converge because they share the same target wage. I also expect quality across cohorts to converge. 
+
+The intuition for contracts converging is as follows. First of all, lower quality cohorts have lower target wages due not being as productive. Over time, due to tracking the minimum wage, the lower quality cohorts will also have a relatively lower value as compared to other, higher quality, cohorts. By Proposition~\ref{prop:qualityconv}, these cohorts are then more likely to suffer layoffs, thus catching up in quality to other cohorts. Now of higher average quality, these cohorts have a higher target wage and will thus catch up in wages and value over time.
+
+Given convergence, the practical question is how quickly it occurs—or, equivalently, how many cohorts to track. Empirically, Figure~\ref{fig:w_growth_tenure} shows that CPI-adjusted log wage growth in France flattens after about ten years of tenure. I therefore restrict attention to a finite and constant $K \le 10$ for all firms in the quantitative analysis. This is an approximation: as $K\to\infty$, the model converges to the problem in Lemma~\ref{firmproblem}.
+\begin{figure}
+    \centering
+\includegraphics[width=0.75\textwidth]{Wage growth across tenure under 30,cutoff 100.jpg} \\
+    \caption{Wage growth across worker tenure}
+    \label{fig:w_growth_tenure}
+\end{figure}
+
 
 A second complication, common in dynamic-contract models, is the large action space because $\{v'_{y',k}\}$ grows with the number of productivity states. Appendix~\ref{dual} shows that the problem can be solved in its dual form by choosing future marginal utilities—constant across productivity realizations—instead of promised values.
 
-Lastly, I solve for a block-recursive equilibrium. As shown in Appendix~\ref{blocrecur}, such an equilibrium exists when all new hires enter at the same promised value $v_0$; any additional value associated with higher submarkets $v$ is paid as a sign-on wage. I set $v_0$ equal to the unemployment value $U$.
+Lastly, the model can be solved in a block-recursive equilibrium. As shown in Appendix~\ref{blocrecur}, such an equilibrium exists when all new hires enter at the same promised value $v_0$; any additional value associated with higher submarkets $v$ is paid as a sign-on wage.
+
 
 \subsection{Model specification}
-I work at annual frequency: contracts in France are rarely updated more than once per year, which facilitates cohort tracking. I set the discount factor to $\beta=0.96$, consistent with a $4\%$ annual interest rate.
-
-I use logarithmic utility so that the composition $u'\!\circ u^{-1}(v)$ is strictly increasing; within CRRA preferences, this property holds only for log utility.
+For quantifying the model, I focus on the CRS version of the firm production function.
+I work at annual frequency: contracts in France are rarely updated more than once per year, which facilitates cohort tracking. I set the discount factor to $\beta=0.96$, consistent with a $4\%$ annual interest rate. I work with the logarithmic utility.
 
 Production is a concave function of quality-adjusted quantity:
 \[
 F(n,z)=[n\,(z+\alpha_z(1-z))]^{\alpha}.
 \]
-I set $\alpha=0.85$, consistent with recent work on firm dynamics (\textcite{schaal2017}; \textcite{bilal2022}).
+I set $\alpha=1.0$, consistent with the CRS production. %consistent with recent work on firm dynamics (\textcite{schaal2017}; \textcite{bilal2022}). 
+Idiosyncratic firm-level productivity $y$ follows a uniform Markov process as in \textcite{balke2022}: with probability $\lambda_y$ productivity is redrawn uniformly; otherwise it remains unchanged. I normalize the expected value of $y$ to 1.
 
 Matching follows a CES contact-rate function (as in \textcite{menzio2011}):
 \[
-p(\theta)=\theta\,(1+\theta^{\gamma})^{-1/\gamma}, \qquad
-q(\theta)=(1+\theta^{\gamma})^{-1/\gamma}.
+p(\theta)=\theta\,[a^\gamma/(a^\gamma+\theta^{\gamma}]^{1/\gamma}, \qquad
+q(\theta)=[a^\gamma/(a^\gamma+\theta^{\gamma}]^{1/\gamma}.
 \]
-Idiosyncratic firm-level productivity follows a uniform Markov process as in \textcite{balke2022}: with probability $\lambda_y$ productivity is redrawn uniformly; otherwise it remains unchanged.
+I use a common estimate of the curvature $\gamma=0.8$ and normalize the vacancy posting cost $c=1$.
 
-The remaining parameters to estimate are:
-\begin{itemize}
-    \item Unemployment production $b$;
-    \item Productivity: persistence $\lambda_y$ and variance $\sigma_y$;
-    \item Search: vacancy-posting cost $c$, matching curvature $\gamma$, and on-the-job (OJS) search efficiency $\lambda_{jj}$;
-    \item Firm dynamics: entry cost $\kappa_e$ and operating cost $\kappa_f$;
-    \item Match heterogeneity: share of high-quality matches at hire $q_0$ and relative productivity of low-quality matches $\alpha_z$.
-\end{itemize}
+\textbf{Minimum wage}
+
+I introduce national minimum wage directly into the baseline of the quantitative model. The intent is to control for the key source of exogenous wage rigidity, which is a potential alternative explanation for both rigid wage and layoffs, in France. In the policy analysis, I will discuss the relevance of the minimum wage for reconciling the data, and its impact, alongside other labor policies, on the economy.
+This leaves 10 parameters to be estimated with 10 moments in the data.
+%The parameters to estimate then are:
+%\begin{itemize}
+%    \item Unemployment production $b$;
+%    \item Productivity: persistence $\lambda_y$ and variance $\sigma_y$;
+%    \item Search: matching efficiency $a\in(0,1)$ and on-the-job (OJS) search efficiency $\lambda_{jj}$;
+%    \item Firm dynamics: entry cost $\kappa_e$ and operating cost $\kappa_f$;
+%    \item Match heterogeneity: share of high-quality matches at hire $q_0$ and relative productivity of low-quality matches $\alpha_z$.
+%    \item Policy: the minimum wage $w_{min}$% and the mandatory severance pay $\underline{sev}$.
+%\end{itemize}
 
 \subsection{Moments of interest}
-I target four sets of moments: transition probabilities, wage growth, productivity dynamics, and firm dynamics.
+I target four sets of moments: transition probabilities, wage growth, productivity dynamics, and firm dynamics. I proceed with an informal discussion of what moments influence which parameters most.
 
-\emph{Transitions.} I measure annual job-to-job (E2E) and unemployment-to-employment (U2E) transitions. For the hiring rate, I use the share of newly hired workers among all observations. U2E and E2E map directly to $c$ and $\lambda_{jj}$, respectively. I obtain an E2E rate of $6.3\%$ and a $12.8\%$ share of new hires economy-wide.
 
-\emph{Layoffs across productivity.} I track the distribution of employment-to-unemployment (E2U) rates across firms by productivity. These moments discipline match-heterogeneity parameters: the lower the relative productivity of low-quality matches $\alpha_z$, the more even highly productive firms will lay off workers. After sufficiently positive productivity shocks, firms hire; when $q_0$ (the share of high-quality new matches) is small, subsequent layoffs are more likely. I find little difference in layoff rates across productivity groups, with the range of $1$ percentage point between top and the bottom tercile.
+\begin{table}
+\centering
+\begin{tabular}{lccc}
+\hline
+Moments & Data & Model \\
+\hline
+\hline
+Rate of new hires &   12.8\%    & 12.7\%  \\
+%\hline
+Annual separation rate of the bottom prod tercile &  3.9\% & 3.6\%\\
+%\hline
+Annual separation rate of the top prod tercile &  3.0\% & 2.8\%\\
+%\hline
+Annual job-to-job transition rate & 6.3\%   & 6.4\%  \\
+%\hline
+%Share of job-to-job transitions with a positive wage change & 51\% (0.39\%) & - \\ 
+%\hline \hline
+Tenure profile of wages at 10 years &  6.4\%    & 6.5\% \\
+%\hline
+%Tenure profile of job-to-job transitions at 7.5 years & -6.6\% (0.04\%) & - \\
+%\hline \hline
+s.d. of firm productivity growth & 0.30     &  0.30 \\
+%\hline
+Annual persistence of firm productivity & 0.79  &  0.79 \\
+%\hline \hline
+%Average firm size & 32.5        &   \\
+%\hline
+%Ratio of jobs created by entering firms & 6\%   &   \\
+%\hline \hline
+Ratio of minimum wage to mean wage      &  0.45 &  0.46 \\
+%Ratio of severance pay to mean wage     &       &   \\
+\hline
+\end{tabular}
+\caption{Targeted moments in data vs. model}
+  \label{tab:moments}
+\end{table}
 
-\emph{Wage growth by tenure.} I use wage growth over the first five years of tenure to discipline $b$, following \textcite{souchier2022}. Intuitively, wages rise until a cohort’s marginal profit reaches zero; the lower the cohort’s starting point (which depends on the unemployment outside option), the larger the initial wage growth. I document $6.1\%$ wage growth after five years of tenure.
+\emph{Transitions.} I measure annual job-to-job (E2E) and unemployment-to-employment (U2E) transitions. For the hiring rate, I use the share of newly hired workers among all observations. U2E and E2E map directly to vacancy $c$ and relative search of efficient of job-to-job transitioners, $\lambda_{jj}$, respectively. I obtain an E2E rate of $6.3\%$ and a $12.8\%$ share of new hires economy-wide.
 
-\emph{Productivity dynamics.} I measure the standard deviation and persistence of firm-level productivity (net of aggregate and sectoral effects) to discipline $\lambda_y$ and $\sigma_y$. Firm-level productivity is moderately persistent with coefficient $0.79$. Its standard deviation is $0.39$, the largest among productivity components, consistent with comparable estimates of $0.81$ and $0.30$ in \textcite{souchier2022}.
+\emph{Layoffs across productivity.} I track the distribution of employment-to-unemployment (E2U) rates across firms by productivity. I separate firms into productivity terciles, and take average layoff rate from the top and bottom terciles. These moments discipline match-heterogeneity parameters: the lower the relative productivity of low-quality matches $\alpha_z$, the more even highly productive firms will lay off workers. After sufficiently positive productivity shocks, firms hire; when $q_0$ (the share of high-quality new matches) is small, subsequent layoffs are more likely.
 
-\emph{Firm dynamics.} To discipline $\kappa_e$, I target a $6\%$ share of jobs created by entering firms. Because $\kappa_f$ affects exit and thus selection, I target an average firm size of $32.5$. For comparison, the average establishment size is $17.9$, close to $15.6$ in the 2002 U.S. Economic Census.
+\emph{Wage growth by tenure.} I use wage growth over the first ten years of tenure to discipline unemployment production $b$. Intuitively, wages rise until a cohort’s marginal profit reaches zero; the lower the cohort’s starting point (which depends on the unemployment outside option), the larger the initial wage growth. I document $6.1\%$ wage growth after five years of tenure.
+
+\emph{Productivity dynamics.} I measure the standard deviation and persistence of firm-level productivity (net of aggregate and sectoral effects) to discipline productivity parameters $\lambda_y$ and $\sigma_y$. Firm-level productivity is moderately persistent with coefficient $0.79$. Its standard deviation is $0.39$, the largest among productivity components, consistent with comparable estimates of $0.81$ and $0.30$ in \textcite{souchier2022}.
+
+%\emph{Firm dynamics.} To discipline firm entry cost $\kappa_e$, I target a $6\%$ share of jobs created by entering firms. Because fixed cost $\kappa_f$ affects exit and thus selection, I target an average firm size of $32.5$. For comparison, the average establishment size is $17.9$, close to $15.6$ in the 2002 U.S. Economic Census.
+
+\begin{table}
+    \centering
+    \begin{tabular}{lc|lc}
+    Parameters & Value & Parameters & Value \\
+    \hline
+    \hline
+    Unemployment production $b$    &   0.59 &  Share of high-quality matches $z_0$& 0.57  \\
+    %     \hline
+    Firm productivity persistence $\lambda_y$    &   0.95  &  Relative productivity $\alpha_z$ & 0.50     \\
+    %     \hline
+    Firm productivity variance $\sigma_y$      &  0.65      & Minimum wage $w_{min}$ &  0.85\\%Firm entry cost $\kappa_e$       &  100    
+    %     \hline
+    Matching efficiency $\alpha$                   &   0.72  &  & \\%Firm maintenance cost $\kappa_f$ &  1        \\
+    %    \hline
+    On-the-job search efficiency $\lambda_{jj}$&   0.78     &   & \\
+    \hline
+    \end{tabular}
+    \caption{Estimated model parameters}
+    \label{tab:parameters}
+\end{table}
+
+\subsection{Model Fit}
+I estimate the model via indirect inference. 
+
+The model fit, as shown in Table~\ref{tab:moments}, is good. All four transition moments are matched well, with layoffs being slightly undervalued.
+
+Wage growth is matched well, if slightly overvalued. The firm productivity moments are matched exactly. Similarly, the minimum wage is matched almost exactly.
+
+
+\textbf{Parameter Values} The corresponding parameter values are presented in Table~\ref{tab:parameters}.
+
+The fairly high tenure profile of wages suggests a low value of home production $b=0.59$. This is above the values used in standard calibrated DMP models like \textcite{shimer2005}, but still notably below the calibration of \textcite{hagedorn2008}, and well in the range of values (47\% to 96\%) proposed by \textcite{chodorow2016}. This relatively low value also highlights that the model does not need the matches to be inefficient (that is, for match productivity to be below home production) in order to generate layoffs.
+
+The firm productivity parameters are comparable to those in \textcite{balke2022}, which is unsurprising given that I am applying the same approach to generate firm productivity shocks. However, my model required a stronger variance in firm productivity, which comes down to two facts: first, unlike in their model, I only have a single source of productivity shocks, at the firm level; second, in my model, firms can endogenously adjust their productivity via layoffs, essentially smoothing the observed firm productivity process.
+
+Both the matching efficiency, relative to the vacancy cost normalized to 1, and the on-the-job search efficiency values are similar to the calibration of \textcite{menzio2011} for the case where match quality is only observed upon the match being formed, exactly consistent with the story of my model. Crucially, however, my model does not need neither exogenous job destruction nor high unemployment productivity to generate layoffs.
+
+Lastly, the match heterogeneity parameters are closely comparable to those of \textcite{gregory2021}, who estimate a Menzio-Shi-like model of directed search with match heterogeneity and calibrate their model to match the proportion and moments (including layoff rates) of three types of workers observed in the data: the alphas, beta, and gammas. Curiously, although my model does not target the specific transition rates across match types, it arrives at extremely similar parameter values: the relative productivity of the low quality match $\alpha_z=0.50$ falls right inbetween the relative productivities of the less productive types beta, $0.623$, and gamma, $0.459$. 
+Even more surprisingly, the proportion of high quality matches $z_0=0.57$ is exactly equal to the proportion of workers of type alpha documented by \textcite{gregory2021}.
+
+ \begin{figure}[t!]%[htbp]
+  \centering
+
+  \begin{subfigure}[t]{0.49\linewidth}
+    \vspace{0pt} % align tops
+    \centering
+    \includegraphics[width=\linewidth]{quant:wage_tenure_data_model.jpg}
+    \caption{Wage pass-through across worker tenure. }
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.49\linewidth}
+    \vspace{0pt} % align tops
+    \centering
+    \includegraphics[width=\linewidth]{quant:layoff_tenure_data_model.jpg}
+    \caption{Annual layoff rate across worker tenure.}
+  \end{subfigure}
+   \label{fig:untarg_mom}
+  \caption{Layoffs and wage pass-through across tenure in the simulated model and data. The red lines indicate data estimates, blue lines indicate simulation estimates.}
+  \end{figure}
+
+%\begin{table}
+%  \centering
+%  \begin{tabular}{lcccc}
+%    \toprule
+%    & \multicolumn{2}{c}{Data} & \multicolumn{2}{c}{Model} \\
+%    \cmidrule(lr){2-3}\cmidrule(lr){4-5}
+%    & Layoff rate & Avg. wage pass-through & Layoff rate & Avg. wage pass-through \\
+%    \midrule
+%    \hline
+%    $<\!1$ year      &  $11\%^{***}$  &  $-0.008$    &  $5.80\%^{***}$  &  $-0.029^{***}$   \\  
+%                     %&  $(0.0002)$    &  $(0.004)$  &      &                  \\ 
+%    1–2 years        &  $5\%^{***}$   &  $0.004$    &  $0.70\%^{***}$   &  $0.013^{***}$        \\  
+%                     %&   $(0.0002)$    &  $(0.004)$ &      &                      \\ 
+%    2–3 years        &  $3\%^{***}$   &  $0.008^{**}$  &  $0.40\%^{***}$   &  $0.009^{***}$   \\
+%                     %&  $(0.0002)$    &  $(0.002)$  &      &                     \\ 
+%    3–4 years        &  $2\%^{***}$   &  $0.008^{*}$&  $0.20\%^{***}$   &  $0.019^{***}$  \\
+%                     %&  $(0.0002)$    &  $(0.003)$ &     &                     \\   
+%    4–5 years        &  $2\%^{***}$   &  $0.017^{***}$ &  $0.10\%^{***}$   &  $0.019^{***}$ \\
+%                    %&  $(0.0002)$    &  $(0.004)$  &      &                   \\
+%    \hline
+%  \end{tabular}
+%  \caption{Layoffs and wage pass-through across tenure in the simulated model.}
+%  \label{tab:untarg_mom}
+%\end{table}
 
 \subsection{Untargeted moments}
-As validation, I assess whether the model reproduces the heterogeneity in layoffs and wage pass-through across firms and tenure documented in Section~\ref{sec:empirics}.
 
-Work in progress.
+%\begin{figure}[htbp]
+%  \centering
+
+    % If possible, rename the file to avoid spaces/commas.
+    % Otherwise, \detokenize helps:
+%    \includegraphics[width=0.75\linewidth]{\detokenize{True_w_v_twin_by_tenure copy 3.jpg}}
+    %\caption{Plot: average wage and promised value across worker tenure. }
+%  \caption{Average wage and promised value across tenure.}
+%\label{fig:value_tenure}
+%\end{figure}
+
+%I perform two exercises to validate my model.
+
+%I first confirm that junior workers are on the lower wage and promised value than the more senior workers. This conjecture is important as my theory does not address heterogeneity across worker tenure directly, and instead only through the differences in the promised value and average quality across cohorts. 
+
+
+%To shows this, I measure the average wage and expected across worker tenure in my simulated panel. Figure~\ref{fig:value_tenure} shows the wage and value profile. Both wages and worker promised value rise with worker's tenure at the firm, suggesting that the model's theoretical predictions across cohorts' values can be translated into predictions across worker tenure.
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figure-ir-zshock.pdf}
+    \caption{Impulse response to a permanent productivity shock. Blue represents a positive shock, orange -- negative shock}
+    \label{fig:irf}
+\end{figure}
+
+I assess whether the model reproduces the heterogeneity in layoffs and wage pass-through across firms and tenure documented in Section~\ref{sec:empirics}. I perform the same regressions on my panel data as in the empirical section, estimating layoff rates and wage pass-through across groups of workers ( based on tenure).
+
+The results for heterogeneity across tenure are presented in Figure~\ref{fig:untarg_mom}. The model performs moderately well at reconciling the gradient of wage pass-through and layoffs across tenure. For wages, the model expects too strong of a negative pass-through for juniors, but it generally comparable for seniors. For layoffs, the model undervalues the layoffs of juniors and slightly overvalues the layoffs of seniors.
+
+\subsection{Impulse response analysis}
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figure-ir-zshock-junior.pdf}
+    \caption{Impulse response to a permanent productivity shock, juniors only. Blue represents a positive shock, orange -- negative shock}
+    \label{fig:irf_jun}
+\end{figure}
+
+I report the impulse responses in the model to permanent positive and negative innovation shocks to firm productivity $y$, scaled to
+generate a 10\% output change. In practice, I simulate the histories of a cross-section of firms, and compare a treatment group that receives the permanent productivity shock with a control group that does not. Figures~\ref{fig:irf} and \ref{fig:irf_jun} report the differences in variables of interest between the control and treatment groups around the event at time 0. For each case, I simulated firms that existed at the last stage of the simulation that produced the results above. The Figure~\ref{fig:irf} show the average response across all such cohorts, and Figure~\ref{fig:irf_jun} focuses on the cohorts the have just recently formed. 
+
+After a permanent positive shock to firm productivity, workers are immediately subjected to a fall in layoff risk and, with a delay, a hike in wages. However, the layoff rate change is minimal, as reflected in almost no change to the target wage $\log(w^*)$. Following a rise in wages, the job-to-job transition probability falls as workers are even less incentivized to find jobs elsewhere. The response to a negative shock, while generally the opposite of the response to a positive shock, differs slightly as a firm now has more ``opportunity" to lay off poor matches. This is highlighted in the fact that the value of a marginal worker in the cohort changes by a notably smaller amount.
+
+The impulse response for junior cohorts, shown in Figure~\ref{fig:irf_jun}, highlight the impact of layoffs much more starkly. Upon a negative productivity shock, the layoff rate spikes sharply enough that the impact is apparent in the target wage and all the related policies: upon layoffs, the wage arrives back to almost the original value, overall a much smaller wage drop than for seniors. This minimal impact on wages is highlighted also in the job-to-job transition probability of the worker that essentially does not change after the negative shock.
+
+The effect of the permanent positive shock is similarly muted, due to the fact that quite a few of the low productivity junior matches that would have been fired otherwise, have been retain after the shock. This incentivizes the firm to not raise wages too much, as shown in the sudden fall in worker promised value $v'$.
+
+
+\subsection{Policy implications}
+I use my model as a realistic laboratory to evaluate the consequences of varying minimum wage and severance pay policies -- two of the most important institutional features of European labor markets. In contrast to earlier models, the key difference in assessing these policies here lies in the endogeneity of wages, which makes it unclear whether the wage rigidity observed in the simulated data comes from the minimum wage or the firms' optimal choice not to cut wages. Similarly for severance pay, firms have incentives to offer their own severance, thus making the ultimate impact of statutory severance unclear.
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=0.75\linewidth]{True_sev_by_tenure.png}
+    \caption{Severance pay across worker tenure.}
+    \label{fig:severance}
+\end{figure}
+
+\subsubsection{Severance pay}
+The severance pay in the model is determined by the firm's endogenous severance pay choice. I discuss the realized severance pay in my model and compare it to the data. 
+
+The statutory severance pay in France is lump-sum, while my model delivers perpetual severance. To make the values comparable, I compare the expected severance the firm would pay to its laid off workers, based on the expected time for them to find a job. Figure~\ref{fig:severance} shows the average severance pay across the first 10 years of worker tenure. Severance pay strongly increases in cohort's wage and is only bounded by the exogenous policy for the most senior workers. Even without any legal requirements, firms choose to provide workers with a significant severance pay in order to compensate workers for layoffs ex-post. Otherwise, absent severance, the ex-ante risk of layoffs would have to be compensated via higher average wage to all the workers. Therefore, statutory severance does not serve as an alternative institutional explanation as to why junior workers are subject to higher layoffs than seniors, as firms are ultimately not forced to pay this severance.
+
+
+The reason for why the optimal severance pay stagnates in tenure is that the optimal severance pay scales with worker wages: the more worker is paid, the more they lose from being laid off, the more the firm wants to compensate them with severance. However, as wage growth stagnates, so do the severance payments. In that sense, my model cannot reconcile the severance pay above legal minima beyond the first ten years of tenure. Further factors beyond the scope of this paper, like human capital accumulation, may induce the firm to keep raising worker's value over the long-term by raising the severance pay.
+
+ \begin{figure}[t!]
+  \centering
+  \begin{subfigure}[t]{0.49\linewidth}
+    \vspace{0pt} % align tops
+    \centering
+    \includegraphics[width=\linewidth]{quant:wage_tenure_model_nominw.jpg}
+    \caption{Wage pass-through across worker tenure. }
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.49\linewidth}
+    \vspace{0pt} % align tops
+    \centering
+    \includegraphics[width=\linewidth]{quant:layoff_tenure_model_nominw.jpg}
+    \caption{Annual layoff rate across worker tenure. }
+  \end{subfigure}
+  \caption{Wage pass-through and layoff rate across worker tenure simulated in the model. Red lines indicate the standard calibration, blue lines indicates calibration without minimum wage.}
+    \label{fig:tenure_nominw}
+
+  \end{figure}
+
+\subsubsection{Minimum Wage}
+
+Minimum wage is an important source of exogenous wage rigidity, particularly in France. In this section, I revisit two central questions about the minimum wage. First, using a counterfactual model without a minimum wage, I ask: What are the contributions of the current minimum wage to the wage and layoff ladders? What are its implications for productivity and firing decisions?
+Second, I examine the effects of a $20\%$ increase in the minimum wage to address the question: Starting from an already high level—relative to the OECD average—what are the effects of raising the minimum wage even further? This question is particularly relevant if the minimum wage introduces convexities in the model, whereby additional increases entail disproportionately large costs or gains for the economy.
+
+First, I consider how the minimum wage affects the heterogeneity in wage pass-through and layoffs across worker tenure. I focus on the comparison between the case of no minimum wage and the baseline as the way to confirm that minimum wage is not essential in reconciling this heterogeneity. Generally, removing minimum wage dampens layoffs and amplifies wage pass-through. Still, the effects are small, suggesting that my model did not rely heavily on minimum wage to generate the heterogeneity.
+
+%To evaluate its role in generating layoffs and wage rigidity, I consider 2 deviations from the baseline of the average minimum wage in France during 2009-2019. 
+
+%First, I consider the case of no minimum wage, to understand how well the model will still be able to reconcile the data.  I do not recalibrate the model for this exercise and thus will use the differences between the baseline and the no minimum wage case to decompose the effects of minimum wage in my model.
+
+%Second, I consider a 20\% hike in minimum wage, to evaluate the impact of raising it on the labor flows and worker wages. in either case, in order to decompose the impact of the minimum wage. Similarly, I do not recalibrate the model to keep the interpretation of this hike as a policy change.
+Second, I consider the impact of minimum wage on employment transitions.  Table~\ref{tab:minwage_transitions} shows the employment transition moments in the economy across the three cases. Overall, the impact of minimum wage is rather muted. Following a $20\%$ minimum wage increase, the hiring rate falls, while the layoff and job-to-job transition rates rise. All the changes are rather small. As I explain below, this is unsurprising.
+
+First, firms hire workers on promised values, not on wages. Although a minimum wage does make it less profitable to employ workers on the values, where this wage would be binding, ultimately the firms can still recoup some of the overdelivered value by not raising workers wages as fast longer-term. This implies that the presence of minimum wage need not strongly affect the value of hiring workers.
+
+Second, firms primarily use layoffs to shed less productive matches. Although minimum wage does create cases where the firm may want to fire even more productive matches, those cases are rare. Also, although minimum wage may prevent a potential wage cut, the counterfactual wage cut would not have been large anyway, as firms already have endogenous reasons not to cut workers wages. Therefore, compared to models without endogenously rigid wages, minimum wage does not prevent large wage cuts.
+
+Lastly, when the minimum wage binds for a cohort, the firm is to frontload the workers' utility. This results in workers being more incentivized to look for other jobs, leading to a higher job-to-job transition rate.
+
+Overall, this suggests that, in presence of endogenous reasons for firms to fire workers and smooth wages, a minimum wage increase does not have a significant impact on firm's hiring or firing incentives.
+
+
+\begin{table}[t!]
+    \centering
+    \begin{tabular}{lccc}
+    \hline
+                        & No min wage & Baseline & 20\% hike \\
+    \hline
+    \hline
+    Annual unemployed job-finding rate    & $86.3\%$    & $85.5\%$  &   $84.2\%$                         \\
+    \hline
+    Annual separation rate of the bottom prod tercile & $3.2\%$  &  $3.6\%$  &  $3.9\%$ \\
+    \hline
+    Annual separation rate of the top prod tercile & $2.5\%$   &  $2.8\%$ &  $3.0\%$     \\
+    \hline
+    Annual job-to-job transition rate               &  $5.2\%$  & $5.4\%$  &  $5.5\%$    \\
+    \hline
+    \end{tabular}
+    \caption{Labor transition probabilities for different values of minimum wage.}
+    \label{tab:minwage_transitions}
+\end{table}
+
+%\textcolor{red}{Highlight the dampened effect of the minimum wage hike on transition probabilities}
+
+
+%I consider two counterfactual exercises: removing the severance pay, and raising it. As it is only low paid workers who are affected by this, I focus the comparison on them.
+
+%\subsubsection{Hiring subsidies}
+%Lastly, I consider the impact of hiring subsidies on the economy. For this, I consider a drop in cost of posting a vacancy, $c$, initially normalized to 1.
+%\textcolor{red}{Show that hiring subsidies would amplify layoffs.}
+
+%\begin{table}[]
+%    \centering
+%    \begin{tabular}{lcc}
+%    \hline
+%                    & Baseline & Hiring subsidy \\
+%    \hline
+%    \hline
+%    Rate of new hires    & x    & x                         \\
+%    \hline
+%    Annual separation rate of the bottom prod tercile & x  &  x   \\
+%    \hline
+%    Annual separation rate of the top prod tercile & x   &  x     \\
+%    \hline
+%    Annual job-to-job transition rate               &  x  & x   \\
+%    \hline
+%    \end{tabular}
+%   \caption{Labor transition probabilities from hiring subsidy
+%    }
+%    \label{tab:minwage_transitions}
+%\end{table}

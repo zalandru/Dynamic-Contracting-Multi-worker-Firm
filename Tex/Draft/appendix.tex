@@ -1,72 +1,304 @@
 \appendix
 \section{Model Appendix} 
 \subsection{Proofs}
-\subsubsection*{Proof of Proposition \ref{prop:wagegrowth}} \label{proof:wagegrowth}
-The proposition is derived from the first-order conditions of the firm's problem.
+
+\subsubsection*{Proof of Proposition \ref{prop:wagegrowth}}\label{proof:wagegrowth}
 \begin{proof}
-    Consider the problem from Lemma \ref{firmproblem}.
-    The FOC for $v'_{k_1}$ yields (denote $\rho_k$ the shadow cost of $PK_k$ and $\omega_k$ the shadow cost of the expectation condition):
-    \[\rho_k\beta(1-s_k)(1-p(v'_{k+1}))-\omega_k+\beta n_k(1-s_k)\frac{\partial (1-v(v'_{k+1}))}{\partial v'_{k+1}}E_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial n'_{k+1}}=0\]
-    To develop this further, I use the FOC for $w_k$:
-    \[-n_k + \rho_k u'(w_k)=0 \iff \rho_k=\frac{n_k}{u'(w_k)}\]
-    One can similarly develop $\omega_k$ by applying the FOC for $v'_{y',k+1}$:
-    \[ \beta Pr_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial v'_{y',k+1}}+ Pr_{y'|y} \omega_k=0 \iff \omega_k = - \beta \frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial v'_{y',k+1}} \forall y'\]
-    Applying the envelope theorem one can then note that 
-    \[- \frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial v'_{y',k+1}} =  \frac{n'_{k+1}}{u'(w'_{k+1})}\]
-    Putting all this together, we get
-    \[\frac{n_k}{u'(w_k)}\beta(1-s_k)(1-p(v'_{k+1}))-\beta \frac{n'_{k+1}}{u'(w'_{k+1})}+\beta n_k(1-s_k)\frac{\partial (1-v(v'_{k+1}))}{\partial v'_{k+1}}E_{y'|y}\frac{\partial J(y',\{n'_k,v'_{y',k}\}_{k\leq K+1})}{\partial n'_{k+1}}=0\]
-    All that is left is to note that $n'_{k+1}=n_k(1-s_k)(1-p(v'_{k+1}))$, divide by the common terms ($\beta n'_{k+1}$) and rearrange.
-    \[ \frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} = \eta(v'_{k+1}) E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k}\})}{\partial n'_{k+1}} \]
+Fix a state $\Omega=(y,\{n_k,v_k,z_k\}_{k\le K})$ and consider the firm problem in Lemma~\ref{firmproblem}.
+Let $\rho_k$ be the multiplier on promise-keeping for cohort $k$ and let $\omega_k$ be the multiplier on the
+constraint $v'_{k+1}=E_{y'|y}v'_{y',k+1}$.
+
+\medskip
+\noindent\textit{Step 1: eliminate $\rho_k$ using the FOC for $w_k$.}
+The Lagrangian contains the term $-n_kw_k+\rho_k u(w_k)$. The FOC for $w_k$ is
+\[
+-n_k+\rho_k u'(w_k)=0
+\qquad\Rightarrow\qquad
+\rho_k=\frac{n_k}{u'(w_k)}.
+\]
+
+\medskip
+\noindent\textit{Step 2: eliminate $\omega_k$ using the FOC for $v'_{y',k+1}$ and an envelope condition.}
+Using the expectation constraint in Lemma~\ref{firmproblem}, the Lagrangian contains
+$\omega_k\big(v'_{k+1}-E_{y'|y}v'_{y',k+1}\big)$.
+The FOC for $v'_{y',k+1}$ is, for each $y'$,
+\[
+\beta \Pr(y'|y)\,\frac{\partial J\big(y',\{n'_j,v'_{y',j},z'_j\}\big)}{\partial v'_{y',k+1}}
+-\Pr(y'|y)\,\omega_k
+=0,
+\]
+so
+\[
+\omega_k=\beta\,\frac{\partial J\big(y',\{n'_j,v'_{y',j},z'_j\}\big)}{\partial v'_{y',k+1}}
+\qquad \forall y'.
+\]
+By the envelope theorem for the promised-value state (the same argument as in your wage-growth derivation),
+\[
+\frac{\partial J\big(y',\{n'_j,v'_{y',j},z'_j\}\big)}{\partial v'_{y',k+1}}
+=
+-\frac{n'_{k+1}}{u'(w'_{k+1})}.
+\]
+Therefore,
+\[
+\omega_k=-\beta\,\frac{n'_{k+1}}{u'(w'_{k+1})}.
+\]
+
+\medskip
+\noindent\textit{Step 3: use the FOC for $v'_{k+1}$.}
+The choice $v'_{k+1}$ affects the promise-keeping constraint through $R(v'_{k+1})$ and affects the continuation value
+through next-period cohort size $n'_{k+1}=n_k(1-s_k)\big(1-p(v'_{k+1})\big)$.\footnote{Cohort $0$ is the newly hired group with
+$n'_0=\tilde n$; for incumbents $k\le K$, their continuation mass is $n'_{k+1}=n_k(1-s_k)(1-p(v'_{k+1}))$.}
+The FOC for $v'_{k+1}$ is
+\[
+\rho_k\,\beta(1-s_k)R'(v'_{k+1})
++\omega_k
++\beta\,E_{y'|y}\!\left[\frac{\partial J(\Omega')}{\partial n'_{k+1}}\right]\frac{\partial n'_{k+1}}{\partial v'_{k+1}}
+=0.
+\]
+By the envelope property of $R(\cdot)$,
+$R'(v'_{k+1})=1-p(v'_{k+1})$.
+Also,
+\[
+\frac{\partial n'_{k+1}}{\partial v'_{k+1}}
+=
+n_k(1-s_k)\frac{\partial (1-p(v'_{k+1}))}{\partial v'_{k+1}}
+=
+n'_{k+1}\,\eta(v'_{k+1}),
+\qquad
+\eta(v')\equiv \frac{\partial\log(1-p(v'))}{\partial v'}.
+\]
+Substituting $\rho_k=n_k/u'(w_k)$ and $\omega_k=-\beta n'_{k+1}/u'(w'_{k+1})$, we get
+\[
+\beta\,\frac{n_k}{u'(w_k)}(1-s_k)\big(1-p(v'_{k+1})\big)
+-\beta\,\frac{n'_{k+1}}{u'(w'_{k+1})}
++\beta\,n'_{k+1}\eta(v'_{k+1})\,E_{y'|y}\frac{\partial J(\Omega')}{\partial n'_{k+1}}
+=0.
+\]
+Using $n'_{k+1}=n_k(1-s_k)(1-p(v'_{k+1}))$ and dividing by $\beta n'_{k+1}$ yields
+\[
+\frac{1}{u'(w'_{k+1})}-\frac{1}{u'(w_k)}
+=
+\eta(v'_{k+1})\,E_{y'|y}\frac{\partial J(\Omega')}{\partial n'_{k+1}},
+\]
+which is \eqref{eq:euler_prop}.
 \end{proof}
-\subsubsection*{Proof of Proposition \ref{prop:targetwage}} \label{proof:targetwage}
-  \begin{proof}
 
-%I make strong use of Proposition~\ref{prop:wagegrowth}. \\
-  %First note that wages are constant workers for promised $v^*$: $\frac{1}{u'(w'_{v^*})} - \frac{1}{u'(w_{v^*})} = 0$, meaning that $w'_{v^*}=w_{v^*}\equiv w^*_{v^*}$.
-  %Furthermore, as the marginal value $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v)}$ is decreasing in $v$, one can deduce that $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} >0\: \forall \: k:v_k < v^*$ and, similarly, $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} < 0 \: \forall\: k:v_k > v^*$. This yields us the first result: wage change is non-zero everywhere besides $v^*$ and is thus larger in the absolute sense. 
 
-  %For the second result, it is suffice to note that the marginal value $E_{y'|y}\frac{\partial J(y',n',P(v'))}{\partial P(v)}$ is decreasing in $v$ \textcolor{red}{also need that $\eta(v'_{k+1})$ is descreasing, but that is a quantitative result, not theoretical...}. Then $\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} > \frac{1}{u'(w'_{\bar{k}+1})} - \frac{1}{u'(w_{\bar{k}})}$. Rearranging gives the result.
-  \end{proof}
-\subsubsection*{Proof of Proposition \ref{prop:qualityconv}} \label{proof:qualityconv}
-I start by describing the FOC with respect to layoffs $s_k$:
+\subsubsection*{Proof of Corollary \ref{cor:envelope}}\label{proof:envelope}
 \begin{proof}
-    Consider the case where $s_k>0$. Then
-  \[-\beta n_k (1-p(v'_{k+1}))E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}} + \beta E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial z'_{k+1}} \frac{\partial z'_{k+1}}{\partial s_k}- \rho_k \beta (U-R(v'_{k+1}))=0\]  
-  Note that the FOC with respect to $w_k$ yields $\rho_k = \frac{n_k}{u'(w_k)}$ and divide by $\beta n_k$ to get the FOC in the Propositon. \\
-For the further results, I rewrite the firm state $(y,\{n_k,v_k,z_k\})$ into $(y,\{\underline{n}_k,\bar{n}_k,v_k\})$, where $\bar{n}_k = z_k n_k$ and $\underline{n}_k = (1-z_k) n_k$. \\
-I focus on the case where $\underline{n}_k > 0$ and $s_k(\underline{n}_k + \bar{n}_k) \leq \underline{n}_k$, that is, firm has not yet fired all the bad matches with the cohort (in the previous FOC, this is equivalent to $ \frac{\partial z'_{k+1}}{\partial s_k}>0$). The marginal value of firing a worker is then
-\[-\frac{R(v'_{k+1})-U}{u'(w_k)} - (1 - p(v'_{k+1}))E_{y'|y}\frac{\partial J(y',\{\underline{n'}_k,\bar{n'}_k,v'_k\})}{\partial \underline{n}'_{k+1}}\]
-To show that cohorts with lower promised values are more subject to layoffs, I take a derivative of this FOC with respect to the promised value $v_k$.%(\textcolor{red}{A bit imprecise! May have a case where a lower value cohort has very few bad matches, so firing them all is still less than firing a couple other bad matches in a higher value cohort. The prop should be something like $s_k(1- z_k) n_k \geq s_{k'}(1-z_{k'})n_{k'}$. That is, a total number of bad fired matches}), 
-The only component in the FOC directly dependent on $v_k$ is $\frac{1}{u'(w_k)}$, where $w_k = u^{-1}(v_k - \beta[s_kU + (1-s_k)R(v'_{k+1})]).$ Due to the $CRRA$ utility function, we find that $\frac{1}{u'(w_k)}$ is increasing in $v_k$, and, therefore, the marginal profit of firing workers is decreasing in $v_k$. \\
-Lastly, I show that layoffs are equally dependent on the quality of any cohort (as long as $z_k<1$). First, I note that quality directly appears only in the marginal value of low quality workers 
-\[\frac{\partial J(y',\{\underline{n}'_k,\bar{n}'_k,v'_k\})}{\partial \underline{n}'_{k+1}} = y'[F'_1(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})-F'_2(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k}) \frac{\sum n'_k}{(\sum n'_k z'_k)^2}-w'_{k+1} + \beta E_{y''|y'}\frac{\partial J(y'',...)}{\partial \underline{n}''_{k+2}}\frac{\partial \underline{n}''_{k+2}}{\partial \underline{n}'_{k+1}}\]
-Next, I note that all the quality states $\{z_k\}$ contribute in the same manner to $\frac{\partial J(y',\{\underline{n}'_k,\bar{n}'_k,v'_k\})}{\partial \underline{n}'_{k+1}}$, no matter the cohort $k$. Therefore, to first-order, the marginal value of firing a worker is equally dependent on all the quality states. \\
-\textcolor{red}{I don't think I need to assume $s_k(\underline{n}_k + \bar{n}_k) \leq \underline{n}_k$. I can write the proof for both cases, and the results should be there for either one.}
+Fix a next-period state $\Omega'=(y',\{n'_j,v'_{y',j},z'_j\}_{j\le K+1})$ and a cohort index $k\le K$.
+Apply the envelope theorem to the Bellman equation in Lemma~\ref{firmproblem}, differentiating the maximized value
+with respect to the state $n'_{k+1}$ (holding the other state components fixed):
+\[
+\frac{\partial J(\Omega')}{\partial n'_{k+1}}
+=
+\underbrace{\frac{\partial}{\partial n'_{k+1}}\Big( y'F(n_H',n_L')\Big)}_{\text{marginal product}}
+-\underbrace{w'_{k+1}}_{\text{marginal wage}}
++\beta\,E_{y''|y'}\left[\frac{\partial J(\Omega'')}{\partial n''_{k+2}}\right],
+\]
+where $n_H'\equiv\sum_j n'_j z'_j$, $n_L'\equiv\sum_j n'_j(1-z'_j)$, and $\Omega''$ is the optimal continuation state.
+
+The marginal product term is
+\[
+\frac{\partial}{\partial n'_{k+1}}\Big(y'F(n_H',n_L')\Big)
+=
+y'\Big(z'_{k+1}F_{n_H}(n_H',n_L')+(1-z'_{k+1})F_{n_L}(n_H',n_L')\Big).
+\]
+Finally take $E_{y'|y}$ to match the statement in the corollary, and rewrite the marginal product as a ``size effect''
+plus a ``quality/composition effect'' if desired (this is just an algebraic regrouping of the expression above).
 \end{proof}
 
-\subsubsection*{Proof of Proposition \ref{prop:wage_cuts}} \label{proof:wage_cuts}
- Start with the wage growth equation from Proposition \ref{prop:wagegrowth}, extended to the case of heterogeneous matches. 
-     \[\frac{1}{u'(w'_{k+1})} - \frac{1}{u'(w_k)} = \eta(v'_{k+1}) E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}}\]
-     One can now apply the Envelope Theorem to extend the RHS of the equation:
-     \begin{align*}
-     E_{y'|y} \frac{\partial J(y',\{n'_k,v'_{y',k},z'_k\})}{\partial n'_{k+1}}  = & E_{y'|y}\Big[y'\frac{\partial F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k+1}} - w'_{k+1} + \\
-     & \beta (1-p(v''_{k+2}))(1-s'_{k+1})E_{y''|y'} \frac{\partial J(y'',\{n''_k,v''_{y'',k},z''_k\})}{\partial n''_{k+2}})\Big]      
-     \end{align*}
-     One can note that the production derivative $\frac{\partial F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k+1}}$ is increasing in $z'_{k+1}$. And, moreover, that $\frac{\partial^2 F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k+1} \partial z'_{k+1}}> \frac{\partial^2 F(\sum n'_k,\frac{\sum n'_k z'_k}{\sum n'_k})}{\partial n'_{k'} \partial z'_{k+1}}, k'\neq k+1$. This implies that, the workers in steps $k \in K_s$ will experience the largest rise in marginal productivity. \textcolor{red}{This doesn't mean that they are at the highest marginal productivity though! Part of my intuition is predicated on the fact that the other workers, ones not fired, are already quite close to their target wages! Otherwise those guys would still have the best wage growth. Essentially, my intuition is that the fired cohorts receive a spike in marginal productivity, so, if they're on the similar-ish wage path to the other cohorts, they should get the best wage growth. But this needs to be formalized some more.}
 
-\subsection{Tenure-specific Severance Payments} \label{severance}
+\subsubsection*{Proof of Proposition \ref{prop:targetwage}}\label{proof:targetwage}
+\begin{proof}
+Fix $\Omega=(y,\{n_j,v_j,z_j\}_j)$ and a cohort $k$. Holding $\Omega_{-k}$ fixed, vary only $v_k$ and define
+$\Omega(v_k)\equiv(\Omega_{-k},v_k)$.
+Let
+\[
+\Phi_k(v_k)\equiv M_k(\Omega(v_k))
+=
+\mathbb E_{y'|y}\left[\frac{\partial J(\Omega'(v_k))}{\partial n'_{k+1}}\right],
+\]
+where $\Omega'(v_k)$ is the next-period state induced by the \emph{optimal} policy from Lemma~\ref{firmproblem}.
+
+\medskip
+\noindent\paragraph{Existence and uniqueness.}
+Continuity of the maximized value and of envelope objects implies $\Phi_k(\cdot)$ is continuous.
+For sufficiently low $v_k$, promise-keeping implies low compensation and retaining an additional worker is weakly profitable,
+so $\Phi_k(v_k)\ge 0$. For sufficiently high $v_k$, retaining an extra worker becomes costly, so $\Phi_k(v_k)\le 0$.
+By the intermediate value theorem there exists $v_k^*$ such that $\Phi_k(v_k^*)=0$.
+
+Moreover, $\Phi_k(v_k)$ is strictly decreasing in $v_k$: a higher promise tightens promise-keeping for cohort $k$ and raises the
+marginal cost of retaining that cohort, lowering the marginal retention value.
+Hence the root $v_k^*$ is unique. Let $w_k^*$ be the wage associated with $v_k^*$ as in Definition~\ref{def:targetwage}.
+
+\medskip
+\noindent\paragraph{Part 1: wages move toward the target (no overshooting).}
+Let $g(w)\equiv 1/u'(w)$; strict concavity of $u$ implies $g$ is strictly increasing.
+From Proposition~\ref{prop:wagegrowth},
+\[
+g(w'_{k+1})-g(w_k)=\eta(v'_{k+1})\,\Phi_k(v_k),
+\qquad \eta(\cdot)>0.
+\]
+Thus $\mathrm{sign}(w'_{k+1}-w_k)=\mathrm{sign}(\Phi_k(v_k))$.
+Since $\Phi_k$ is strictly decreasing with $\Phi_k(v_k^*)=0$, we have:
+$v_k<v_k^*\Leftrightarrow \Phi_k(v_k)>0$ and $v_k>v_k^*\Leftrightarrow \Phi_k(v_k)<0$.
+Because promise-keeping implies $v_k\mapsto w_k$ is strictly increasing, the same ordering holds in wages.
+
+To rule out overshooting, suppose $w_k<w_k^*$ but $w'_{k+1}>w_k^*$.
+Then the implied continuation promise is above target, hence $\Phi_k(\cdot)<0$, which would force
+$g(w'_{k+1})-g(w_k)<0$, contradicting $w'_{k+1}>w_k$.
+The case $w_k>w_k^*$ is symmetric.
+
+\medskip
+\noindent\paragraph{Part 2: farther from target implies faster adjustment (in $1/u'(w)$).}
+Since $\Phi_k$ is strictly decreasing and crosses zero at $v_k^*$,
+$|\Phi_k(v_k)|$ is strictly increasing in $|v_k-v_k^*|$. Hence
+\[
+|v_k-v_k^*|\ge |v_{k'}-v_{k'}^*|
+\quad\Rightarrow\quad
+|\Phi_k(v_k)|\ge |\Phi_{k'}(v_{k'})|.
+\]
+Monotonicity of the promise-keeping map gives $|w_k-w_k^*|\ge |w_{k'}-w_{k'}^*| \Rightarrow
+|v_k-v_k^*|\ge |v_{k'}-v_{k'}^*|$, so
+\[
+|w_k-w_k^*|\ge |w_{k'}-w_{k'}^*|
+\quad\Rightarrow\quad
+|M_k(\Omega)|\ge |M_{k'}(\Omega)|.
+\]
+Finally, from Proposition~\ref{prop:wagegrowth},
+\[
+\frac{\big|1/u'(w'_{k+1})-1/u'(w_k)\big|}{\eta(v'_{k+1})}
+=
+|M_k(\Omega)|.
+\]
+Combining the two displays gives item (2).
+\end{proof}
+
+
+\subsubsection*{Proof of Proposition \ref{prop:targetwage_change}}\label{proof:targetwage_change}
+\begin{proof}
+Fix a state $\Omega=(y,\{n_j,v_j,z_j\}_j)$ and a cohort $k$.
+Let $v_k^*(\Omega_{-k})$ be the unique solution to $M_k(\Omega)=0$ from Definition~\ref{def:targetwage}, and let $w_k^*$ be the
+associated wage.
+
+\medskip
+\noindent\textit{Step 1: reduce to signs of $\partial_\theta M_k(\Omega)$.}
+For any scalar state component $\theta\in\{n_{k'},z_{k'}\}$, the implicit function theorem gives
+\[
+\frac{\partial v_k^*}{\partial \theta}
+=
+-\frac{\partial_\theta M_k(\Omega)}{\partial_{v_k} M_k(\Omega)}\bigg|_{v_k=v_k^*}.
+\]
+At the target, $\partial_{v_k}M_k(\Omega)<0$ (single-crossing from Proposition~\ref{prop:targetwage}), and promise-keeping implies
+$v_k\mapsto w_k$ is strictly increasing. Hence
+\[
+\mathrm{sign}\!\left(\frac{\partial w_k^*}{\partial \theta}\right)
+=
+\mathrm{sign}\!\left(\partial_\theta M_k(\Omega)\right).
+\]
+So we sign $\partial_\theta M_k(\Omega)$.
+
+\medskip
+\noindent\textit{Step 2: policy responses are inside $M_k$ and do not create extra terms.}
+By definition,
+\[
+M_k(\Omega)=\mathbb E_{y'|y}\left[\frac{\partial J(\Omega')}{\partial n'_{k+1}}\right],
+\]
+where $\Omega'$ is the next state induced by the firm's \emph{optimal} policy at $\Omega$.
+If $\theta$ changes, the firm re-optimizes; both $\Omega'$ and the shadow value $\partial J(\Omega')/\partial n'_{k+1}$ move.
+We do not compute derivatives of optimal policies. Instead, we use that $M_k(\Omega)$ is built from a \emph{shadow value of an
+optimized problem}. Under concavity, shadow values inherit the relevant monotonicity properties even after re-optimization.
+
+In particular, under Assumption~\ref{ass:monotone_inputs}, an increase in any $n_{k'}$ weakly increases next-period effective inputs
+$(n_H',n_L')$ along the re-optimized continuation path. With $F$ strictly concave and increasing, this lowers marginal products of
+effective inputs and therefore lowers the shadow value of an additional worker. This is the mechanism behind (1).
+Similarly, increasing $z_k$ raises the effective contribution of cohort $k$ to $(n_H',n_L')$ and raises the marginal product of a
+cohort-$k$ worker; increasing $z_{k'}$ for $k'\neq k$ raises effective inputs through other cohorts and, under a standard
+substitutability curvature condition, weakly lowers cohort $k$'s marginal product and hence its shadow value. These are the
+mechanisms behind (2)--(3). The formal signs follow below.
+
+\medskip
+\noindent\textit{Step 3: Part (1), $\partial w_k^*/\partial n_{k'}<0$.}
+By Assumption~\ref{ass:monotone_inputs}, increasing any $n_{k'}$ weakly increases $(n_H',n_L')$ in the re-optimized continuation
+problem at each $y'$. Because $F$ is strictly concave, both $F_{n_H}$ and $F_{n_L}$ strictly decrease when $(n_H',n_L')$ increases.
+By Corollary~\ref{cor:envelope}, $\partial J(\Omega')/\partial n'_{k+1}$ is increasing in the marginal revenue product of a cohort-$k$
+worker and (given the optimized nature of $J$) cannot increase when all relevant marginal products fall.
+Therefore $\partial_{n_{k'}} M_k(\Omega)<0$, so $\partial_{n_{k'}}w_k^*<0$.
+
+\medskip
+\noindent\textit{Step 4: Part (2), $\partial w_k^*/\partial z_k>0$.}
+Holding $n_k$ fixed, increasing $z_k$ increases cohort-$k$ effective input $n_{H,k}=n_k z_k$ and decreases $n_{L,k}=n_k(1-z_k)$.
+Since $F_{n_H}>F_{n_L}$, the marginal revenue product of a cohort-$k$ worker increases. By Corollary~\ref{cor:envelope},
+this raises $\partial J(\Omega')/\partial n'_{k+1}$ and hence raises $M_k(\Omega)$.
+Therefore $\partial_{z_k}M_k(\Omega)>0$, implying $\partial_{z_k}w_k^*>0$.
+
+\medskip
+\noindent\textit{Step 5: Part (3), $\partial w_k^*/\partial z_{k'}\le 0$ for $k'\neq k$.}
+For $k'\neq k$, increasing $z_{k'}$ shifts other cohorts from low to high effective inputs.
+A convenient sufficient condition ensuring this weakly lowers the marginal revenue product of a cohort-$k$ worker is the curvature
+ordering
+\[
+F_{n_H n_H}\le F_{n_H n_L}\le F_{n_L n_L}<0,
+\]
+evaluated at the relevant $(n_H',n_L')$. Under this restriction, increasing other cohorts' quality weakly decreases the weighted
+marginal product $z_k'F_{n_H}+(1-z_k')F_{n_L}$ of cohort-$k$ labor. Corollary~\ref{cor:envelope} then implies
+$\partial_{z_{k'}}M_k(\Omega)\le 0$, so $\partial_{z_{k'}}w_k^*\le 0$.
+\end{proof}
+
+
+\subsubsection*{Proof of Proposition \ref{prop:qualityconv}}\label{proof:qualityconv}
+\begin{proof}
+Fix a state $\Omega=(y,\{n_k,v_k,z_k\})$ and a cohort $k$ with $z_k<1$.
+Consider an interior choice $s_k\in(0,1)$ such that the ``bad-match margin'' is active,
+i.e.\ $z'_{k+1}=z_k/(1-s_k)<1$ so that $\partial z'_{k+1}/\partial s_k>0$.
+
+\medskip
+\noindent\textit{Step 1: FOC for layoffs.}
+From Lemma~\ref{firmproblem}, $s_k$ affects (i) next-period cohort mass $n'_{k+1}=n_k(1-s_k)(1-p(v'_{k+1}))$,
+(ii) next-period cohort quality $z'_{k+1}=z_k/(1-s_k)$ (on the interior branch), and (iii) severance costs.
+Taking the FOC with respect to $s_k$ and using $\rho_k=n_k/u'(w_k)$ from the FOC for $w_k$ gives
+\[
+-(1-p(v'_{k+1}))\,E_{y'|y}\frac{\partial J(\Omega')}{\partial n'_{k+1}}
++\frac{1}{n_k}\,E_{y'|y}\frac{\partial J(\Omega')}{\partial z'_{k+1}}\,
+\frac{\partial z'_{k+1}}{\partial s_k}
+-\frac{R(v'_{k+1})-U(sev_k)}{u'(w_k)}
+\;\le\;0,
+\]
+with equality if $s_k>0$ and complementary slackness at $s_k=0$. This is the stated condition.
+
+\medskip
+\noindent\textit{Step 2: layoffs are more common in low-$y$ states.}
+In the FOC above, lower $y$ (in the current state) lowers continuation marginal values through the continuation problem,
+reducing $E_{y'|y}[\partial J(\Omega')/\partial n'_{k+1}]$ and $E_{y'|y}[\partial J(\Omega')/\partial z'_{k+1}]$ (diminishing returns).
+This makes the first two (benefit) terms smaller, so the inequality is easier to satisfy with a larger $s_k$.
+Thus optimal $s_k$ is (weakly) higher when $y$ is lower.
+
+\medskip
+\noindent\textit{Step 3: bad matches fired first.}
+This comes as an outcome of the fact that the bad matches are perpetually overpaid in the model and, on the other hand, the high quality matches are underpaid unless $z_k=1$. \\
+Essentially, for the high-quality matches the one direction of Coase theorem still applies: the firm will never fire the high quality matches unless the match surplus is below the unemployment value. However, the low quality matches will also get fired if they match surplus is negative, and, due to being less productive, they reach that threshold before the high quality matches do.
+
+\medskip
+\noindent\textit{Step 4: lower promised values are more exposed to layoffs.}
+Holding fixed continuation objects $(v'_{k+1},sev_k)$, the compensation term in the FOC is
+\[
+\frac{R(v'_{k+1})-U(sev_k)}{u'(w_k)},
+\qquad
+w_k \text{ pinned down by } v_k=u(w_k)+\beta\big[s_k U(sev_k)+(1-s_k)R(v'_{k+1})\big].
+\]
+Because $u$ is increasing and strictly concave, $w_k$ is strictly increasing in $v_k$, hence $1/u'(w_k)$ is strictly increasing in
+$v_k$. Therefore, as $v_k$ increases, the compensation term rises, making layoffs less attractive at the margin. This yields the
+comparative static that lower-$v$ cohorts are more exposed to layoffs.
+
+
+\end{proof}
+\subsection{Tenure-specific Severance Payments}
 I allow the firm to offer tenure-specific severance payments $sev_k$ to its workers. The severance is constant over time and paid perpetually upon firing and before finding a new job. I show that the severance structure involves higher payments for longer tenured workers (if those workers are on a higher promised value). 
-\begin{proposition}
-\label{severanceprop}
-Fix a firm state. Its severance payments for each tenure $k$ are given by
-\begin{equation*}
-    \begin{split}
-    & \frac{u'(b+sev_k)}{u'(w_k)}=1-\frac{\beta sev_k \frac{\partial p(\theta_{sev_k})}{\partial sev_k}}{1-\beta(1-p(\theta_{sev_k}))} \\
-    & \theta_{sev_k} = \theta(arg \max_v [(1-p(v))U(sev_k)+p(v)v]) \\
-    \end{split}
-\end{equation*}
-\end{proposition}
+
+Proof of Proposition~\ref{severanceprop}
 \begin{proof}
+\label{proof:severance}
 I start by describing the unemployment value of a worker with severance payment $sev_k$:
 \[U(sev_k) = u(b+sev_k) + \beta \max_v[(1-p(\theta_v))U(sev_k)+p(\theta_v)v]\]
 Denote the probability of finding a job with severance payment $sev_k$ as $p(\theta_{sev_k})$. The extra value to the unemployed from the severance payment is then given by
@@ -83,12 +315,200 @@ Rearranging gives the result.
 Note that, besides $u'(w_k)$, all the components of the severance payment are independent of both the firm state and the worker tenure. 
 It is immediate to notice then that higher paid workers will have higher severance payments: as $\frac{1}{u'(w_k)}$, the value to the firm of the severance payment goes up, while costs stay the same. Therefore, the firm will optimally choose to offer higher severance payments to higher paid workers. \\
 This equation is also easy to implement numerically: using the formulation in Appendix~\ref{dual}, where $\rho_k\equiv u'(w_k)$ is a state variable, I can immediately compute the payments for all the firm states, before solving the rest of the firm problem.
-\subsection{Microfounding the Wage Noncontractability} \label{microfoundation}
-A version of my model where the firm is allowed to choose quality-specific wage is in fact a signalling game: firm's action of choosing the wage signals the workers their quality. In this section I show that a pooling Perfect Bayesian Equilibrium of such a game exists, and thus it is plausible that no information is conveyed. \\
-As a full infinite-horizon, multiple-receivers, complex sender model is too complicated of a game to solve, I restrict attention to a simplified model. 
 
-Consider a 3-period version of the model. The firm starts with measure $n=2$ of workers, half of them of high quality and the other half of low. I allow the firm to offer quality-contingent wages in whichever way it likes. \\
-I show that, under a sufficiently small elasticity of job search probability with respect to promised value $v'$, $\eta(v')\equiv\frac{\partial (1-p(v')) /\partial v'}{(1-p(v'))}$, the pooling Perfect Bayesian Equilibrium exists. Moreover, under a stronger condition on the elasticity, this PBE survives the Intuitive Criterion (\textcite{Cho1987}).
+
+
+
+\subsection{Microfounding the Wage Noncontractability}\label{microfoundation}
+In this subsection I show that, in a version of the model where the firm is allowed to choose worker-specific wages, there exists a pooling Perfect Bayesian Equilibrium (PBE) in which the firm does not use wages to signal individual match quality. Moreover, this pooling equilibrium survives the Intuitive Criterion of \textcite{Cho1987}. 
+
+I work with a simplified signalling game:
+
+\begin{enumerate}
+    \item Time horizon is finite and consists of two periods $t=1,2$.
+    \item Workers choose search effort \emph{before} layoffs are realized. This allows beliefs about layoff risk to affect period-1 search directly.
+    \item The production technology exhibits constant returns to scale, so the firm can treat each cohort independently, and I focus on a single cohort.
+    \item Idiosyncratic productivity shocks are shut down; they play no essential role in the signalling logic.
+\end{enumerate}
+
+Match quality $z_i \in \{\underline{z},\bar{z}\}$ is privately observed by the firm. The prior probability that a randomly drawn match is high quality is $z \equiv \Pr(z_i=\bar{z})$. A worker does not observe her individual $z_i$, but only holds a belief $\tilde{z}_i \in [0,1]$ about it.
+
+Wages are individually contractible and fully enforceable. By contrast, individual layoff risk is not verifiable and thus cannot be specified in a court-enforceable contract. The firm can commit to a worker-specific \emph{wage path} $(w_{i1},w_{i2})$, but not to a worker-specific layoff probability. Layoff decisions are taken ex post as in the baseline model, given the firm’s information and the state of the cohort.
+
+\begin{definition}[Signalling version of the firm problem] \label{def:signalling}
+Consider a firm managing a single cohort of mass $n$ with average match quality $z$ and promised utility $v$ to each worker, as in Lemma~\ref{firmproblem:orig}. 
+
+In the signalling version, the firm can offer worker-specific wage paths
+\[
+(w_{i1},w_{i2}) \in \mathbb{R}^2,
+\]
+while the layoff rule remains contract-independent and follows the optimal layoff policy from Lemma~\ref{firmproblem:orig}. Let $s_z \in [0,1]$ denote the period-2 layoff probability for a worker of type $z_i=z$ under that policy.
+
+Given a wage path $(w_{i1},w_{i2})$ and a belief $\tilde{z}_i$ about own match quality, worker $i$ chooses search effort $\hat{v} \in V \subset \mathbb{R}_+$ to solve
+\begin{equation}
+\max_{\hat{v} \in V} \left\{ 
+u(w_{i1})
++ \beta \Big[
+p(\hat{v})\,\hat{v}
++ (1-p(\hat{v})) \tilde{E}_{z_i} \big[ s_{z} u(b) + (1-s_{z}) u(w_{i2}) \big]
+\Big]
+\right\},
+\label{eq:worker_problem}
+\end{equation}
+where $p(\hat{v})$ is the job-finding probability and $\tilde{E}_{z_i}$ denotes expectation taken under the worker's subjective belief $\tilde{z}_i$ about own type.
+
+The firm’s value from a cohort when it can choose individual wages is given by
+\begin{equation}
+\begin{split}
+J(n,v,z) = & \max_{\{w_{i1},w_{i2}\}_{i\in[0,n]}} 
+\left\{ n f(z) - \int_0^n \big[ z_i w_{i1} + (1-z_i) w_{i1} \big]\,di \right. \\
+& \left. \quad + \beta \Big[ n' f(z') - \int_0^{n'} \big[ z'_i w_{i2} + (1-z'_i) w_{i2} \big]\,di \Big] \right\}
+\end{split}
+\label{eq:firm_signalling_problem}
+\end{equation}
+subject to promised utility $v$ in period~1 and the laws of motion
+\[
+n' = n \Big[z(1-p(\tilde{v}'))(1-\bar{s}) + (1-z)(1-p(\tilde{v}'))(1-\underline{s})\Big],
+\quad
+z' = \frac{n z(1-p(\tilde{v}'))(1-\bar{s}) }{n'},
+\]
+where $\tilde{v}'$ is the continuation value induced by the worker’s search decision in \eqref{eq:worker_problem} and the layoff policy.
+\end{definition}
+
+\begin{definition}[Pooling equilibrium of the signalling game]
+A \emph{pooling equilibrium} of the signalling game is a PBE in which all workers in the cohort are offered the same wage path $(w_1,w_2)$, independent of their individual match quality, and workers' beliefs do not infer additional information from wages on the equilibrium path.
+
+Formally, a pooling equilibrium consists of:
+\begin{itemize}
+    \item A wage policy $(w_1,w_2)$ and a layoff policy $\{ \bar{s},\underline{s} \}$, applied uniformly to all workers in the cohort;
+    \item A search policy $\hat{v}(w_1,w_2,\tilde{z}_i)$ for workers;
+    \item A system of beliefs $\tilde{z}_i(w_{i1},w_{i2})$ about own match quality following any observed wage path;
+\end{itemize}
+such that:
+\begin{enumerate}
+    \item \textbf{Firm optimality:} Given the induced worker search decisions and beliefs, $(w_1,w_2,\bar{s},\underline{s})$ solves the firm’s problem \eqref{eq:firm_signalling_problem} when the firm is restricted to offer the same wage path to every worker.
+    \item \textbf{On-path beliefs:} For any worker facing the equilibrium wage path $(w_1,w_2)$, on-path beliefs coincide with the prior: $\tilde{z}_i(w_1,w_2) = z$.
+    \item \textbf{Off-path beliefs:} Following any off-equilibrium wage path $(w_{i1},w_{i2}) \neq (w_1,w_2)$, beliefs $\tilde{z}_i(w_{i1},w_{i2})$ are such that it is optimal for the firm not to deviate: the firm weakly prefers to continue offering the pooling wage path $(w_1,w_2)$ to all workers.
+\end{enumerate}
+A pooling equilibrium \emph{survives the Intuitive Criterion} if the off-path beliefs satisfy the Intuitive Criterion of \textcite{Cho1987} at all deviations.
+\end{definition}
+
+Define the elasticity of staying with respect to promised value $v'$ as
+\[
+\eta(v') \equiv 
+\frac{\partial (1-p(v'))/\partial v'}{1-p(v')}.
+\]
+
+\begin{proposition}
+\label{prop:pooling_signalling}
+There exists $\bar{\eta} > 0$ such that, if 
+\[
+\eta(v') \leq \bar{\eta}
+\quad \text{for all relevant } v',
+\]
+then there is a pooling PBE of the signalling game in which all workers receive the same wage path $(w_1,w_2)$ independent of their individual match quality. This equilibrium survives the Intuitive Criterion.
+\end{proposition}
+
+\begin{proof}
+I first restrict attention to deviations in the wage path for a measure of workers of the particular quality, holding the layoff policy $\{\bar{s},\underline{s}\}$ fixed. I then argue that allowing for changes in the aggregate layoff risk does not restore profitable deviations when $\eta$ is small.
+
+\medskip
+\noindent\textbf{Step 1. Deviations that do not change workers' search decisions.}
+
+Fix a pooling equilibrium candidate with wage path $(w_1,w_2)$ and induced search effort $\hat{v}^\ast$ under prior beliefs $\tilde{z}_i = z$. Consider a deviation by the firm for a single high-quality match, offering a different wage path $(w_{i1},w_{i2})$ to worker $i$, while all other workers continue to receive $(w_1,w_2)$.
+
+Conditional on beliefs $\tilde{z}_i$, worker $i$ chooses search effort $\hat{v}_i$ to solve \eqref{eq:worker_problem}. For any sufficiently small deviation $(w_{i1},w_{i2})$ in a neighborhood of $(w_1,w_2)$, continuity of the worker's best response implies that there exists a nonempty set of beliefs $B(w_{i1},w_{i2})$ such that, for all $\tilde{z}_i \in B(w_{i1},w_{i2})$, we have
+\[
+\hat{v}_i(w_{i1},w_{i2},\tilde{z}_i) = \hat{v}^\ast.
+\]
+For such beliefs, the firm cannot affect worker $i$'s search probability $1-p(\hat{v}_i)$ by deviating. The only effect of the deviation is then to change the intertemporal profile of wages for this worker, holding fixed (i) the probability that the worker stays with the firm and (ii) the layoff policy.
+
+Because the worker is risk averse and the firm is risk neutral, the firm’s dynamic contracting problem strictly prefers to smooth wages over time, subject to the same promised utility $v$ (this is the usual insurance result that underpins Lemma~\ref{firmproblem:orig}). Therefore, conditional on keeping $\hat{v}_i = \hat{v}^\ast$, any deviation $(w_{i1},w_{i2}) \neq (w_1,w_2)$ is weakly dominated by the pooling wage path in terms of the firm’s expected profit. In particular, for any such small deviation there exist beliefs $ \tilde{z}_i \in B(w_{i1},w_{i2})$ such that the deviation is unprofitable.
+
+\medskip
+\noindent\textbf{Step 2. Application of the Intuitive Criterion for small deviations.}
+
+For these small deviations, both high- and low-quality matches can, in principle, benefit from deviating under some beliefs, since they share the same insurance motives. Hence no type can be ruled out as a potential deviator by the Intuitive Criterion at these deviations. The Intuitive Criterion therefore does not restrict off-path beliefs at small deviations, and it is legitimate to choose beliefs $\tilde{z}_i \in B(w_{i1},w_{i2})$ that keep $\hat{v}_i = \hat{v}^\ast$. With such beliefs, the deviation is strictly unprofitable by the argument in Step~1. Thus no profitable small deviation exists.
+
+\medskip
+\noindent\textbf{Step 3. Large deviations and beliefs pinned down by the Intuitive Criterion.}
+
+Now consider larger deviations in the period-2 wage $w_{i2}$ that are sufficiently generous to affect the worker's search decision regardless of beliefs. More precisely, define a threshold $\bar{w} > w_2$ such that, for any $w_{i2} > \bar{w}$ and any belief $\tilde{z}_i$,
+\[
+\tilde{E}_{z_i} \big[ s_{z} u(b) + (1-s_{z}) u(w_{i2}) \big]
+\geq
+E_{z} \big[ s_{z} u(b) + (1-s_{z}) u(w_2) \big],
+\]
+so that the worker’s continuation utility (if she stays) is at least as high as under the pooling contract for all beliefs. Under such deviations, the worker increases her search effort relative to $\hat{v}^\ast$ for any belief, and hence the probability of staying $(1-p(\hat{v}_i))$ is reduced.
+
+For deviations $w_{i2} > \bar{w}$, the Intuitive Criterion eliminates beliefs that put positive probability on types that could never gain from such a deviation. Under the maintained assumptions, low-quality matches benefit from pooling because pooling helps them hide among high-quality matches; retaining low-quality matches after a generous wage deviation is unprofitable. Hence large upward deviations in $w_{i2}$ can only be profitable (if at all) for high-quality matches. The Intuitive Criterion therefore requires that, after observing such a generous deviation, workers put probability one on being a high-quality match:
+\[
+\tilde{z}_i(w_{i1},w_{i2}) = 1 \quad \text{for all } w_{i2} > \bar{w}.
+\]
+
+\medskip
+\noindent\textbf{Step 4. Profitability of large deviations when $\eta$ is small.}
+
+It remains to show that, even under these optimistic off-path beliefs (workers infer that they are high-quality matches), such large deviations are not profitable for the firm when the elasticity of staying $\eta$ is small.
+
+Consider a deviation that changes the period-2 wage for a high-quality match by $\Delta w_{2} > 0$, and lets the firm adjust the period-1 wage by $\Delta w_{1}$ so as to keep promised utility $v$ fixed. Totally differentiating the firm’s value with respect to $w_2$ around the pooling contract and using the envelope condition on the worker’s problem yields
+\[
+\frac{d J}{d w_2}
+=
+- \frac{d w_1}{d w_2} \cdot \frac{1}{1-p(\hat{v})}
+\;+\;
+\beta \Big[
+- (1-p(\hat{v})) 
++ (f'(\bar{z}) - w_2)\, \frac{d(1-p(\hat{v}))}{d w_2}
+\Big],
+\]
+where $f'(\bar{z})$ is the marginal productivity of a high-quality match and $\hat{v}$ is the equilibrium search effort under the pooling contract.
+
+Using the definition of the elasticity
+\[
+\eta(\hat{v}) \equiv \frac{\partial (1-p(\hat{v}))/\partial \hat{v}}{1-p(\hat{v})}
+\quad\text{and}\quad
+\frac{d \hat{v}}{d w_2} > 0,
+\]
+we can rewrite the last term as
+\[
+\frac{d(1-p(\hat{v}))}{d w_2}
+=
+\eta(\hat{v}) (1-p(\hat{v})) \frac{d \hat{v}}{d w_2}.
+\]
+The first two terms,
+\[
+- \frac{d w_1}{d w_2} \cdot \frac{1}{1-p(\hat{v})}
+\;-\;
+\beta (1-p(\hat{v})),
+\]
+capture the pure insurance cost of shifting utility from period~2 to period~1, given risk-averse workers and a risk-neutral firm. This insurance cost is strictly negative and does not depend on $\eta$. The last term,
+\[
+\beta (f'(\bar{z}) - w_2)\, \frac{d(1-p(\hat{v}))}{d w_2},
+\]
+captures the incentive effect of altering the worker's search behavior. Its magnitude is proportional to $\eta(\hat{v})$.
+
+Hence, for sufficiently small $\eta(\hat{v})$, the negative insurance term dominates the incentive term, and we obtain
+\[
+\frac{d J}{d w_2} < 0.
+\]
+Intuitively, when the probability of staying is sufficiently inelastic with respect to promised value, the firm cannot induce enough additional separations of bad matches to offset the insurance cost of raising wages for workers who stay.
+
+This shows that no large deviation in $w_2$ that survives the Intuitive Criterion (i.e., is interpreted as coming from a high-quality match) is profitable when $\eta$ is small enough.
+
+\medskip
+\noindent\textbf{Step 5. Allowing deviations that also affect layoffs.}
+
+Finally, consider deviations in which the firm would also like to adjust layoff probabilities in period~2 in response to altered search behavior. In the present environment, layoffs are the firm’s only instrument (other than workers’ search) to get rid of bad matches. When $\eta$ is small, even sizable changes in wages have only a limited effect on the ex ante composition of the cohort. To generate a meaningful reduction in the number of bad matches via worker search alone, the firm would need to choose very large wage deviations, which are exceedingly costly for insurance reasons as argued above.
+
+Formally, any deviation that induces a significant change in the aggregate layoff risk must involve a change in $w_2$ large enough to render the pure insurance cost strictly larger in magnitude than the maximum gain from improved selection, given the bound on $\eta$. Therefore, under the same bound $\bar{\eta}$, there are no profitable deviations involving joint changes in wages and layoffs either.
+
+\medskip
+Putting the steps together, I have shown that for sufficiently small elasticity $\eta(\cdot)$, there exists a pooling PBE in which the firm offers the same wage path $(w_1,w_2)$ to all workers, and no deviation in wages (with or without induced changes in layoffs) is profitable once off-path beliefs are restricted by the Intuitive Criterion. This proves the proposition.
+\end{proof}
+
+
+
 
 \subsection{Recursive Lagrangian Approach} \label{dual}
 The original design of the problem would require solving promised values $v'_{y',k}$ for both each tenure step and each future productivity state. Following \textcite{balke2022}, I solve the following Pareto problem:
@@ -241,53 +661,174 @@ This problem is now again completely independent of the firm's state, and thus t
 \newpage
 
 
-\section{Quantitative Appendix}
-% Define colors
-\definecolor{state}{RGB}{0,128,0}       % green
-\definecolor{ctrl}{RGB}{255,140,0}      % orange
-\definecolor{ex}{RGB}{255,0,255}        % magenta
-\definecolor{nextstate}{RGB}{0,0,255}    % blue
-\definecolor{value}{RGB}{128,128,0}    % yellow
-
-\subsection{Variables}
-\subsection*{\textcolor{state}{Endogenous state variables}}
-\begin{align*}
-&\textcolor{state}{\{n_{k}\}_{k\leq K}}, \textcolor{state}{\{\rho_{k}}, \textcolor{state}{z_{k}\}_{1\leq k\leq K}}
-\end{align*}
-\textbf{Code:} \texttt{states: size, rho, q}
-
-\subsection*{\textcolor{ex}{Exogenous state variables}}
-\begin{align*}
-&\textcolor{ex}{y}
-\end{align*}
-\textbf{Code:} \texttt{z}
-
-\subsection*{\textcolor{ctrl}{Control variables}}
-\begin{align*}
-&\textcolor{ctrl}{\tilde{n}}, \textcolor{ctrl}{\{\rho'_k\}_{1\leq k\leq K}}, \textcolor{ctrl}{\{s_k\}_{k\leq K}}
-\end{align*}
-\textbf{Code:} \texttt{hiring, rho\_star, sep\_star}
-
-\subsection*{\textcolor{value}{Value function}}
-\begin{align*}
-&\textcolor{value}{\mathcal{P}(\textcolor{ex}y,\textcolor{state}{\{n_k,\rho_k,z_k\}})}
-\end{align*}
-\textbf{Code:} \texttt{ERho\_star, EJ\_star}
-\subsection{Equations}
-Equations (1)--(21): \textcolor{value}{Value function in olive} (given by value and its gradient guesses from future states), \textcolor{state}{states in }\textcolor{state}{green} (given), \textcolor{ctrl}{controls} in \textcolor{ctrl}{orange} (given by policy guess from current states), next period \textcolor{ex}{exogenous states in magenta} (to be summed over), next period \textcolor{nextstate}{states in blue}, parameters in black.
-\begin{align}
-%0&=\textcolor{ctrl}{\rho^*_{k+1}}-\textcolor{state}{\rho_k} - \eta(v'_{k+1})E\frac{\partial J(\textcolor{ex}{y'},\textcolor{nextstate}{\{n'_k,v'_{y',k},z'_k\})}}{\partial \textcolor{nextstate}{n'_{k+1}}} \\
-0&=\textcolor{ctrl}{\rho'_{k+1}}-\textcolor{state}{\rho_k} - \eta(E \frac{\partial P(\textcolor{ex}{y'},\textcolor{nextstate}{\{n'_k,\rho'_{k},z'_k\})}}{\partial \textcolor{nextstate}{\rho'_{k+1}}})E\frac{\partial \mathcal{P}(\textcolor{ex}{y'},\textcolor{nextstate}{\{n'_k,\rho'_{k},z'_k\})}}{\partial \textcolor{nextstate}{n'_{k+1}}} \\
-% ... (rest of equations unchanged for brevity) ...
-\end{align}
 
 
 \section{Data Appendix}
-\subsection{Sample Construction} \label{sample}
+I use administrative data provided by the CASD in France between 2009 and 2019. My analysis
+relies on two main files:
+\begin{enumerate}
+    \item the panel version of the “DADS tous salariés" database, containing detailed information
+about employment history for 1/12th of the French population every year
+    \item “FARE" database, with annual information about firm balance sheet and income statement
+for the entire private sector except firms in the agricultural sector
+\end{enumerate}
+I complement my analysis with the price index and national minimum wage provided by INSEE.
 
-\subsection{Layoffs using Labor Force Survey} \label{LFS}
-\subsection{Wage Growth} \label{wagegrowthK}
-I use the same sample to plot the log (real) wage growth across first 30 years of tenure. 
-\includegraphics[width=0.75\textwidth]{Wage growth across tenure under 30,cutoff 100.jpg} \\
-The wage growth appears to flatten after about 10 years of tenure, suggesting that it is not quantitatively costly to use $K=10$ as an approximation of the firm problem from Definition \ref{firmproblem}.
+%\subsection{Sample Construction} \label{sample}
+
+\subsection{Robustness}
+\subsubsection{Minimum wage threshold} \label{robust:min_wage}
+In my baseline evaluation I remove observations with wages less than $5\%$ above the national minimum wage. To check for sensitivity to this choice, I consider two more cutoff values: right at the minimum wage and $20\%$ above.
+
+I first redo the wage passthrough regression across firms. For each sampling version, I reconstruct the firm brackets. I find little impact of the change in the minimum wage cutoff on either layoff rate of the wage passthrough of firms. The largest difference is that of the wage passthrough at the firms firing the most. After raising the cutoff, I find that the wage passthrough is even more negative than in the original case, supporting the paper's conjecture that the low/negative wage passthrough is not an outcome of exogenous sources of wage rigidity like minimum wage.
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{lcccccc}
+    \toprule
+    & \multicolumn{2}{c}{At min wage} & \multicolumn{2}{c}{Baseline: 5\% above} & \multicolumn{2}{c}{20\% above}\\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+    & Layoffs & Wages & Layoffs & Wages & Layoffs & Wages \\
+    \midrule
+    \hline
+    Low layoff rate    & $0.05\%$  &  $0.017^{***}$  &  $0.05\%$    &  $0.017^{***}$     &  $0.09\%$    &  $0.020^{***}$ \\
+                       &           &  $(0.0006)$     &              &  $(0.0006)$        &              &  $(0.0007)$ \\
+    Medium layoff rate & $1.5\%$   &  $0.012^{**}$   & $1.5\%$      &  $0.012^{**}$      &  $1.5\%$     &   $0.012^{***}$\\
+                       &           &  $(0.0008)$     &              &   $(0.0008)$       &              &   $(0.0009)$\\
+    High layoff rate   & $9.7\%$   &  $-0.002^{***}$ & $9.7\%$      &  $-0.002^{***}$    &  $9.1\%$     &   $-0.010^{***}$\\
+                       &           &  $(0.0006)$     &              &  $(0.0006)$        &              &   $(0.0007)$\\
+    \hline
+  \end{tabular}
+  \caption{Wage pass-through across firms: different minimum wage cutoffs. Data: DADS Panel + FARE, 2009–2019.}
+  \label{tab:minwage_control_acrossfirms}
+\end{table}
+
+Next, I perform the same robustness check for the heterogeneity across worker tenure. The differences are minimal both in the layoff rates and in the wage passthrough. I take this as implying that the choice of the minimum wage cutoff is not qualitavely nor quantitatively important for my analysis.
+\begin{table}
+  \centering
+  \begin{tabular}{lcccccc}
+    \toprule
+    & \multicolumn{2}{c}{At min wage} & \multicolumn{2}{c}{Baseline: 5\% above} & \multicolumn{2}{c}{20\% above}\\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+    & Layoffs & Wages & Layoffs & Wages & Layoffs & Wages \\
+    \midrule
+    \hline
+    $<\!1$ year      &  $5.4\%$  &  $0.012$    &  $11\%^{***}$    &  $0.000$             &  $12\%$              &  $-0.01^{***}$ \\  
+                     &           &             &  $(0.0002)$ &  $(0.004)$           & $(0.0002)$           &   $(0.0009)$   \\
+    \hline
+    1–2 years        &  $0.6\%$   &  $0.017$    &  $5\%^{***}$     &  $0.004$            &  $5\%$       &  $0.003^{*}$     \\  
+                     &            &             &  $(0.0002)$& $(0.004)$           &  $(0.0003)$  &   $(0.0012)$   \\
+    \hline
+
+    2–3 years        &  $0.42\%$ &  $0.023$    &  $3\%^{***}$   &  $0.008^{**}$  &  $4\%$   &  $0.007^{***}$ \\
+                    &            &             &   $(0.0004)$ & $(0.002)$   &  $(0.0004)$ &   $(0.0013)$   \\
+    \hline
+    
+    3–4 years        &  $0.15\%$  &  $0.025$  &  $2\%^{***}$  &  $0.008^*$  &  $3\%$      &  $0.006^{***}$ \\
+                     &            &            &   $(0.0003)$ &   $(0.003)$  &  $(0.0004)$&   $(0.0015)$   \\ 
+    \hline    
+    4–5 years        &  $0.06\%$  &  $0.025$   &  $2\%^{***}$      &  $0.019^{***}$ &  $2\%$      &  $0.016^{***}$ \\
+                     &            &            &   $(0.0004)$& $(0.004)$   &  $(0.0004)$ &   $(0.0016)$   \\
+    \hline
+  \end{tabular}
+  \caption{Layoffs and wage pass-through across tenure for different values of minimum wage.}
+  \label{tab:minwage_control_tenure}
+\end{table}
+
+\subsubsection{Additional Controls}\label{robust:controls}
+I introduce additional controls for my layoff and wage passthrough regressions to ensure robustness with respect to alternative explanatory variables. The four key controls I introduce are: worker experience as an alternative to worker tenure, firm fixed effect, occupation fixed effect, and region fixed effect.
+
+For the across-firm comparison, I focus on wage passthrough as the firm brackets are defined by their layoff rates. For wage passthrough, I find that introducing firm fixed effects has the largest impact on the estimates. While the wage passthrough at the firms laying off the least is not affected, the firms in the middle end up with an ever lower wage passthrough than before, and firms firing the most end up with an even more negative wage passthrough, although now insignificant. Overall, I take these results to conclude that the connection between layoff rate and wage passthrough across firms is robust to additional controls.
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{lccccc}
+    \hline
+    & (1) & (2) & (3) & (4) & (5)  \\
+    \midrule
+    \hline
+    Low layoff rate      &  $0.017^{***}$  &  $0.019^{***}$    &  $0.018^{***}$    &  $0.018^{***}$        &  $0.018^{***}$       \\  
+                         &  $(0.0006)$     &  $(0.0007)$       &  $(0.0022)$       &  $(0.0022)$           & $(0.0022)$        \\
+    
+    Medium layoff rate   &  $0.012^{***}$  &  $0.012^{***}$    &  $0.007$    &  $0.007$        &  $0.007$       \\  
+                         &  $(0.0008)$     &  $(0.0009)$       &  $(0.0057)$       &  $(0.0058)$           & $(0.0058)$        \\
+
+    High layoff rate     &  $-0.002^{***}$  &  $-0.008^{***}$    &  $-0.005$    &  $-0.005$        &  $-0.005$       \\  
+                         &  $(0.0006)$     &  $(0.0007)$       &  $(0.0068)$       &  $(0.0068)$           & $(0.0068)$        \\
+    \hline
+    \hline
+    Experience controls   &                & Yes            & Yes            & Yes            & Yes            \\
+    Firm FE               &                &                & Yes            & Yes            & Yes            \\
+    Occupation FE         &                &                &                & Yes            & Yes            \\
+    Region FE             &                &                &                &                & Yes            \\
+    \hline
+  \end{tabular}
+  \caption{Wage pass-through across firms with different controls.}
+  \label{tab:controls_firms}
+\end{table}
+I perform the same exercise for the worker tenure, looking at the heterogeneity in both layoff rates and wage passthrough. Once I introduce fixed effects, the ``baseline" layoff rate of juniors is no longer identified so I set their layoff rate to the value with experience controls and focus on the layoff risk drops with higher tenure levels. 
+
+I find some dispersion in layoff rates across specifications, particularly from introducing the firm fixed effects,  but ultimately the pattern of an initially sharply then slowly dropping layoff rate persists.
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{lccccc}
+    \hline
+    & (1) & (2) & (3) & (4) & (5)  \\
+    \midrule
+    \hline
+    $<\!1$ year          &  $11\%^{***}$  &  $13\%^{***}$  & $13\%^{***}$    &  $13\%^{***}$      &  $13\%^{***}$     \\  
+                         &  $(0.0002)$    &  $(0.0004)$    &  $(0.0002)$     &  $(0.0002)$        & $(0.0002)$        \\
+    
+    1-2 years            &  $5\%^{***}$  &  $6\%^{***}$    &  $8\%^{***}$    &  $8\%^{***}$       &  $8\%^{***}$      \\  
+                         &  $(0.0002)$   &  $(0.0004)$     &  $(0.0011)$     &  $(0.0011)$        & $(0.0011)$        \\
+
+    2-3 years            &  $3\%^{***}$  &  $5\%^{***}$    &  $7\%^{***}$    & $7\%^{***}$        &  $7\%^{***}$      \\  
+                         &  $(0.0004)$   &  $(0.0004)$     &  $(0.0014)$     &  $(0.0014)$        & $(0.0014)$        \\
+                         
+    3-4 years            &  $2\%^{***}$  &  $4\%^{***}$    &  $7\%^{***}$    &  $7\%^{***}$       &  $7\%^{***}$      \\  
+                         &  $(0.0003)$   &  $(0.0004)$     &  $(0.0015)$     &  $(0.0015)$        & $(0.0015)$        \\
+                         
+    4-5 years            &  $2\%^{***}$  &  $3\%^{***}$    &  $6\%^{***}$    &  $6\%^{***}$       &  $6\%^{***}$      \\  
+                         &  $(0.0004)$   &  $(0.0004)$     &  $(0.0025)$     &  $(0.0025)$        & $(0.0025)$        \\
+    \hline
+    \hline
+    Experience controls  &                & Yes            & Yes            & Yes            & Yes            \\
+    Firm FE              &                &                & Yes            & Yes            & Yes            \\
+    Occupation FE        &                &                &                & Yes            & Yes            \\
+    Region FE            &                &                &                &                & Yes            \\
+    \hline
+  \end{tabular}
+  \caption{Layoffs across worker tenure with different controls.}
+  \label{tab:controls_sep_tenure}
+\end{table}
+Similarly, I introduce controls into the wage passthrough regression across worker tenure. The most noticeable change is the drop in the wage passthrough for the more senior workers. Still, the consistent rise in wage passthrough is still prevalent in each and every specification suggesting that the choice of controls has no significant impact on the empirical results and for the validation of my model's empirical predictions. 
+
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{lccccc}
+    \hline
+    & (1) & (2) & (3) & (4) & (5)  \\
+    \midrule
+    \hline
+    $<\!1$ year     &  $-0.008^{***}$       &  $-0.008^{***}$  &  $-0.005$        &  $-0.004$       &  $-0.004$       \\  
+                    &  $(0.004)$     &  $(0.001)$       &  $(0.005)$       &  $(0.005)$      & $(0.005)$        \\
+    
+    1-2 years       &  $0.004$       &  $0.004^{***}$   &  $0.003$         &  $0.003$        &  $0.003$       \\  
+                    &  $(0.004)$     &  $(0.001)$       &  $(0.004)$       &  $(0.004)$      & $(0.004)$        \\
+
+    2-3 years       &  $0.008^{**}$  &  $0.008^{***}$   &  $0.006^{*}$     &  $0.006^*$      &  $0.006^*$       \\  
+                    &  $(0.002)$     &  $(0.001)$       &  $(0.003)$       &  $(0.003)$      & $(0.003)$        \\
+    3-4 years       &  $0.008^{*}$   &  $0.008^{***}$   &  $0.007^{*}$     &  $0.007^*$      &  $0.007^*$       \\  
+                    &  $(0.002)$     &  $(0.001)$       &  $(0.004)$       &  $(0.004)$      & $(0.004)$        \\
+    4-5 years       &  $0.019^{***}$ &  $0.015^{***}$   &  $0.010^{***}$   &  $0.010^{**}$   &  $0.010^{**}$       \\  
+                    &  $(0.004)$     &  $(0.002)$       &  $(0.004)$       &  $(0.004)$      & $(0.004)$        \\
+    \hline
+    \hline
+    Experience controls   &                & Yes            & Yes            & Yes            & Yes            \\
+    Firm FE               &                &                & Yes            & Yes            & Yes            \\
+    Occupation FE         &                &                &                & Yes            & Yes            \\
+    Region FE             &                &                &                &                & Yes            \\
+    \hline
+  \end{tabular}
+  \caption{Wage passthrough across worker tenure with different controls.}
+  \label{tab:controls_wage_tenure}
+\end{table}
 
