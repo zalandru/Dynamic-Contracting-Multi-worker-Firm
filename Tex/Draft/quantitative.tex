@@ -1,27 +1,8 @@
 \section{Quantitative Analysis}
 I calibrate the model using administrative data from France and assess whether it reproduces the empirical evidence on wage pass-through and layoffs across firms and tenure. I introduce several policies prevalent in French labor market and use the model to assess their impact. I find that an exogenous source wage rigidity, minimum wage, has only a muted impact on hiring and layoff rates.
 
-\subsection{Solving the model}
-The tenure-based formulation yields a discrete—though expanding—state space. To make the problem fully tractable, I note that wages in contracts tend to converge, a result that follows from the propositions above. A corollary of Proposition~\ref{prop:targetwage} is that wages for cohorts with the same quality converge because they share the same target wage. I also expect quality across cohorts to converge. 
-
-The intuition for contracts converging is as follows. First of all, lower quality cohorts have lower target wages due not being as productive. Over time, due to tracking the minimum wage, the lower quality cohorts will also have a relatively lower value as compared to other, higher quality, cohorts. By Proposition~\ref{prop:qualityconv}, these cohorts are then more likely to suffer layoffs, thus catching up in quality to other cohorts. Now of higher average quality, these cohorts have a higher target wage and will thus catch up in wages and value over time.
-
-Given convergence, the practical question is how quickly it occurs—or, equivalently, how many cohorts to track. Empirically, Figure~\ref{fig:w_growth_tenure} shows that CPI-adjusted log wage growth in France flattens after about ten years of tenure. I therefore restrict attention to a finite and constant $K \le 10$ for all firms in the quantitative analysis. This is an approximation: as $K\to\infty$, the model converges to the problem in Lemma~\ref{firmproblem}.
-\begin{figure}
-    \centering
-\includegraphics[width=0.75\textwidth]{Wage growth across tenure under 30,cutoff 100.jpg} \\
-    \caption{Wage growth across worker tenure}
-    \label{fig:w_growth_tenure}
-\end{figure}
-
-
-A second complication, common in dynamic-contract models, is the large action space because $\{v'_{y',k}\}$ grows with the number of productivity states. Appendix~\ref{dual} shows that the problem can be solved in its dual form by choosing future marginal utilities—constant across productivity realizations—instead of promised values.
-
-Lastly, the model can be solved in a block-recursive equilibrium. As shown in Appendix~\ref{blocrecur}, such an equilibrium exists when all new hires enter at the same promised value $v_0$; any additional value associated with higher submarkets $v$ is paid as a sign-on wage.
-
 
 \subsection{Model specification}
-For quantifying the model, I focus on the CRS version of the firm production function.
 I work at annual frequency: contracts in France are rarely updated more than once per year, which facilitates cohort tracking. I set the discount factor to $\beta=0.96$, consistent with a $4\%$ annual interest rate. I work with the logarithmic utility.
 
 Production is a concave function of quality-adjusted quantity:

@@ -52,7 +52,10 @@
   \href{https://raw.githack.com/zalandru/Papers/main/Zaloilo%20JMP.pdf}{\textcolor{blue}{Click here for the latest version}}  
 \end{center}
 \begin{abstract}
-Do rigid wages force firms to lay off workers in downturns? I show that wage rigidity can instead be an equilibrium outcome of selective layoffs and therefore need not amplify employment losses. I build an equilibrium search model where firms employ risk-averse workers of heterogeneous match quality on dynamic contracts. Asymmetric information about match quality generates privately inefficient layoffs. After negative productivity shocks, firms fire low-quality matches while smoothing survivors’ wages. The model predicts heterogeneous composition of income risk: recently hired workers face higher layoff risk, whereas senior workers experience larger wage movements. I confirm this pattern using French matched employer–employee data. Finally, because layoffs and wage smoothing are endogenous, exogenous wage constraints have limited additional employment effects: in a calibrated model of France, a 20\% minimum wage increase raises layoffs only modestly and has muted effects on hiring.
+This paper proposes a new mechanism for wage rigidity based on firms’ selection of which workers to retain. I develop a model of a frictional labor market with directed search and dynamic contracts in which firms cannot condition wages on match-specific productivity. Instead, firms use layoffs to remove low-productivity matches, improving workforce composition and increasing the value of retained workers. This generates endogenous wage rigidity.
+The model implies that workers more exposed to layoffs exhibit more rigid wages. Using French matched employer–employee data, I document this pattern both across firms and within firms across worker tenure. Because workers within a firm face the same shocks, this cross-tenure variation isolates the role of selection. A calibrated version of the model replicates these facts and shows that selection plays a central role in shaping wage dynamics, while exogenous rigidities such as minimum wages have limited effects.
+
+%Do rigid wages force firms to lay off workers in downturns? I show that wage rigidity can instead be an equilibrium outcome of selective layoffs and therefore need not amplify employment losses. I build an equilibrium search model where firms employ risk-averse workers of heterogeneous match quality on dynamic contracts. Asymmetric information about match quality generates privately inefficient layoffs. After negative productivity shocks, firms fire low-quality matches while smoothing survivors’ wages. The model predicts heterogeneous composition of income risk: recently hired workers face higher layoff risk, whereas senior workers experience larger wage movements. I confirm this pattern using French matched employer–employee data. Finally, because layoffs and wage smoothing are endogenous, exogenous wage constraints have limited additional employment effects: in a calibrated model of France, a 20\% minimum wage increase raises layoffs only modestly and has muted effects on hiring.
 
 %Moreover, \emph{exogenous} wage rigidity, stemming from minimum wages, has limited effects on employment when rigid wages and layoffs have endogenous foundations. A calibration shows that a  minimum wage hike has only muted effects on firing and hiring rates.
 
@@ -72,10 +75,10 @@ Do rigid wages force firms to lay off workers in downturns? I show that wage rig
 \end{titlepage}
 
 \newpage
-\input{introduction}
-\input{model}
-%\input{empirics} %Is that the right order? I should have the model first?
-%\input{quantitative}
+\input{introduction_new}
+\input{model_crs}
+\input{empirics} %Is that the right order? I should have the model first?
+\input{quantitative}
 
 
 
@@ -83,17 +86,23 @@ Do rigid wages force firms to lay off workers in downturns? I show that wage rig
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section{Conclusion}
-This paper proposes a new perspective on the relationship between wage rigidity, layoffs, and employment fluctuations. I develop an equilibrium search model with one-sided limited commitment and asymmetric information about match quality, in which firms optimally choose both wage paths and layoff policies without discriminating in wages within a contract. In this framework, layoffs and rigid wages arise endogenously and are correlated across workers, firms, and tenure—not because rigid wages mechanically force firms to fire, but because layoffs are a tool for managing workforce composition. Negative productivity shocks lead firms to shed low-quality matches and protect the wages of the remaining workers they most wish to retain. Using matched employer–employee data from France, I show that this mechanism is consistent with the joint behavior of wages and layoffs across firms and across tenure: the firms that fire the most have the most rigid wages, and junior workers face higher layoff risk but weaker wage pass-through than senior workers.
 
-Quantifying the model reveals that this mechanism also matters for how we interpret labor market policies. Once firms’ endogenous incentives to smooth wages and to use layoffs to reallocate workers are accounted for, a sizable increase in the minimum wage has only a limited impact on layoffs and job-finding rates, and removing the minimum wage does little to alter the heterogeneity of wage and layoff responses across tenure. Allowing firms to choose severance pay in the model further shows that generous, tenure-dependent severance can be an optimal response to layoff risk rather than simply a constraint on firing, effectively making layoffs cheaper by improving risk-sharing. Together, these results suggest that focusing exclusively on downward wage rigidity as a constraint on firms’ decisions misses a central margin of adjustment: firms’ active use of layoffs and wage smoothing as joint instruments for managing their workforce.
+This paper proposes a new perspective on the relationship between wage rigidity and layoffs. Rather than viewing rigid wages as a constraint that forces firms to adjust through employment, I show that wage rigidity can arise endogenously from firms’ selection of which workers to retain. When firms face heterogeneous match quality and cannot condition wages on individual productivity, they use layoffs to remove low-productivity matches. This improves workforce composition, raises the value of retained workers, and reduces firms’ incentives to cut wages. As a result, layoffs and wage rigidity are complements rather than substitutes.
+
+Using matched employer–employee data from France, I document that this mechanism is consistent with the joint behavior of wages and layoffs across firms and across worker tenure. Firms that adjust employment more exhibit more rigid wages, and within firms, workers who are more exposed to layoffs—such as recent hires—experience weaker wage pass-through. Because these patterns arise within firms facing the same shocks, they provide direct evidence for the role of selection in shaping wage dynamics.
+
+Quantitative analysis shows that this mechanism is economically important. A calibrated version of the model reproduces the differential response of wages and layoffs across worker groups and highlights the role of selection in shaping the distribution of income risk. The model also provides a new perspective on labor market policies. When firms already have endogenous incentives to smooth wages and use layoffs as a selection device, additional sources of wage rigidity—such as minimum wages—have limited effects on employment dynamics. Similarly, allowing for endogenous severance pay shows that tenure-dependent severance can arise as an optimal risk-sharing arrangement rather than as a constraint on firms’ decisions.
+
+Taken together, these results suggest that wage rigidity cannot be understood solely as the outcome of constraints or insurance motives. Instead, it reflects firms’ optimal responses to heterogeneity within their workforce and their need to decide which workers to retain. More broadly, the paper highlights that understanding wage dynamics requires accounting for how firms jointly adjust wages and employment, and how these decisions interact through endogenous selection.
+
 
 %This paper studies the connection between wage cuts and layoffs. I build a model in which firms hire employ workers of various tenure and match quality. Firms use layoffs as a tool to shed poor matches and choose to keep wages of the survivors largely unchanged. This mechanism is pervasive both across firms and across worker tenure. I empirically validate the predictions of the model using matched employer-employee data. The quantitative model accounts well for the documented patterns of wage pass-through and layoffs.
 
 \newpage
-%\printbibliography %Prints bibliography
+\printbibliography %Prints bibliography
 
 
-%\input{appendix_gpt}
+\input{appendix_gpt}
 %\input{appendix}
 
 

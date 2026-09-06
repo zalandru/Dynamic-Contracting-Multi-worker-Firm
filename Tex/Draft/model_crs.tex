@@ -1,0 +1,302 @@
+\section{Model}
+
+I present a model of a frictional labor market with dynamic contracts and asymmetric information about match quality. Firms employ workers of heterogeneous productivity but cannot condition wages on individual match quality. Instead, they use layoffs as a selection device. By removing low-quality matches, layoffs improve workforce composition, raising the value of remaining workers and making wage cuts less desirable.
+
+\subsection{Environment}
+
+Time is discrete and indexed by $t$. The economy is populated by a continuum of workers of measure $1$ and a continuum of potential firms. Both workers and firms are infinitely lived and discount the future at rate $\beta$.
+
+Workers are risk-averse and have no access to financial markets. They consume home production $b$ when unemployed and wages when employed, with preferences
+\[
+E_0 \sum_{t=0}^{\infty} \beta^t u(c_t), \qquad u(c)=\frac{c^{1-\sigma}}{1-\sigma}.
+\]
+
+Firms are owned by outside investors who diversify firm-specific productivity risk and thus maximize the expected present value of profits.
+
+\subsubsection*{Production}
+
+Each firm employs a continuum of workers. Production is linear in effective labor:
+\[
+Y = y \cdot \ell,
+\]
+where $y \in \mathcal{Y}$ is an idiosyncratic productivity shock and $\ell$ is effective labor input.
+
+Each match is either high or low productivity. Let $z \in [0,1]$ denote the share of high-productivity matches within the firm. Effective labor is given by
+\[
+\ell = z \cdot \ell_H + (1-z)\cdot \ell_L,
+\]
+with high-productivity matches contributing more to output than low-productivity ones. For simplicity, I normalize $\ell_H=1$ and $\ell_L<1$.
+
+Match quality is fixed over time and privately observed by the firm. Workers know only the distribution of match quality within their cohort.
+
+\subsubsection*{Labor market}
+
+The labor market is frictional with directed search, as in \textcite{moen1997}. There is a continuum of submarkets indexed by the promised lifetime utility $v$ offered to workers. Firms post vacancies in submarkets, and workers choose where to search.
+
+Matching within each submarket follows a constant-returns-to-scale matching function. Let $\theta_v$ denote market tightness in submarket $v$. Workers find jobs with probability $p(\theta_v)$, and vacancies are filled with probability $q(\theta_v)$.
+
+Posting a vacancy costs $\kappa$. Free entry of vacancies implies
+\[
+\kappa = q(\theta_v) \cdot J(v),
+\]
+where $J(v)$ is the expected value of a filled job offering promise $v$.
+
+Upon matching, the firm commits to deliver expected lifetime utility $v$ to the worker via a dynamic contract. Because firms post vacancies in a given submarket $v$, all workers hired through that submarket receive the same contract. I refer to the set of workers hired at a given time under the same contract as a \emph{cohort}.
+
+In the absence of wage discrimination, all workers within a cohort are treated identically: they receive the same wages, face the same layoff probabilities, and share the same continuation values. As a result, the relevant state variable for the firm is the distribution of match quality within each cohort, summarized by $z$.
+
+This cohort structure is central to the model: firms can adjust outcomes across cohorts (through different promised values $v$), but cannot differentiate workers within a cohort except through layoffs, which selectively remove low-productivity matches.
+
+New matches draw quality independently: a fraction $z_0$ are high productivity.
+
+Firms can separate from workers by laying them off. A layoff permanently ends the match. Firms may provide severance payments to laid-off workers.
+
+\subsubsection*{Timing}
+\begin{figure}
+\centering
+\begin{tikzpicture}[node distance=2mm]
+  \draw[->] (0,0) to (10,0);
+  \filldraw[black] (0,0) circle (2pt);
+  \node[below, black] at (0,-2mm) {t};
+  \filldraw[black] (9,0) circle (2pt);
+  \node[below, black] at (9,-2mm) {t+1};
+  \foreach \x/\q in {2/,4/,6/,8/}{
+    \draw[line width=1pt, black] (\x,-2mm) node[below, black](a\x){\q} -- (\x,2mm);
+  }
+  \node [below=of a2, align=center, minimum width=1in, minimum height=1cm] {$yF(n,z)$, $w$ \\ Production and wages};
+  \node [above=of a4, align=center, minimum width=1in, minimum height=1cm] {Firm layoffs $s$};
+  \node [below=of a6, align=center, minimum width=1in, minimum height=1cm] {Hiring $\tilde{n}$ \\ Worker search $p(\theta)$};
+  \node [above=of a8, align=center, minimum width=1in, minimum height=1cm] {Productivity shock $y_{t+1}\mid y_t$};
+\end{tikzpicture}
+\caption{Within-period timeline} \label{fig:Timing}
+\end{figure}
+
+Each period has four stages (Figure~\ref{fig:Timing}). First, production occurs: the firm collects output and pays wage $w$ to each worker. Next, the firm lays off a fraction $s\ge 0$ of its workforce. Fired workers become unemployed and cannot search until next period. Then all workers—employed and unemployed—search, and firms post vacancies. Finally, next period’s productivity shock is realized.
+
+%Hiring and search choices occur before next-period productivity $y_{t+1}$ is realized, so agents take expectations $E_{y_{t+1}\mid y_t}$.
+%Each period proceeds as follows. First, production occurs and wages are paid. Second, firms choose layoffs. Third, workers search and firms post vacancies. Matching occurs afterwards. Finally, next period’s productivity shock is realized.
+\subsubsection*{Uncertainty}
+
+There are two sources of uncertainty: firm-level productivity shocks and match quality. Match quality is fixed at the time of hiring and observed only by the firm. 
+
+Because firms employ a continuum of workers, idiosyncratic uncertainty averages out, and only aggregate distributions of match quality matter. On the workers' side, although they are ex-post concerned with their own match quality, ex-ante they are not aware of their draw. Therefore, just like the firm, workers make their decisions keeping in mind only the measure of the high quality matches.
+
+In the aggregate, the model is deterministic because firms themselves are also atomistic. Each firm-level productivity path is reached by a measure of firms corresponding to the ex-ante probability of reaching said path. Therefore, there is no aggregate uncertainty in the model. 
+
+%I focus on block recursive equilibria, so that firms do not need to track the full distribution of workers across states.
+
+\subsubsection*{Information structure and contracts}
+
+Upon matching, the firm commits to a contract delivering expected utility $v$.  Firm productivity histories are common knowledge and therefore fully contractible. By contrast, match-specific productivity $z_{if}$ is private to the firm, and the worker’s search decision $\hat{v}$ is private to the worker. Contracts specify
+\[
+\mathcal{C}=\{w_{\tau},\,s_{\tau},\,sev_{\tau},\,\hat{v}_{\tau}\}_{\tau=t}^{\infty}.
+\]
+
+Here $w$ is the wage policy for each future productivity history. The second component, $s$, is the \emph{expected} layoff probability from the worker’s perspective (who does not observe their match quality). These probabilities are history-dependent: in histories where information about match quality is updated, future layoff probabilities reflect the worker’s Bayesian update. For example, after multiple negative shocks that force large layoffs, remaining workers rationally assign higher probability to being high quality, and subsequent layoff probabilities adjust accordingly\footnote{This statement implicitly assumes that workers believe that the firm fires bad matches first. The firm has no reason to deviate from this no matter the workers' beliefs whom firm fired (and thus their own type). Firing less productive workers first is therefore a dominant strategy, and in the equilibrium workers internalize that. I henceforth work with the state-space where workers' beliefs about the quality distribution are the same as the actual distribution.}. The third component is severance pay. Firm can commit to perpetually pay severance $sev$ to laid off workers until they find a new job. The last component is the worker’s (unobserved) search decision. I focus on contracts in which recommended search is incentive compatible, i.e., the contract specifies workers’ search choices subject to the constraint that those choices are optimal for workers.
+
+An immediate implication is that contracts are cohort-specific objects: workers hired under the same contract share identical allocations and beliefs as long as they remain employed. Because match quality is unobserved by workers and not revealed through wages, heterogeneity within a cohort cannot be priced. Instead, any adjustment to the composition of workers within a cohort occurs through layoffs, which update beliefs about match quality for all remaining workers.
+
+\subsubsection*{Asymmetric information and no wage discrimination}
+Firms have private information about each match's quality. In principle, they can choose to disclose this information in order to more effectively wage discriminate or withhold it in order to further insure the workers. This is essentially a signalling game that firms and their workers play.
+
+In Appendix~\ref{microfoundation} I consider a simplified version of such a game in order to assess the firm's trade-offs between the two options. I show that, under a sufficiently inelastic probability of retaining a worker, a pooling equilibrium exists and is robust to the Intuitive Criterion \parencite{Cho1987}. I use this result as suggestive that the pooling equilibrium of the larger game also exists and focus on its implications. 
+
+Practically, I thus assume that firms do not reveal any information to individual workers about their match quality except for via layoffs. They do not offer quality-specific wages, severance, or future value, and only reveal the information upon layoffs. An immediate implication is that workers on the same contract and with the same prior about their match quality (for example, workers hired at the same period, as I show later) will also have the same posterior about their individual quality, as long as they stay employed. I discuss the importance and realism of this assumption in Section~\ref{model:ass_disc}.
+
+\subsubsection*{Labor Market Policies}
+I introduce two key labor market policies, prevalent in France: minimum wage and statutory severance pay. Both policies act as lower bounds on the choice variables of the firm: minimum wage restricts the wage that the firms may pay to any worker at any point in time, and severance pay, scaling with tenure \footnote{This is the key component of severance pay in France. I provide more details in Section~\ref{subsec:institutions-fr}.}, similarly restricts the minimum severance that the firm should offer upon layoffs.
+
+Minimum wage is the key source of exogenous wage rigidity, particularly at the bottom of the wage distribution.  The key intent of introducing minimum wage is to control for it as it may provide the alternative explanation for both rigid wages and layoffs. 
+
+Severance pay is introduced for similar reasons: it is an institutional feature that may offer an alternative explanation for the prediction of my model that junior workers suffer higher layoffs but lower wage pass-through than more senior workers. 
+
+\subsection{Value functions}
+The contract and all agents’ problems admit a recursive formulation. I begin with workers’ problems and then turn to firms managing contracts with the worker cohorts.
+
+\subsubsection*{Worker’s problem}
+
+Unemployed workers receive flow utility $u(b+sev)$ and choose a submarket to search in:
+\[
+U(sev) = u(b+sev) + \beta \max_v \big[(1-p(\theta_v))U(sev) + p(\theta_v)v\big].
+\]
+
+An employed worker promised value $v$ receives wage $w$, faces layoff probability $s$, and continuation value $v'$. The value satisfies
+\[
+v = u(w) + \beta \big[sU(sev) + (1-s)R(v')\big],
+\]
+where
+\[
+R(v') = \max_{\hat{v}} \big[(1-p(\theta_{\hat{v}}))v' + p(\theta_{\hat{v}})\hat{v}\big].
+\]
+
+Higher promised continuation value $v'$ reduces the worker’s incentive to search elsewhere.
+
+\subsubsection*{Firm’s problem}
+
+Under constant returns to scale, the firm’s problem can be expressed in terms of the value of a representative cohort of workers hired under the same contract. Let $J(y,v,z)$ denote the expected present value of profits from employing a unit mass of workers when the firm’s productivity is $y$, the promised utility to workers is $v$, and the share of high-productivity matches is $z$.
+
+The firm chooses wages $w$, layoff probability $s$, severance pay $sev$, and continuation promises ${v'_{y'}}_{y'}$ contingent on next period’s productivity. The value function satisfies
+\[
+\begin{aligned}
+J(y,v,z) = \max_{w,s,sev,{v'_{y'}}} &
+y \cdot \bar{\ell}(z) - w \\
+&- \beta s \cdot \frac{sev}{1-\beta(1-p(\theta_{sev}))} \\
+&+ \beta \mathbb{E}_{y' \mid y} \Big[(1-s)(1-p(v')) J(y',v',z') \Big]
+\end{aligned}
+\]
+subject to the promise-keeping constraint
+\[
+u(w) + \beta \big[s U(sev) + (1-s)R(v') \big] = v,
+\]
+and
+\[
+v' = \mathbb{E}_{y'\mid y} v'_{y'}.
+\]
+
+Here $\bar{\ell}(z)$ denotes effective labor per worker, increasing in the share of high-productivity matches $z$. The term $(1-p(v'))$ captures endogenous separations due to on-the-job search.
+
+The value function $J(y,v,z)$ should be interpreted as the value of employing a representative cohort of workers hired under the same contract. Under constant returns to scale, the firm’s problem is linear in the size of the cohort, and therefore it is without loss of generality to normalize cohort size to one.
+
+Because the firm cannot condition on individual match quality, all decisions—wages, layoffs, and continuation values—are made at the cohort level. The only way the firm can differentially affect workers within a cohort is through layoffs, which selectively remove low-productivity matches and thereby change the cohort’s composition $z$.
+
+
+\paragraph{Composition dynamics.}
+Layoffs affect the composition of the workforce. Because match quality is privately observed by the firm, it is optimal to lay off low-productivity matches first. As a result, the share of high-productivity workers evolves according to
+\[
+z' = \min\{\frac{z}{1-s},1\}.
+\]
+This captures the selection effect of layoffs: removing workers increases the average quality of those who remain.
+
+\paragraph{Interpretation.}
+The firm trades off three forces. First, it extracts surplus from workers through wages while satisfying the promised value constraint. Second, layoffs are costly because they require severance payments and reduce the workforce. Third, layoffs improve workforce composition by increasing $z$, which raises the future value of retained workers.
+
+This last force is central to the model: by selectively removing low-productivity matches, layoffs increase the marginal value of remaining workers. This reduces the firm’s incentive to cut wages following negative shocks, generating endogenous wage rigidity.
+
+\paragraph{Vacancy creation.}
+Firms create vacancies to hire new workers into contracts promising value $v$. Free entry of vacancies implies
+\[
+\kappa = q(\theta_v) \cdot J_0(v),
+\]
+where $J_0(v) \equiv E_y J(y,v,z_0)$ is the value of a newly created match with initial quality distribution $z_0$.
+
+\medskip
+
+This formulation replaces the firm’s problem over a distribution of workers with a recursive problem over a representative cohort. Under constant returns to scale, firms optimally replicate this problem across all workers, and equilibrium allocations depend only on $(y,v,z)$.
+
+
+\subsection{Equilibrium}
+
+An equilibrium consists of worker search policies, firm contract policies, market tightness $\theta_v$, and value functions such that:
+
+\begin{itemize}
+\item Workers optimize given contracts and market conditions.
+\item Firms maximize profits subject to delivering promised utilities.
+\item Free entry of vacancies implies $\kappa = q(\theta_v)J(v)$ in every active submarket.
+\item Matching probabilities are consistent with market tightness.
+\item The labor market clears.
+\end{itemize}
+
+Under standard conditions, the equilibrium is block recursive: individual decisions depend only on current productivity and contract states, not on the aggregate distribution of workers.
+
+\subsection{Mechanism}
+
+This section characterizes how the model jointly determines layoffs and wage dynamics at the cohort level. Because contracts are assigned at hiring and shared within cohorts, firms cannot differentiate workers within a cohort through wages. Instead, layoffs become the key instrument for adjusting workforce composition. The central mechanism is that layoffs selectively remove low-productivity matches, improving cohort quality and thereby affecting wage-setting incentives.
+
+\subsubsection*{Wage dynamics}
+
+First, in the absence of layoffs, the model reduces to a standard dynamic contracting environment with directed search, similar to \textcite{balke2022}. In that setting, firms optimally smooth wages over time due to workers’ risk aversion and on-the-job search incentives, and wages evolve toward a target level reflecting the marginal value of retention. I briefly summarize these results before introducing layoffs, which fundamentally alter the firm’s retention incentives through endogenous selection.
+
+\begin{proposition}[Wage dynamics]
+For any state $(y,v,z)$, wage growth satisfies
+\[
+\frac{1}{u'(w')} - \frac{1}{u'(w)}
+= \eta(v') \cdot \mathbb{E}_{y'|y}  J(y',v',z'),
+\]
+where $\eta(v') \equiv \frac{\partial \log(1-p(v'))}{\partial v'}$ is the semi-elasticity of the job-finding probability.
+\end{proposition}
+
+The right-hand side captures the marginal value of retaining a worker. When retaining a worker is valuable, the firm raises continuation values and backloads wages to discourage search. When retention is less valuable, wages are reduced to induce separation.
+
+Because workers are risk-averse, the firm smooths wages across states. This generates endogenous wage rigidity even in the absence of institutional constraints.
+
+\subsubsection*{Target wage and adjustment}
+
+To understand wage movements, it is useful to define a target wage at which the firm is indifferent to retaining workers.
+
+\begin{definition}[Target wage]
+Fix a state $(y,v,z)$. The target wage $w^*(y,z)$ is the wage such that the marginal value of retaining a worker is zero:
+\[
+\mathbb{E}_{y'|y} J(y',v',z') = 0.
+\]
+\end{definition}
+
+Wages adjust toward this target over time.
+
+\begin{proposition}[Wage adjustment]
+For any state $(y,v,z)$:
+\begin{itemize}
+\item Wages move toward the target: if $w < w^*$ then $w' > w$, and if $w > w^*$ then $w' < w$.
+\item The speed of adjustment is increasing in the distance from the target.
+\end{itemize}
+\end{proposition}
+
+The target wage summarizes the firm’s retention incentives. When the target rises, wages become more rigid downward.
+
+In this benchmark, wage dynamics depend only on productivity shocks and continuation values. In contrast, once layoffs are introduced, wage dynamics also depend on endogenous changes in workforce composition.
+
+\subsubsection*{Selection and layoffs}
+
+Layoffs are the firm’s only instrument for affecting workforce composition. Because match quality is privately observed, the firm cannot adjust wages to reflect individual productivity. Instead, it uses layoffs to selectively remove low-productivity matches.
+
+\begin{proposition}[Layoffs and selection]
+For any state $(y,v,z)$:
+\begin{itemize}
+\item Layoffs are more likely in low-productivity states.
+\item Within a cohort, low-productivity matches are laid off first.
+\end{itemize}
+\end{proposition}
+
+As a result, layoffs increase the average quality of the workforce.
+
+\subsubsection*{Layoffs and wage rigidity}
+
+The key link between layoffs and wage rigidity operates through workforce composition.
+
+\begin{proposition}[Selection and target wages]
+An increase in the share of high-productivity workers raises the target wage:
+\[
+\frac{\partial w^*(y,z)}{\partial z} > 0.
+\]
+\end{proposition}
+
+Intuitively, when the workforce becomes more productive, the firm has stronger incentives to retain workers. This increases the value of continuation and raises the target wage.
+
+Combining this with the previous results yields the central mechanism of the paper.
+
+\begin{proposition}[Layoffs generate wage rigidity]
+Following a negative productivity shock:
+\begin{itemize}
+\item Firms increase layoffs, selectively removing low-productivity matches.
+\item This raises the average quality of the remaining workforce.
+\item The increase in workforce quality raises the target wage.
+\item As a result, firms reduce wages less than they otherwise would.
+\end{itemize}
+\end{proposition}
+
+Thus, layoffs and wage rigidity are complements rather than substitutes: whenever firms choose to lay off workers, they have less incentive to cut the wages of those who remain.
+
+\subsubsection*{Heterogeneity across cohorts}
+
+Because contracts are cohort-specific, heterogeneity in outcomes arises across cohorts rather than within them. Cohorts differ in their promised values $v$ and in their histories of productivity shocks and layoffs, which determine their composition $z$. This generates systematic differences in both layoff risk and wage dynamics across cohorts.
+
+Workers with lower promised values—recent hires—are cheaper to separate and therefore more exposed to layoffs. At the same time, because layoffs improve the composition of the remaining workers within a group, workers in cohorts that experience higher layoffs also experience stronger wage rigidity.
+
+\begin{proposition}[Heterogeneity across cohorts]
+Workers with lower continuation values:
+\begin{itemize}
+\item face higher layoff risk,
+\item experience smaller wage responses to productivity shocks.
+\end{itemize}
+\end{proposition}
+
+This prediction provides a direct link between layoffs and wage pass-through across worker tenure, which I test in the data.
