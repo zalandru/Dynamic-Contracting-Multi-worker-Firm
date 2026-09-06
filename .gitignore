@@ -1,0 +1,15 @@
+﻿# --- generated model output and caches: never commit these ---
+*.pkl
+*.pyc
+__pycache__/
+*.nbc
+*.nbi
+app.log
+
+# --- tooling / local helpers ---
+.claude/
+_git_diagnose.ps1
+_git_fix.ps1
+_git_report.txt
+_paths_to_strip.txt
+_origin_url.txt
